@@ -1,0 +1,26 @@
+{
+  "name": "siren",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "build": "pnpm -r build",
+    "build:web": "pnpm --filter web build",
+    "build:api": "pnpm --filter api build",
+    "db:generate": "pnpm --filter api exec prisma generate",
+    "db:push": "pnpm --filter api exec prisma db push",
+    "db:seed": "pnpm --filter api exec tsx src/scripts/seed-tags.ts",
+    "db:studio": "pnpm --filter api exec prisma studio",
+    "lint": "pnpm -r lint",
+    "upgrade": "pnpm -r update --latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@9.14.2",
+  "engines": {
+    "node": ">=20"
+  }
+}

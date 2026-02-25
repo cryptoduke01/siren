@@ -1,0 +1,37 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Env and secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Build
+dist
+.next
+.turbo
+out
+
+# Logs and debug
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Vercel
+.vercel
+
+# Prisma
+apps/api/prisma/*.db
+apps/api/prisma/*.db-journal

@@ -1,0 +1,196 @@
+# Getting Started — API Keys, Test & Run, Next Steps
+
+## 1. Get your API keys
+
+### DFlow (Kalshi prediction markets on Solana)
+
+- **What for:** Market discovery + trading (quotes, orders).
+- **Dev (no key):** The app currently uses DFlow’s **public dev endpoints**; market data often works without a key (rate-limited).
+- **Production key:** Use the [DFlow request form](https://pond.dflow.net) (or contact **hello@dflow.net**). For Siren, request:
+  - **Project name:** Siren
+  - **APIs:** Both **Swap API** and **Prediction Markets API**
+  - **X / website:** Add when ready (e.g. “Yet to setup” is fine)
+  - **Rate limits / traffic:** Describe your expected usage (e.g. “MVP terminal, ~100–500 requests/day”)
+  - **Contact:** Prefer Slack; or Telegram @DanJablonski. They typically reply in 2–5 days.
+- **Where to set:** `DFLOW_API_KEY` in `apps/api/.env`.
+
+**Docs:** https://pond.dflow.net | https://dflow.mintlify.app
+
+---
+
+### Bags (meme token launch + trade)
+
+- **What for:** Token trade quotes, launch flow, partner fees.
+- **How to get:**
+  1. Go to **https://dev.bags.fm**
+  2. Sign up / log in
+  3. Create an API key in the dashboard
+- **Where to set:** `BAGS_API_KEY` in `apps/api/.env`.
+- **Note:** Without this key, token **surfacing** uses mock data; **trading** and **launch** need the key.
+
+**Docs:** https://docs.bags.fm
+
+---
+
+### Kalshi (optional — native exchange data)
+
+- **What for:** Extra market data / WebSocket from Kalshi directly. Siren can run on DFlow-only.
+- **How to get:**
+  1. Go to **https://kalshi.com** → account → API / developer
+  2. Generate API key (and secret if required)
+- **Where to set:** `KALSHI_API_KEY` and `KALSHI_API_SECRET` in `apps/api/.env`.
+- **Optional:** Leave blank to use only DFlow.
+
+**Docs:** https://docs.kalshi.com
+
+---
+
+### Twitter / X (optional — CT signal layer)
+
+- **What for:** Mention velocity for tokens (e.g. “$JPOW” + “fed meeting”).
+- **How to get:**
+  1. **https://developer.x.com** → sign in → create a project and app
+  2. Subscribe to **Basic** ($100/mo) for search/tweets API
+  3. Generate **Bearer Token**
+- **Where to set:** `TWITTER_BEARER_TOKEN` in `apps/api/.env`.
+- **Optional:** Leave blank; CT layer can be mocked or skipped.
+
+---
+
+## 2. Set up environment
+
+### Backend (`apps/api`)
+
+```bash
+cd apps/api
+cp .env.example .env
+```
+
+Edit `.env` and fill only what you have:
+
+- **Minimum to run:** You can leave all keys empty and still run; DFlow dev endpoints are used for markets.
+- **For real trading:** Set `DFLOW_API_KEY` and `BAGS_API_KEY`.
+- **For DB/Redis later:** Set `DATABASE_URL` and `REDIS_URL` when you add Postgres/Redis.
+
+### Frontend (`apps/web`)
+
+```bash
+cd apps/web
+cp .env.example .env.local
+```
+
+Defaults point to local API:
+
+- `NEXT_PUBLIC_API_URL=http://localhost:4000`
+- `NEXT_PUBLIC_WS_URL=ws://localhost:4000/ws`
+
+Change these when you deploy.
+
+---
+
+## 3. Run and test
+
+### Install
+
+From the repo root:
+
+```bash
+pnpm install
+```
+
+### Run (no DB/Redis required for basic run)
+
+**Terminal 1 — API:**
+
+```bash
+pnpm dev:api
+```
+
+You should see: `Siren API listening` on port 4000.
+
+**Terminal 2 — Web:**
+
+```bash
+pnpm dev:web
+```
+
+Open **http://localhost:3000**.
+
+### Quick API test (no keys)
+
+With the API running:
+
+```bash
+# Health
+curl http://localhost:4000/health
+
+# Markets (from DFlow dev API; may work without key)
+curl http://localhost:4000/api/markets
+
+# Surfaced tokens (mock data if no Bags key)
+curl "http://localhost:4000/api/tokens"
+```
+
+If `/health` returns `{"ok":true,...}` and `/api/markets` returns a list, you’re good. If DFlow rate-limits, add `DFLOW_API_KEY` when you have it.
+
+### Optional: Postgres + Redis
+
+- **Postgres:** Set `DATABASE_URL` in `apps/api/.env`, then:
+
+  ```bash
+  pnpm db:push
+  pnpm db:seed   # if you have a seed script
+  ```
+
+- **Redis:** Set `REDIS_URL` for velocity cache and BullMQ jobs when you add them.
+
+---
+
+## 4. Next steps (in order)
+
+| Step | What to do |
+|------|------------|
+| **1. Run locally** | Get the app running with `pnpm dev:api` + `pnpm dev:web` and confirm markets load (with or without keys). |
+| **2. Get Bags key** | Sign up at https://dev.bags.fm and add `BAGS_API_KEY` so token quotes and launch can use the real API. |
+| **3. Get DFlow key** | Email hello@dflow.net for a production key; set `DFLOW_API_KEY` for higher limits and production trading. |
+| **4. Wire unified buy** | In the app: connect DFlow order/quote and Bags trade quote to the unified buy panel; add wallet sign-and-send. |
+| **5. Add Kalshi Builder Code** | When integrating DFlow orders, set referral/fee account so you earn builder fees. |
+| **6. Add Bags partner key** | Create partner config in Bags for fee share; use it in launches/trades from Siren. |
+| **7. CT layer (optional)** | Add Twitter API or a mock: query mentions for token symbols + event keywords and feed into scoring. |
+| **8. Launch Signal** | When a market has high velocity but no surfaced tokens, show “Launch a token” with pre-filled Bags form. |
+| **9. Portfolio + Trending** | Implement `/portfolio` (positions + fees) and `/trending` (hot Bags tokens by CT velocity). |
+| **10. Deploy** | Frontend on Vercel, API + Postgres + Redis on Railway (or Fly.io); set env vars; submit to Kalshi grant + Bags hackathon. |
+
+---
+
+## 5. One-page cheat sheet
+
+```bash
+# 1. Env — real secrets go in .env (never commit .env)
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env.local
+# Edit apps/api/.env and add your keys
+
+# 2. Install
+pnpm install
+
+# 3. Run
+pnpm dev:api    # terminal 1
+pnpm dev:web    # terminal 2
+
+# 4. Test API
+curl http://localhost:4000/health
+curl http://localhost:4000/api/markets
+
+# 5. Open app
+open http://localhost:3000
+```
+
+**Keys (set in `apps/api/.env` when you have them):**
+
+- **Bags:** dev.bags.fm → `BAGS_API_KEY`; partner config → `BAGS_PARTNER_CONFIG_KEY`; ref link → `BAGS_REF_URL`
+- **DFlow:** Request via form (see above) → `DFLOW_API_KEY`
+- **Kalshi:** kalshi.com → API → `KALSHI_API_KEY` + `KALSHI_PRIVATE_KEY` (RSA PEM)
+- **Twitter:** developer.x.com → Basic → Bearer → `TWITTER_BEARER_TOKEN`
+
+**Security:** Never commit `.env` (it’s in `.gitignore`). If any key was ever exposed (e.g. in chat or a screenshot), rotate it in the provider’s dashboard.

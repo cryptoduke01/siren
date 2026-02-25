@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model MarketTag {
+  id         String   @id @default(cuid())
+  categoryId String
+  marketId   String   @unique // Kalshi ticker or DFlow market id
+  keywords   String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([marketId])
+}
+
+model VelocitySnapshot {
+  id        String   @id @default(cuid())
+  marketId  String
+  prob      Float
+  timestamp DateTime @default(now())
+
+  @@index([marketId])
+  @@index([timestamp])
+}
