@@ -6,7 +6,7 @@ const nextConfig = {
       { protocol: 'http', hostname: '**' },
     ],
   },
-  transpilePackages: ['@solana/wallet-adapter-base', '@solana/wallet-adapter-react', '@solana/wallet-adapter-react-ui', '@solana/wallet-adapter-wallets'],
+  transpilePackages: ['@siren/shared', '@solana/wallet-adapter-base', '@solana/wallet-adapter-react', '@solana/wallet-adapter-react-ui', '@solana/wallet-adapter-wallets'],
 };
 
 module.exports = nextConfig;
