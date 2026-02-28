@@ -61,9 +61,9 @@ Frontend (`apps/web/.env.local`):
 
 Frontend (Next.js): Vercel. Import repo, set Root Directory to `apps/web`, add `NEXT_PUBLIC_API_URL` to your deployed API URL.
 
-Backend (Fastify): Railway or Render. Set Root Directory to `apps/api`, Build Command `pnpm install && pnpm build`, Start Command `node dist/index.js`. Add Postgres and Redis from the provider dashboard if needed.
+Backend (Fastify): Render, Fly.io, or Railway. Set Root Directory to `apps/api`, Build Command `pnpm install && pnpm build`, Start Command `node dist/index.js`. Add env vars from `.env.example`. Render has a free tier. Fly.io is good for global deploys. Railway is another option.
 
-Database: Railway Postgres, Supabase, or Neon.
+Database: Supabase (free tier), Neon, or Railway Postgres.
 
 After deploying the API, set `NEXT_PUBLIC_API_URL` in Vercel to the API URL and redeploy the frontend.
 

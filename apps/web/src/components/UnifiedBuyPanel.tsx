@@ -7,6 +7,7 @@ import { VersionedTransaction } from "@solana/web3.js";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import { Copy, Check, Loader2 } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
+import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -51,6 +52,7 @@ export function UnifiedBuyPanel() {
     useSirenStore();
   const { connected, publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
+  const addToast = useToastStore((s) => s.addToast);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -172,11 +174,9 @@ export function UnifiedBuyPanel() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
-      if (msg.includes("0x1771") || msg.toLowerCase().includes("slippage")) {
-        setError("Price moved (slippage exceeded). Try again or use a smaller amount.");
-      } else {
-        setError(msg);
-      }
+      const friendly = msg.includes("0x1771") || msg.toLowerCase().includes("slippage") ? "Price moved. Try a smaller amount." : msg;
+      setError(friendly);
+      addToast(friendly, "error");
     } finally {
       setLoading(false);
     }
@@ -234,7 +234,9 @@ export function UnifiedBuyPanel() {
       await connection.confirmTransaction(sig, "confirmed");
       setSuccess(`${side.toUpperCase()} order sent! Tx: ${sig.slice(0, 8)}...`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Order failed");
+      const msg = e instanceof Error ? e.message : "Order failed";
+      setError(msg);
+      addToast(msg, "error");
     } finally {
       setLoading(false);
     }

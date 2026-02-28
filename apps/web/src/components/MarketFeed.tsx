@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToastStore } from "@/store/useToastStore";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useMarkets } from "@/hooks/useMarkets";
 import { MarketDetailPanel } from "./MarketDetailPanel";
+import { RefreshCw } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
 
@@ -54,7 +56,12 @@ export function MarketFeed() {
   const [shownCount, setShownCount] = useState(INITIAL_SHOWN);
   const [activeCategory, setActiveCategory] = useState("All");
 
-  const { data: markets = [], isLoading, isError } = useMarkets();
+  const addToast = useToastStore((s) => s.addToast);
+  const { data: markets = [], isLoading, isError, error, refetch } = useMarkets();
+
+  useEffect(() => {
+    if (isError && error) addToast("Unable to load markets. Please try again in a moment.", "error");
+  }, [isError, error, addToast]);
 
   const filteredMarkets =
     activeCategory === "All"
@@ -96,8 +103,17 @@ export function MarketFeed() {
       </div>
 
       {isError ? (
-        <div className="rounded-lg border p-4 text-sm" style={{ borderColor: "var(--red)", background: "var(--bg-elevated)" }}>
-          <p className="text-[var(--red)]">Failed to load markets. Make sure the API is running on port 4000.</p>
+        <div className="rounded-lg border p-6 text-center" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+          <p className="text-[var(--text-secondary)] text-sm mb-3">Unable to load markets at the moment.</p>
+          <button
+            type="button"
+            onClick={() => { hapticLight(); refetch(); }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-heading font-semibold border"
+            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+          >
+            <RefreshCw className="w-4 h-4" />
+            Try again
+          </button>
         </div>
       ) : isLoading ? (
         <div className="grid grid-cols-1 gap-3">

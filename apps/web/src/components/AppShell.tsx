@@ -2,6 +2,8 @@
 
 import { UnifiedBuyPanel } from "./UnifiedBuyPanel";
 import { ThemeSync } from "./ThemeSync";
+import { ToastContainer } from "./Toast";
+import { OnboardingModal } from "./OnboardingModal";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +11,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ThemeSync />
       {children}
       <UnifiedBuyPanel />
+      <ToastContainer />
+      <OnboardingModal />
     </>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Copy, Check, Info, ShoppingCart } from "lucide-react";
+import { Copy, Check, Info, ShoppingCart, RefreshCw } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
+import { useToastStore } from "@/store/useToastStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
 import { hapticLight } from "@/lib/haptics";
 import type { SurfacedToken } from "@siren/shared";
@@ -53,7 +54,8 @@ export function TokenSurface() {
   const searchQuery = searchInput.trim();
   const keywordsForApi = useMemo(() => (searchQuery ? [searchQuery] : selectedMarket?.keywords ?? []), [searchQuery, selectedMarket?.keywords]);
 
-  const { data: tokens = [], isLoading, isError } = useQuery({
+  const addToast = useToastStore((s) => s.addToast);
+  const { data: tokens = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["tokens", selectedMarket?.ticker, keywordsForApi.join(",")],
     queryFn: () => fetchTokens(selectedMarket?.ticker, undefined, keywordsForApi.length ? keywordsForApi : undefined),
     enabled: true,
@@ -61,6 +63,10 @@ export function TokenSurface() {
     refetchInterval: searchQuery ? false : 60_000,
     staleTime: searchQuery ? 10_000 : 30_000,
   });
+
+  useEffect(() => {
+    if (isError && error) addToast("Unable to load tokens. Please try again in a moment.", "error");
+  }, [isError, error, addToast]);
 
   const filteredTokens = useMemo(() => {
     if (!searchQuery) return tokens;
@@ -127,17 +133,26 @@ export function TokenSurface() {
       <div className="mb-4">
         <input
           type="text"
-          placeholder="Search any token by name, symbol, or contract address…"
+          placeholder="Search by name, symbol, or contract address"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          className="w-full max-w-sm px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] border transition-colors duration-100 focus:border-[var(--border-active)] focus:outline-none"
+          className="w-full md:max-w-md px-4 py-3 rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] border transition-colors duration-100 focus:border-[var(--border-active)] focus:outline-none"
           style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
         />
-        <p className="text-[var(--text-secondary)] text-xs mt-1">Searches DexScreener (Solana). Type and wait a moment for results.</p>
+        <p className="text-[var(--text-tertiary)] text-xs mt-1.5">DexScreener (Solana). Results appear as you type.</p>
       </div>
       {isError ? (
-        <div className="rounded-lg border p-4 text-sm" style={{ borderColor: "var(--red)", background: "var(--bg-elevated)" }}>
-          <p className="text-[var(--red)]">Failed to load tokens. Make sure the API is running on port 4000.</p>
+        <div className="rounded-lg border p-6 text-center" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+          <p className="text-[var(--text-secondary)] text-sm mb-3">Unable to load tokens at the moment.</p>
+          <button
+            type="button"
+            onClick={() => { hapticLight(); refetch(); }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-heading font-semibold border"
+            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+          >
+            <RefreshCw className="w-4 h-4" />
+            Try again
+          </button>
         </div>
       ) : isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
