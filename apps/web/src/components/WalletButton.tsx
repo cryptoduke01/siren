@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletConnectModal } from "./WalletConnectModal";
+import { WalletModal } from "./WalletModal";
 import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -49,7 +49,7 @@ export function WalletButton() {
       >
         Connect
       </button>
-      <WalletConnectModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+      <WalletModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
     </>
   );
 }

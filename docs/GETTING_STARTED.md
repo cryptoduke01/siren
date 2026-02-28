@@ -1,4 +1,6 @@
-# Getting Started — API Keys, Test & Run, Next Steps
+# Getting Started
+
+API keys, setup, and run instructions.
 
 ## 1. Get your API keys
 

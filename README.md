@@ -1,67 +1,78 @@
 # Siren
 
-**Event-Driven Meme Token Terminal** — Watch Kalshi market probabilities in real time and surface Bags tokens thematically tied to those events. Trade both from one UI.
+Event-driven meme token terminal on Solana. Watch Kalshi prediction market probabilities in real time and surface Bags tokens tied to those events. Trade markets and tokens from one UI.
+
+## What Siren Does
+
+Siren connects prediction market data from Kalshi (via DFlow) with meme tokens on Solana (via Bags and DexScreener). You can:
+
+- Browse prediction markets with live probability and velocity
+- Surface tokens matched to market keywords (DexScreener search)
+- Buy YES or NO on markets in-app (DFlow) or on Kalshi
+- Buy tokens via Jupiter swaps
+- Launch new meme tokens via Bags
+- Filter markets by category (Politics, Crypto, Sports, Business, Entertainment)
+- Use on mobile as a feed with bottom sheet market picker
 
 ## Stack
 
-- **Frontend:** Next.js 15 (App Router), React 19, TypeScript, Tailwind, Framer Motion, TanStack Query, Zustand, Solana Wallet Adapter
-- **Backend:** Fastify 5, Redis, Prisma 6 + PostgreSQL, BullMQ, WebSockets
-- **APIs:** Kalshi, DFlow (metadata + trading), Bags SDK
+- Frontend: Next.js 15, React 19, TypeScript, Tailwind, Framer Motion, TanStack Query, Zustand, Solana Wallet Adapter (Phantom, Solflare, Torus)
+- Backend: Fastify 5, Prisma, PostgreSQL
+- APIs: DFlow (Kalshi markets + trading), Jupiter (token swaps), DexScreener (token search), Bags (token launch)
 
-## Design
+## Project Structure
 
-- **Background:** `#08080F` (near-black, blue undertone)
-- **Primary:** `#E8FF47` (electric lime)
-- **Secondary:** `#7B61FF` (violet)
-- **Bags:** `#00FF85` | **Kalshi:** `#5CCC7A`
-- **Fonts:** Geist / Space Grotesk (headings), JetBrains Mono (data), Inter (body)
+```
+apps/
+  web/     Next.js frontend (port 3000)
+  api/     Fastify backend (port 4000)
+packages/
+  shared/  Shared types and tag library
+docs/
+  GETTING_STARTED.md   API keys and setup
+```
 
 ## Quick Start
 
 ```bash
 pnpm install
-pnpm dev:api &   # Backend on :4000
-pnpm dev:web     # Frontend on :3000
+pnpm dev:api    # Terminal 1: API on :4000
+pnpm dev:web    # Terminal 2: Frontend on :3000
 ```
 
-**API keys, testing, and next steps:** see **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** for how to get DFlow, Bags, Kalshi, and Twitter keys, run without keys, and the full build checklist.
+Copy `apps/api/.env.example` to `apps/api/.env` and fill in API keys. See docs/GETTING_STARTED.md for details.
 
-### Upgrade all packages to latest
+## Environment
 
-From the repo root:
+Backend (`apps/api/.env`):
+
+- `DFLOW_API_KEY` – DFlow (markets + trading). Request at pond.dflow.net.
+- `BAGS_API_KEY` – Bags (token launch). Sign up at dev.bags.fm.
+- `JUPITER_API_KEY` – Jupiter (token swaps). Get at portal.jup.ag.
+- `DATABASE_URL` – PostgreSQL (optional for MVP)
+- `DEXSCREENER_BASE_URL` – Optional; defaults to api.dexscreener.com
+
+Frontend (`apps/web/.env.local`):
+
+- `NEXT_PUBLIC_API_URL` – Backend URL (default http://localhost:4000)
+- `NEXT_PUBLIC_SOLANA_RPC_URL` – Optional custom RPC (e.g. Helius)
+
+## Hosting
+
+Frontend (Next.js): Vercel. Import repo, set Root Directory to `apps/web`, add `NEXT_PUBLIC_API_URL` to your deployed API URL.
+
+Backend (Fastify): Railway or Render. Set Root Directory to `apps/api`, Build Command `pnpm install && pnpm build`, Start Command `node dist/index.js`. Add Postgres and Redis from the provider dashboard if needed.
+
+Database: Railway Postgres, Supabase, or Neon.
+
+After deploying the API, set `NEXT_PUBLIC_API_URL` in Vercel to the API URL and redeploy the frontend.
+
+## Build
 
 ```bash
-pnpm upgrade
+pnpm build
 ```
 
-This runs `pnpm -r update --latest` to bump every workspace to the latest versions.
+## License
 
-`
-### Env
-Copy `apps/api/.env.example` → `apps/api/.env` and fill:
-- `DATABASE_URL` — Postgres
-- `REDIS_URL` — Redis (optional for MVP)
-- `DFLOW_API_KEY` — DFlow (optional for dev)
-- `BAGS_API_KEY` — Bags
-
-## Structure
-
-```
-apps/
-  web/          Next.js frontend
-  api/          Fastify backend + WebSocket
-packages/
-  shared/       Types, tag library
-docs/
-  API_RESEARCH.md   API notes
-```
-
-## Build Order
-
-1. ✅ Kalshi/DFlow market fetch, velocity, WebSocket
-2. Bags SDK, token search, tag library seed
-3. ✅ Frontend: market feed + token surface
-4. DFlow order/quote, unified buy panel, wallet connect
-5. CT signal layer (X API or mock)
-6. Launch Signal, Portfolio, Trending tab
-7. Polish, deploy
+Private.

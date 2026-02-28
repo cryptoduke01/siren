@@ -12,23 +12,21 @@ const PHANTOM_PLAY_STORE = "https://play.google.com/store/apps/details?id=app.ph
 const SOLFLARE_APP_STORE = "https://apps.apple.com/app/solflare-wallet/id1580902717";
 const SOLFLARE_PLAY_STORE = "https://play.google.com/store/apps/details?id=com.solflare.mobile";
 
-interface WalletConnectModalProps {
+interface WalletModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function WalletConnectModal({ isOpen, onClose }: WalletConnectModalProps) {
+export function WalletModal({ isOpen, onClose }: WalletModalProps) {
   const { select, connect, connecting, connected, wallets } = useWallet();
   const { setWalletType } = useWalletTypeStore();
   const isMobile = useIsMobile();
-  const [wcUri, setWcUri] = useState<string | null>(null);
-  const [step, setStep] = useState<"list" | "mobile-install" | "wc-qr">("list");
+  const [step, setStep] = useState<"list" | "mobile-install">("list");
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
   const phantomWallet = wallets.find((w) => w.adapter.name?.toLowerCase().includes("phantom"));
   const solflareWallet = wallets.find((w) => w.adapter.name?.toLowerCase().includes("solflare"));
   const torusWallet = wallets.find((w) => w.adapter.name?.toLowerCase().includes("torus"));
-  const wcWallet = wallets.find((w) => w.adapter.name?.toLowerCase().includes("walletconnect"));
 
   useEffect(() => {
     if (connected) onClose();
@@ -38,35 +36,14 @@ export function WalletConnectModal({ isOpen, onClose }: WalletConnectModalProps)
     if (!isOpen) {
       setStep("list");
       setSelectedWalletId(null);
-      setWcUri(null);
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (step !== "wc-qr" || !wcWallet) return;
-    const adapter = wcWallet.adapter as { provider?: { on?: (e: string, cb: (uri: string) => void) => void }; on?: (e: string, cb: (uri: string) => void) => void };
-    const handleUri = (uri: string) => setWcUri(uri);
-    adapter?.provider?.on?.("display_uri", handleUri);
-    adapter?.on?.("connect", handleUri);
-    return () => {
-      adapter?.provider?.on?.("display_uri", handleUri);
-      adapter?.on?.("connect", handleUri);
-    };
-  }, [step, wcWallet]);
-
   const handleConnect = useCallback(
-    async (wallet: (typeof wallets)[0] | undefined, type: "phantom" | "solflare" | "torus" | "walletconnect") => {
+    async (wallet: (typeof wallets)[0] | undefined, type: "phantom" | "solflare" | "torus") => {
       if (!wallet) return;
       hapticLight();
       setWalletType(type);
-
-      if (type === "walletconnect" && !isMobile) {
-        setStep("wc-qr");
-        setSelectedWalletId(wallet.adapter.name ?? "walletconnect");
-        select(wallet.adapter);
-        connect().catch(() => setStep("list"));
-        return;
-      }
 
       if (type === "phantom" && isMobile) {
         const isPhantom = typeof window !== "undefined" && (window as unknown as { phantom?: { solana?: unknown } }).phantom?.solana;
@@ -96,7 +73,6 @@ export function WalletConnectModal({ isOpen, onClose }: WalletConnectModalProps)
   const handleBack = () => {
     setStep("list");
     setSelectedWalletId(null);
-    setWcUri(null);
   };
 
   if (!isOpen) return null;
@@ -114,14 +90,14 @@ export function WalletConnectModal({ isOpen, onClose }: WalletConnectModalProps)
           <div className="flex items-center justify-between p-4 border-b flex-shrink-0" style={{ borderColor: "var(--border)" }}>
             {step !== "list" ? (
               <button type="button" onClick={handleBack} className="text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors font-heading font-semibold text-sm">
-                ← Back
+                Back
               </button>
             ) : (
               <span />
             )}
             <h2 className="font-heading font-bold text-[var(--text-primary)]">Connect wallet</h2>
             <button type="button" onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors p-1" aria-label="Close">
-              ✕
+              Close
             </button>
           </div>
 
@@ -152,36 +128,16 @@ export function WalletConnectModal({ isOpen, onClose }: WalletConnectModalProps)
                     disabled={connecting}
                   />
                 )}
-                {wcWallet && (
-                  <WalletCard
-                    name="WalletConnect"
-                    description={isMobile ? "Scan with your wallet app" : "Scan QR with mobile wallet"}
-                    onClick={() => handleConnect(wcWallet, "walletconnect")}
-                    disabled={connecting}
-                  />
-                )}
               </div>
             )}
 
             {step === "mobile-install" && selectedWalletId === "phantom" && (
               <div className="space-y-4">
                 <p className="text-[var(--text-secondary)] text-sm">Get Phantom to connect on mobile:</p>
-                <a
-                  href={PHANTOM_APP_STORE}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors"
-                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}
-                >
+                <a href={PHANTOM_APP_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
                   Download Phantom from App Store
                 </a>
-                <a
-                  href={PHANTOM_PLAY_STORE}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors"
-                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}
-                >
+                <a href={PHANTOM_PLAY_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
                   Download Phantom from Play Store
                 </a>
                 <p className="text-[var(--text-tertiary)] text-xs">After installing, return here and connect.</p>
@@ -191,41 +147,13 @@ export function WalletConnectModal({ isOpen, onClose }: WalletConnectModalProps)
             {step === "mobile-install" && selectedWalletId === "solflare" && (
               <div className="space-y-4">
                 <p className="text-[var(--text-secondary)] text-sm">Get Solflare to connect on mobile:</p>
-                <a
-                  href={SOLFLARE_APP_STORE}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors"
-                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}
-                >
+                <a href={SOLFLARE_APP_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
                   Download Solflare from App Store
                 </a>
-                <a
-                  href={SOLFLARE_PLAY_STORE}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors"
-                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}
-                >
+                <a href={SOLFLARE_PLAY_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
                   Download Solflare from Play Store
                 </a>
                 <p className="text-[var(--text-tertiary)] text-xs">After installing, return here and connect.</p>
-              </div>
-            )}
-
-            {step === "wc-qr" && (
-              <div className="space-y-4 flex flex-col items-center py-6">
-                <p className="text-[var(--text-secondary)] text-sm text-center">Scan with your mobile wallet</p>
-                {wcUri ? (
-                  <QRCodeDisplay uri={wcUri} />
-                ) : (
-                  <div className="w-48 h-48 rounded-lg flex items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
-                    <span className="text-[var(--text-tertiary)] text-xs">Generating QR…</span>
-                  </div>
-                )}
-                <p className="text-[var(--text-tertiary)] text-xs text-center max-w-[240px]">
-                  Open Phantom, Solflare, or another WalletConnect-compatible wallet and scan this code.
-                </p>
               </div>
             )}
           </div>
@@ -235,17 +163,7 @@ export function WalletConnectModal({ isOpen, onClose }: WalletConnectModalProps)
   );
 }
 
-function WalletCard({
-  name,
-  description,
-  onClick,
-  disabled,
-}: {
-  name: string;
-  description: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
+function WalletCard({ name, description, onClick, disabled }: { name: string; description: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
@@ -262,27 +180,5 @@ function WalletCard({
         <p className="text-xs text-[var(--text-secondary)] truncate">{description}</p>
       </div>
     </button>
-  );
-}
-
-function QRCodeDisplay({ uri }: { uri: string }) {
-  const [QRComponent, setQRComponent] = useState<React.ComponentType<{ value: string; size?: number }> | null>(null);
-
-  useEffect(() => {
-    import("qrcode.react").then((mod) => setQRComponent(() => mod.QRCodeSVG)).catch(() => null);
-  }, []);
-
-  if (!QRComponent) {
-    return (
-      <div className="w-48 h-48 rounded-lg flex items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
-        <span className="text-[var(--text-tertiary)] text-xs">Loading…</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-4 rounded-lg" style={{ background: "white" }}>
-      <QRComponent value={uri} size={192} />
-    </div>
   );
 }
