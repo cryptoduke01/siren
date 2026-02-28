@@ -5,7 +5,7 @@
 ### DFlow (Kalshi prediction markets on Solana)
 
 - **What for:** Market discovery + trading (quotes, orders).
-- **Dev (no key):** The app currently uses DFlow’s **public dev endpoints**; market data often works without a key (rate-limited).
+- **Endpoints:** Requests must use `e.quote-api.dflow.net` and `e.prediction-markets-api.dflow.net`; set `DFLOW_API_KEY` and `x-api-key` header. Keep the key server-side only.
 - **Production key:** Use the [DFlow request form](https://pond.dflow.net) (or contact **hello@dflow.net**). For Siren, request:
   - **Project name:** Siren
   - **APIs:** Both **Swap API** and **Prediction Markets API**
@@ -15,6 +15,8 @@
 - **Where to set:** `DFLOW_API_KEY` in `apps/api/.env`.
 
 **Docs:** https://pond.dflow.net | https://dflow.mintlify.app
+
+**Compliance:** For prediction market **trading**, geo-fence US and [restricted Kalshi jurisdictions](https://pond.dflow.net/legal/prediction-market-compliance). Use `apps/api/src/lib/geo-fence.ts`; block when `shouldBlockByCountry(countryCode)` is true (e.g. from `Cf-Ipcountry` if using Cloudflare).
 
 ---
 
@@ -68,7 +70,7 @@ cp .env.example .env
 
 Edit `.env` and fill only what you have:
 
-- **Minimum to run:** You can leave all keys empty and still run; DFlow dev endpoints are used for markets.
+- **Minimum to run:** With `DFLOW_API_KEY` set, use production URLs (`e.prediction-markets-api.dflow.net`, `e.quote-api.dflow.net`). Without a key, you can try dev URLs for testing (rate-limited).
 - **For real trading:** Set `DFLOW_API_KEY` and `BAGS_API_KEY`.
 - **For DB/Redis later:** Set `DATABASE_URL` and `REDIS_URL` when you add Postgres/Redis.
 
@@ -124,14 +126,14 @@ With the API running:
 # Health
 curl http://localhost:4000/health
 
-# Markets (from DFlow dev API; may work without key)
+# Markets (from DFlow Prediction Markets API; requires DFLOW_API_KEY for production)
 curl http://localhost:4000/api/markets
 
 # Surfaced tokens (mock data if no Bags key)
 curl "http://localhost:4000/api/tokens"
 ```
 
-If `/health` returns `{"ok":true,...}` and `/api/markets` returns a list, you’re good. If DFlow rate-limits, add `DFLOW_API_KEY` when you have it.
+If `/health` returns `{"ok":true,...}` and `/api/markets` returns a list, you’re good. If DFlow rate-limits, add `DFLOW_API_KEY` and the `e.*` production URLs.
 
 ### Optional: Postgres + Redis
 

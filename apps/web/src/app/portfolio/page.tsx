@@ -6,7 +6,9 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import { TopBar } from "@/components/TopBar";
 import { useSirenStore } from "@/store/useSirenStore";
+import type { MarketWithVelocity } from "@siren/shared";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const LAMPORTS_PER_SOL = 1e9;
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -54,6 +56,33 @@ async function fetchTokenHoldings(connection: Connection, publicKey: string): Pr
   return holdings.sort((a, b) => b.balance - a.balance);
 }
 
+interface PredictionPosition {
+  mint: string;
+  ticker: string;
+  title: string;
+  side: "yes" | "no";
+  balance: number;
+  probability?: number;
+}
+
+async function fetchMarkets(): Promise<MarketWithVelocity[]> {
+  const res = await fetch(`${API_URL}/api/markets`, { credentials: "omit" });
+  if (!res.ok) throw new Error("Markets fetch failed");
+  const j = await res.json();
+  return j.data ?? [];
+}
+
+function buildMintToMarket(
+  markets: MarketWithVelocity[]
+): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number }> {
+  const map = new Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number }>();
+  for (const m of markets) {
+    if (m.yes_mint) map.set(m.yes_mint, { ticker: m.ticker, title: m.title, side: "yes", probability: m.probability });
+    if (m.no_mint) map.set(m.no_mint, { ticker: m.ticker, title: m.title, side: "no", probability: m.probability });
+  }
+  return map;
+}
+
 export default function PortfolioPage() {
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
@@ -75,6 +104,28 @@ export default function PortfolioPage() {
     refetchInterval: 30_000,
     staleTime: 20_000,
   });
+
+  const { data: markets = [] } = useQuery({
+    queryKey: ["markets"],
+    queryFn: fetchMarkets,
+    enabled: !!connected,
+    staleTime: 60_000,
+  });
+
+  const mintToMarket = buildMintToMarket(markets);
+  const predictionPositions: PredictionPosition[] = tokenHoldings
+    .filter((t) => mintToMarket.has(t.mint))
+    .map((t) => {
+      const info = mintToMarket.get(t.mint)!;
+      return {
+        mint: t.mint,
+        ticker: info.ticker,
+        title: info.title,
+        side: info.side,
+        balance: t.balance,
+        probability: info.probability,
+      };
+    });
 
   const openSellPanel = (mint: string, symbol: string, name: string) => {
     setSelectedToken({ mint, symbol, name }, { openForSell: true });
@@ -134,10 +185,32 @@ export default function PortfolioPage() {
 
             <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
               <div className="p-6 border-b border-white/5">
-                <h2 className="font-heading font-semibold text-siren-kalshi text-sm uppercase tracking-wider">Kalshi Positions</h2>
+                <h2 className="font-heading font-semibold text-siren-kalshi text-sm uppercase tracking-wider">Prediction market positions</h2>
               </div>
               <div className="p-6">
-                <p className="text-siren-text-secondary text-sm">No open positions. Trade via the terminal.</p>
+                {predictionPositions.length === 0 ? (
+                  <p className="text-siren-text-secondary text-sm">No prediction market positions. Buy YES/NO from the terminal.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {predictionPositions.map((p) => (
+                      <li
+                        key={`${p.ticker}-${p.side}`}
+                        className="rounded-xl border border-white/10 bg-black/20 p-4 hover:border-siren-kalshi/40 transition-colors"
+                      >
+                        <p className="font-heading font-medium text-siren-text-primary text-sm line-clamp-1">{p.title}</p>
+                        <div className="flex justify-between items-center mt-2">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.side === "yes" ? "bg-siren-kalshi/20 text-siren-kalshi" : "bg-red-500/20 text-red-400"}`}>
+                            {p.side.toUpperCase()}
+                          </span>
+                          <span className="font-data text-siren-kalshi tabular-nums">{p.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                        </div>
+                        {p.probability != null && (
+                          <p className="text-siren-text-secondary text-xs mt-1">Market: {p.probability.toFixed(0)}% YES</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
 

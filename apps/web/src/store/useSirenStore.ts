@@ -8,8 +8,12 @@ export interface SelectedMarket {
   volume?: number;
   open_interest?: number;
   event_ticker?: string;
+  series_ticker?: string;
   subtitle?: string;
   keywords?: string[];
+  yes_mint?: string;
+  no_mint?: string;
+  kalshi_url?: string;
 }
 
 export interface SelectedToken {
@@ -21,22 +25,41 @@ export interface SelectedToken {
   ctMentions?: number;
 }
 
+type BuyPanelMode = "market" | "token";
+
 interface SirenState {
   selectedMarket: SelectedMarket | null;
   selectedToken: SelectedToken | null;
   buyPanelOpen: boolean;
+  buyPanelMode: BuyPanelMode;
   openForSell: boolean;
+  detailPanelOpen: boolean;
   setSelectedMarket: (m: SelectedMarket | null) => void;
   setSelectedToken: (t: SelectedToken | null, opts?: { openForSell?: boolean }) => void;
-  setBuyPanelOpen: (open: boolean) => void;
+  setBuyPanelOpen: (open: boolean, mode?: BuyPanelMode) => void;
+  setDetailPanelOpen: (open: boolean) => void;
 }
 
 export const useSirenStore = create<SirenState>((set) => ({
   selectedMarket: null,
   selectedToken: null,
   buyPanelOpen: false,
+  buyPanelMode: "market",
   openForSell: false,
-  setSelectedMarket: (m) => set({ selectedMarket: m, buyPanelOpen: !!m, openForSell: false }),
-  setSelectedToken: (t, opts) => set((s) => ({ selectedToken: t, buyPanelOpen: t ? true : s.buyPanelOpen, openForSell: t && opts?.openForSell ? true : s.openForSell })),
-  setBuyPanelOpen: (open) => set((s) => ({ buyPanelOpen: open, ...(open === false ? { openForSell: false } : {}) })),
+  detailPanelOpen: false,
+  setSelectedMarket: (m) => set({ selectedMarket: m, buyPanelOpen: false, detailPanelOpen: false, openForSell: false }),
+  setSelectedToken: (t, opts) =>
+    set((s) => ({
+      selectedToken: t,
+      buyPanelOpen: t ? true : s.buyPanelOpen,
+      buyPanelMode: t ? "token" : s.buyPanelMode,
+      openForSell: t && opts?.openForSell ? true : s.openForSell,
+    })),
+  setBuyPanelOpen: (open, mode) =>
+    set((s) => ({
+      buyPanelOpen: open,
+      buyPanelMode: open && mode ? mode : s.buyPanelMode,
+      ...(open === false ? { openForSell: false } : {}),
+    })),
+  setDetailPanelOpen: (open) => set({ detailPanelOpen: open }),
 }));

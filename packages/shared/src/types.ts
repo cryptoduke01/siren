@@ -18,6 +18,10 @@ export interface KalshiMarket {
 export interface MarketWithVelocity extends KalshiMarket {
   velocity_1h: number;
   probability: number;
+  yes_mint?: string;
+  no_mint?: string;
+  series_ticker?: string;
+  kalshi_url?: string;
 }
 
 export interface BagsToken {

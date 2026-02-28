@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Info, ShoppingCart } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
 import { hapticLight } from "@/lib/haptics";
@@ -37,16 +37,16 @@ function CopyCAButton({ mint }: { mint: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="p-1.5 rounded-lg text-siren-text-secondary hover:text-siren-primary hover:bg-white/5 transition-colors"
+      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-100"
       title="Copy Contract Address"
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-siren-bags" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-bags)]" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
 }
 
 export function TokenSurface() {
-  const { selectedMarket } = useSirenStore();
+  const { selectedMarket, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
 
@@ -78,83 +78,108 @@ export function TokenSurface() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 className="font-heading font-semibold text-siren-text-primary text-xs uppercase tracking-wider">
-          {selectedMarket ? `Tokens for: ${selectedMarket.title.slice(0, 50)}${selectedMarket.title.length > 50 ? "…" : ""}` : "Surfaced Tokens"}
-        </h2>
-        <button
-          type="button"
-          onClick={() => { hapticLight(); setLaunchPanelOpen(true); }}
-          className="px-3 py-1.5 text-xs font-semibold bg-siren-bags text-siren-bg rounded-lg hover:opacity-90 transition-opacity"
+        <h2
+          className="font-heading font-semibold text-[11px] uppercase tracking-[0.12em]"
+          style={{ color: "var(--text-tertiary)" }}
         >
-          Launch token
-        </button>
+          {selectedMarket ? `Tokens for: ${selectedMarket.title.slice(0, 50)}${selectedMarket.title.length > 50 ? "…" : ""}` : "Surfaced tokens"}
+        </h2>
+        <div className="flex items-center gap-2">
+          {selectedMarket && (
+            <>
+              <button
+                type="button"
+                onClick={() => { hapticLight(); setBuyPanelOpen(true, "market"); }}
+                className="px-3 py-2 text-xs font-heading font-bold uppercase tracking-[0.06em] rounded-md border transition-all duration-100 text-[var(--text-primary)] hover:border-[var(--border-active)] hover:bg-[var(--bg-hover)]"
+                style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ShoppingCart className="w-3.5 h-3.5" />
+                  Trade market
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { hapticLight(); setDetailPanelOpen(true); }}
+                className="p-2 rounded-md text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-100"
+                title="Market details"
+              >
+                <Info className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => { hapticLight(); setLaunchPanelOpen(true); }}
+            className="px-3 py-2 text-xs font-heading font-bold uppercase tracking-[0.06em] rounded-md border transition-all duration-100 text-[var(--text-primary)] hover:border-[var(--border-active)] hover:bg-[var(--bg-hover)]"
+            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+          >
+            Launch token
+          </button>
+        </div>
       </div>
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
-      <p className="text-siren-text-secondary/80 text-xs mb-3">Markets: DFlow. Tokens: DexScreener/Jupiter (Solana).</p>
-      <div className="mb-3">
+      <p className="text-[var(--text-secondary)] text-xs mb-3">
+        {selectedMarket
+          ? "Tokens matched by keywords from the market title (DexScreener search). Click Trade market to buy YES/NO."
+          : "New uprising tokens (DexScreener latest boosted)."}
+      </p>
+      <div className="mb-4">
         <input
           type="text"
           placeholder="Search any token by name, symbol, or contract address…"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          className="w-full max-w-sm px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-siren-text-primary text-sm placeholder:text-siren-text-secondary/60"
+          className="w-full max-w-sm px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] border transition-colors duration-100 focus:border-[var(--border-active)] focus:outline-none"
+          style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
         />
-        <p className="text-siren-text-secondary/70 text-xs mt-1">Searches DexScreener (Solana). Type and wait a moment for results.</p>
+        <p className="text-[var(--text-secondary)] text-xs mt-1">Searches DexScreener (Solana). Type and wait a moment for results.</p>
       </div>
       {isError ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400 glass-card">
-          <p>Failed to load tokens. Make sure the API is running on port 4000.</p>
+        <div className="rounded-lg border p-4 text-sm" style={{ borderColor: "var(--red)", background: "var(--bg-elevated)" }}>
+          <p className="text-[var(--red)]">Failed to load tokens. Make sure the API is running on port 4000.</p>
         </div>
       ) : isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-40 rounded-xl bg-white/5 animate-pulse" />
+            <div
+              key={i}
+              className="h-44 rounded-lg skeleton"
+              style={{ background: "var(--bg-surface)" }}
+            />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredTokens.map((t, i) => (
-            <motion.div
-              key={t.mint}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 hover:border-siren-bags/40 transition-all cursor-pointer"
-              onClick={() =>
-                setSelectedToken({
-                  mint: t.mint,
-                  name: t.name,
-                  symbol: t.symbol,
-                  price: t.price,
-                  volume24h: t.volume24h,
-                  ctMentions: t.ctMentions,
-                })
-              }
-            >
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  {t.imageUrl && <img src={t.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover" />}
-                  <div className="min-w-0">
-                    <p className="font-heading font-semibold text-siren-text-primary truncate">${t.symbol}</p>
-                    <p className="text-siren-text-secondary text-xs truncate">{t.name}</p>
-                  </div>
-                </div>
-                <CopyCAButton mint={t.mint} />
-              </div>
-              {t.price != null && (
-                <div className="text-xs font-data text-siren-primary tabular-nums mb-2">~${t.price.toFixed(4)} USD</div>
-              )}
-              <div className="flex justify-between text-xs font-data tabular-nums">
-                <span className="text-siren-text-secondary">24h Vol</span>
-                <span className="text-siren-bags">{t.volume24h?.toLocaleString() ?? "-"} SOL</span>
-              </div>
-              <div className="flex justify-between text-xs font-data mt-1 tabular-nums">
-                <span className="text-siren-text-secondary">CT mentions</span>
-                <span className="text-siren-text-primary">{t.ctMentions ?? "-"}</span>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredTokens.map((t, i) => {
+            const velocityColor = selectedMarket?.velocity_1h != null
+              ? selectedMarket.velocity_1h > 0
+                ? "var(--green)"
+                : "var(--red)"
+              : "var(--border)";
+            return (
+              <motion.div
+                key={t.mint}
+                initial={{ opacity: 0, transform: "translateY(4px)" }}
+                animate={{ opacity: 1, transform: "translateY(0)" }}
+                transition={{ duration: 0.2, delay: i * 0.05, ease: "easeOut" }}
+                className="rounded-lg border-t-2 border p-4 pt-4 transition-all duration-[120ms] ease-in-out cursor-pointer hover:border-[var(--border-active)]"
+                style={{
+                  background: "var(--bg-surface)",
+                  borderColor: "var(--border)",
+                  borderTopColor: velocityColor,
+                  boxShadow: "none",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border-active)";
+                  e.currentTarget.style.boxShadow = "0 0 0 1px rgba(0,255,133,0.08), 0 4px 24px rgba(0,255,133,0.02)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+                onClick={() => {
+                  hapticLight();
                   setSelectedToken({
                     mint: t.mint,
                     name: t.name,
@@ -164,27 +189,72 @@ export function TokenSurface() {
                     ctMentions: t.ctMentions,
                   });
                 }}
-                className="mt-3 w-full py-2.5 bg-siren-bags text-siren-bg font-heading font-semibold rounded-lg text-sm hover:opacity-90 transition-opacity"
               >
-                Buy
-              </button>
-            </motion.div>
-          ))}
+                {selectedMarket && (
+                  <div
+                    className="inline-block px-2 py-0.5 rounded font-mono text-[10px] tabular-nums mb-2"
+                    style={{ background: "var(--bg-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+                  >
+                    Market: {selectedMarket.probability.toFixed(0)}% YES
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {t.imageUrl && <img src={t.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover" />}
+                    <div className="min-w-0">
+                      <p className="font-heading font-bold text-[var(--text-primary)] truncate">${t.symbol}</p>
+                      <p className="text-[var(--text-secondary)] text-xs truncate font-body">{t.name}</p>
+                    </div>
+                  </div>
+                  <CopyCAButton mint={t.mint} />
+                </div>
+                {t.price != null && (
+                  <div className="text-xs font-mono text-[var(--text-primary)] tabular-nums mb-2">~${t.price.toFixed(4)} USD</div>
+                )}
+                <div className="flex justify-between text-xs font-mono tabular-nums mb-1">
+                  <span className="text-[var(--text-secondary)]">24h Vol</span>
+                  <span className="text-[var(--accent-bags)]">{t.volume24h?.toLocaleString() ?? "-"} SOL</span>
+                </div>
+                <div className="flex justify-between text-xs font-mono tabular-nums mb-3">
+                  <span className="text-[var(--text-secondary)]">CT mentions</span>
+                  <span className="text-[var(--text-primary)]">{t.ctMentions ?? "-"}</span>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    hapticLight();
+                    setSelectedToken({
+                      mint: t.mint,
+                      name: t.name,
+                      symbol: t.symbol,
+                      price: t.price,
+                      volume24h: t.volume24h,
+                      ctMentions: t.ctMentions,
+                    });
+                  }}
+                  className="w-full py-2 rounded-md font-heading font-semibold text-xs uppercase tracking-[0.06em] transition-all duration-100 border hover:border-[var(--border-active)]"
+                  style={{ background: "var(--bg-elevated)", color: "var(--text-primary)", borderColor: "var(--border)", height: "32px" }}
+                >
+                  Buy
+                </button>
+              </motion.div>
+            );
+          })}
         </div>
       )}
       {!isLoading && !isError && tokens.length === 0 && (
-        <div className="py-8 px-6 rounded-xl border border-white/10 border-dashed bg-white/5 text-center">
-          <p className="text-siren-text-secondary text-sm mb-3">
+        <div className="py-8 px-6 rounded-lg border border-dashed text-center" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
+          <p className="text-[var(--text-secondary)] text-sm mb-3">
             {searchQuery ? "No tokens found for this search." : selectedMarket ? "No tokens found for this market." : "Select a market or search above."}
           </p>
           {selectedMarket && !searchQuery && (
-            <p className="text-siren-text-secondary text-xs">Use “Launch token” above to create one.</p>
+            <p className="text-[var(--text-secondary)] text-xs">Use &quot;Launch token&quot; above to create one.</p>
           )}
         </div>
       )}
       {!isLoading && !isError && tokens.length > 0 && filteredTokens.length === 0 && (
-        <div className="py-6 px-4 rounded-xl border border-white/10 bg-white/5 text-center">
-          <p className="text-siren-text-secondary text-sm">No tokens match your search. Try name, symbol, or contract address.</p>
+        <div className="py-6 px-4 rounded-lg text-center" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+          <p className="text-[var(--text-secondary)] text-sm">No tokens match your search. Try name, symbol, or contract address.</p>
         </div>
       )}
     </div>

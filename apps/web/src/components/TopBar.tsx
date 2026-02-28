@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Moon, Sun } from "lucide-react";
 import { WalletButton } from "./WalletButton";
-import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 
 const NAV = [
@@ -15,39 +13,49 @@ const NAV = [
 
 export function TopBar() {
   const pathname = usePathname();
-  const theme = useThemeStore((s) => s.theme);
-  const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
   return (
-    <header className="h-14 border-b border-siren-border bg-siren-surface/80 dark:bg-siren-bg/90 backdrop-blur-xl flex items-center justify-between px-4 flex-shrink-0">
-      <Link href="/" className="font-heading font-bold text-xl text-siren-primary tracking-tight" onClick={() => hapticLight()}>
+    <header
+      className="h-12 flex-shrink-0 flex items-center justify-between px-4"
+      style={{ height: "48px", background: "var(--bg-base)" }}
+    >
+      <Link
+        href="/"
+        className="font-heading font-extrabold text-xl tracking-[0.15em] flex flex-col items-start"
+        style={{ color: "var(--accent-primary)" }}
+        onClick={() => hapticLight()}
+      >
         SIREN
+        <span
+          className="mt-1 h-px"
+          style={{ width: "60%", background: "var(--accent-primary)" }}
+        />
       </Link>
-      <nav className="flex items-center gap-1">
-        {NAV.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            onClick={() => hapticLight()}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              pathname === href || (href === "/" && pathname === "/")
-                ? "bg-siren-primary text-white dark:text-siren-bg"
-                : "text-siren-text-secondary hover:text-siren-text-primary hover:bg-siren-border/50"
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
-        <button
-          type="button"
-          onClick={() => { hapticLight(); toggleTheme(); }}
-          className="p-2 rounded-full text-siren-text-secondary hover:text-siren-primary hover:bg-siren-border/50 transition-colors ml-2"
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-        <WalletButton />
+      <nav className="flex items-center gap-1 rounded-full border p-0.5" style={{ borderColor: "var(--border)" }}>
+        {NAV.map(({ href, label }) => {
+          const isActive = pathname === href || (href === "/" && pathname === "/");
+          return (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => hapticLight()}
+              className={`px-4 py-2 rounded-full text-xs font-heading font-semibold transition-all duration-[120ms] ease-in-out ${
+                isActive
+                  ? "text-[var(--bg-base)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+              style={
+                isActive
+                  ? { background: "var(--accent-primary)" }
+                  : undefined
+              }
+            >
+              {label}
+            </Link>
+          );
+        })}
       </nav>
+      <WalletButton />
     </header>
   );
 }

@@ -2,11 +2,72 @@ import type { FastifyInstance } from "fastify";
 import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens } from "./services/tokens.js";
 import { createTokenInfo, createFeeShareConfig, createLaunchTransaction } from "./services/bags.js";
+import { getDflowOrder } from "./services/dflow.js";
+import { shouldBlockByCountry } from "./lib/geo-fence.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
+const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 export function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true, ts: Date.now() }));
+
+  /** DFlow prediction market order: get quote + transaction. Geo-fenced for US/restricted. */
+  app.get<{
+    Querystring: { outputMint: string; amount: string; userPublicKey: string; inputMint?: string; slippageBps?: string; countryCode?: string };
+  }>("/api/dflow/order", async (req, reply) => {
+    const { outputMint, amount, userPublicKey, inputMint, slippageBps = "200", countryCode } = req.query;
+    const country =
+      (countryCode as string) ||
+      (req.headers["cf-ipcountry"] as string) ||
+      (req.headers["x-country-code"] as string);
+
+    if (country && shouldBlockByCountry(country)) {
+      return reply.status(403).send({
+        success: false,
+        error: "Prediction market trading is not available in your jurisdiction.",
+      });
+    }
+
+    if (!outputMint || !amount || !userPublicKey) {
+      return reply.status(400).send({
+        success: false,
+        error: "outputMint, amount, userPublicKey required",
+      });
+    }
+
+    const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const effectiveInputMint = inputMint === USDC_MINT ? USDC_MINT : SOL_MINT;
+
+    try {
+      const result = await getDflowOrder({
+        inputMint: effectiveInputMint,
+        outputMint,
+        amount,
+        userPublicKey,
+        slippageBps: parseInt(slippageBps, 10) || 200,
+        predictionMarketSlippageBps: 500,
+      });
+
+      if (result.error) {
+        app.log.warn({ outputMint: outputMint?.slice(0, 8), amount, inputMint: effectiveInputMint }, result.error);
+        return reply.status(503).send({
+          success: false,
+          error: result.error,
+        });
+      }
+
+      return reply.send({
+        success: true,
+        transaction: result.transaction,
+      });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({
+        success: false,
+        error: (e as Error).message || "DFlow order failed",
+      });
+    }
+  });
 
   app.get("/api/markets", async (_req, reply) => {
     try {

@@ -11,7 +11,9 @@ import { hapticLight } from "@/lib/haptics";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
+const USDC_DECIMALS = 1e6;
 
 const MOCK_CHART_DATA = [
   { t: "0h", v: 0.0003 },
@@ -36,23 +38,25 @@ function CopyCAButton({ mint }: { mint: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="mt-2 flex items-center gap-2 text-xs text-siren-text-secondary hover:text-siren-primary transition-colors"
+      className="mt-2 flex items-center gap-2 text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors duration-100"
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-siren-bags" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-bags)]" /> : <Copy className="w-3.5 h-3.5" />}
       {copied ? "Copied!" : "Copy CA"}
     </button>
   );
 }
 
 export function UnifiedBuyPanel() {
-  const { selectedMarket, selectedToken, buyPanelOpen, setBuyPanelOpen, setSelectedMarket, setSelectedToken, openForSell } =
+  const { selectedMarket, selectedToken, buyPanelOpen, buyPanelMode, setBuyPanelOpen, setSelectedMarket, setSelectedToken, openForSell } =
     useSirenStore();
   const { connected, publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [solAmount, setSolAmount] = useState("0.01");
+  const [solAmount, setSolAmount] = useState("");
+  const [marketAmount, setMarketAmount] = useState("");
+  const [marketPayWith, setMarketPayWith] = useState<"sol" | "usdc">("sol");
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
 
@@ -60,12 +64,12 @@ export function UnifiedBuyPanel() {
     if (openForSell && selectedToken) setSellMode(true);
   }, [openForSell, selectedToken?.mint]);
 
-  if (!selectedMarket && !selectedToken) return null;
+  if (!buyPanelOpen) return null;
+  if (buyPanelMode === "market" && !selectedMarket) return null;
+  if (buyPanelMode === "token" && !selectedToken) return null;
 
   const onClose = () => {
     setBuyPanelOpen(false);
-    setSelectedMarket(null);
-    setSelectedToken(null);
     setError(null);
     setSuccess(null);
   };
@@ -125,12 +129,14 @@ export function UnifiedBuyPanel() {
         setSuccess(`Sold! Tx: ${sig.slice(0, 8)}...`);
         setSellAmount("");
       } else {
-        const amountLamports = Math.floor(parseFloat(solAmount || "0.01") * LAMPORTS_PER_SOL);
-        if (amountLamports <= 0) {
-          setError("Enter a valid SOL amount.");
+        const amountStr = solAmount?.trim() || "";
+        const amountNum = parseFloat(amountStr);
+        if (!amountStr || amountNum <= 0 || !Number.isFinite(amountNum)) {
+          setError("Enter a valid SOL amount (e.g. 0.01).");
           setLoading(false);
           return;
         }
+        const amountLamports = Math.floor(amountNum * LAMPORTS_PER_SOL);
         const quoteRes = await fetch(
           `${API_URL}/api/jupiter/quote?inputMint=${NATIVE_SOL_MINT}&outputMint=${selectedToken.mint}&amount=${amountLamports}&slippageBps=200`
         );
@@ -177,12 +183,61 @@ export function UnifiedBuyPanel() {
   };
 
   const onBuyKalshi = () => {
-    if (!connected) {
-      setError("Connect your wallet to execute trades.");
+    setError(null);
+    window.open(selectedMarket?.kalshi_url || "https://kalshi.com", "_blank");
+  };
+
+  const executeDflowMarketOrder = async (side: "yes" | "no") => {
+    hapticLight();
+    const mint = side === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
+    if (!connected || !publicKey || !selectedMarket || !mint || !signTransaction) {
+      setError(side === "yes" ? "Connect wallet to buy YES." : "Connect wallet to buy NO.");
       return;
     }
     setError(null);
-    window.open("https://kalshi.com/markets", "_blank");
+    setSuccess(null);
+    setLoading(true);
+    try {
+      const amountStr = marketAmount?.trim() || "";
+      const amountNum = parseFloat(amountStr);
+      if (!amountStr || amountNum <= 0 || !Number.isFinite(amountNum)) {
+        setError(`Enter a valid ${marketPayWith === "usdc" ? "USDC" : "SOL"} amount (e.g. 0.1)`);
+        setLoading(false);
+        return;
+      }
+      const minAmount = marketPayWith === "usdc" ? 1 : 0.01;
+      if (amountNum < minAmount) {
+        setError(`Minimum: ${minAmount} ${marketPayWith === "usdc" ? "USDC" : "SOL"}`);
+        setLoading(false);
+        return;
+      }
+      const amountScaled =
+        marketPayWith === "usdc"
+          ? Math.floor(amountNum * USDC_DECIMALS)
+          : Math.floor(amountNum * LAMPORTS_PER_SOL);
+      const inputMintParam = marketPayWith === "usdc" ? `&inputMint=${encodeURIComponent(USDC_MINT)}` : "";
+      const res = await fetch(
+        `${API_URL}/api/dflow/order?outputMint=${encodeURIComponent(mint)}&amount=${amountScaled}&userPublicKey=${encodeURIComponent(publicKey.toBase58())}&slippageBps=200${inputMintParam}`
+      );
+      const data = (await res.json()) as { success?: boolean; transaction?: string; error?: string };
+      if (!res.ok || !data.transaction) {
+        const errMsg = data.error || (res.status === 403 ? "Trading not available in your region." : "DFlow order failed");
+        throw new Error(errMsg);
+      }
+      const base64 = data.transaction;
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const tx = VersionedTransaction.deserialize(bytes);
+      const signed = await signTransaction(tx);
+      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      await connection.confirmTransaction(sig, "confirmed");
+      setSuccess(`${side.toUpperCase()} order sent! Tx: ${sig.slice(0, 8)}...`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Order failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -192,94 +247,151 @@ export function UnifiedBuyPanel() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={onClose}
         >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-black/60" />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ type: "spring", duration: 0.3 }}
-            className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-siren-bg/90 backdrop-blur-xl shadow-2xl"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="relative w-full max-w-2xl rounded-lg border"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center px-6 py-4 border-b border-white/5">
-              <h3 className="font-heading font-semibold text-siren-primary">Unified Buy Panel</h3>
-              <button onClick={onClose} className="text-siren-text-secondary hover:text-siren-text-primary transition-colors p-1 rounded" aria-label="Close">✕</button>
+            <div className="flex justify-between items-center px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+              <h3 className="font-heading font-bold text-[var(--accent-primary)]">Unified Buy Panel</h3>
+              <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-100 p-1 rounded" aria-label="Close">✕</button>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {selectedMarket && (
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur">
-                    <p className="text-siren-text-secondary text-xs uppercase mb-1">Kalshi Position</p>
-                    <p className="font-heading font-medium text-siren-text-primary text-sm line-clamp-2">{selectedMarket.title}</p>
-                    <p className="font-data text-siren-kalshi mt-2">{selectedMarket.probability.toFixed(0)}% YES</p>
-                    <a
-                      href="https://kalshi.com/markets"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 block text-xs text-siren-kalshi hover:text-siren-primary"
-                    >
-                      Trade on Kalshi →
-                    </a>
-                    <button
-                      onClick={onBuyKalshi}
-                      className="mt-3 w-full py-2.5 bg-siren-kalshi text-siren-bg font-heading font-semibold rounded-lg text-sm hover:opacity-90 disabled:opacity-50"
-                    >
-                      Buy YES (Kalshi)
-                    </button>
-                    <button
-                      onClick={onBuyKalshi}
-                      className="mt-2 w-full py-2 border border-siren-kalshi/50 text-siren-kalshi font-heading font-semibold rounded-lg text-sm hover:bg-siren-kalshi/10 disabled:opacity-50"
-                    >
-                      Buy NO (Kalshi)
-                    </button>
+                {buyPanelMode === "market" && selectedMarket && (
+                  <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
+                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction market</p>
+                    <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-2">{selectedMarket.title}</p>
+                    <p className="font-mono text-[var(--accent-kalshi)] mt-2">{selectedMarket.probability.toFixed(0)}% YES</p>
+                    {(selectedMarket.yes_mint || selectedMarket.no_mint) ? (
+                      <>
+                        <div className="mt-3">
+                          <div className="flex gap-2 mb-1">
+                            <button
+                              type="button"
+                              onClick={() => setMarketPayWith("sol")}
+                              className={`px-2 py-1 rounded-md text-xs font-heading font-semibold ${marketPayWith === "sol" ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)]"}`}
+                              style={marketPayWith === "sol" ? { background: "var(--accent-kalshi)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                            >
+                              SOL
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setMarketPayWith("usdc")}
+                              className={`px-2 py-1 rounded-md text-xs font-heading font-semibold ${marketPayWith === "usdc" ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)]"}`}
+                              style={marketPayWith === "usdc" ? { background: "var(--accent-kalshi)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                            >
+                              USDC
+                            </button>
+                          </div>
+                          <label className="text-xs text-[var(--text-secondary)] block mb-1">
+                            {marketPayWith === "usdc" ? "USDC" : "SOL"} amount (enter for each trade)
+                          </label>
+                          <input
+                            type="number"
+                            step={marketPayWith === "usdc" ? "0.1" : "0.01"}
+                            min={marketPayWith === "usdc" ? "0.1" : "0.01"}
+                            placeholder={marketPayWith === "usdc" ? "1" : "0.1"}
+                            value={marketAmount}
+                            onChange={(e) => setMarketAmount(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+                          />
+                        </div>
+                        <button
+                          onClick={() => executeDflowMarketOrder("yes")}
+                          disabled={loading || !selectedMarket.yes_mint}
+                          className="mt-3 w-full py-2.5 bg-siren-kalshi text-siren-bg font-heading font-semibold rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : "Buy YES (DFlow)"}
+                        </button>
+                        <button
+                          onClick={() => executeDflowMarketOrder("no")}
+                          disabled={loading || !selectedMarket.no_mint}
+                          className="mt-2 w-full py-2 border border-siren-kalshi/50 text-siren-kalshi font-heading font-semibold rounded-lg text-sm hover:bg-siren-kalshi/10 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : "Buy NO (DFlow)"}
+                        </button>
+                        <a
+                          href={selectedMarket.kalshi_url || "https://kalshi.com"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 block text-xs text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors"
+                        >
+                          View on Kalshi →
+                        </a>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={onBuyKalshi}
+                          className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
+                          style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
+                        >
+                          Trade on Kalshi
+                        </button>
+                        <p className="text-[var(--text-secondary)] text-xs mt-2">In-app trading requires outcome mints.</p>
+                      </>
+                    )}
                   </div>
                 )}
-                {selectedToken && (
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur">
-                    <p className="text-siren-text-secondary text-xs uppercase mb-1">Solana Token</p>
+                {buyPanelMode === "token" && selectedToken && (
+                  <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
+                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Solana Token</p>
                     <div className="flex gap-2 mb-2">
                       <button
                         type="button"
                         onClick={() => setSellMode(false)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${!sellMode ? "bg-siren-bags text-siren-bg" : "bg-white/10 text-siren-text-secondary hover:text-siren-text-primary"}`}
+                        className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${!sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                        style={!sellMode ? { background: "var(--accent-bags)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
                       >
                         Buy
                       </button>
                       <button
                         type="button"
                         onClick={() => setSellMode(true)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${sellMode ? "bg-siren-bags text-siren-bg" : "bg-white/10 text-siren-text-secondary hover:text-siren-text-primary"}`}
+                        className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                        style={sellMode ? { background: "var(--accent-bags)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
                       >
                         Sell
                       </button>
                     </div>
-                    <p className="font-heading font-medium text-siren-text-primary">${selectedToken.symbol}</p>
+                    <p className="font-heading font-bold text-[var(--text-primary)]">${selectedToken.symbol}</p>
                     {selectedToken.price != null && (
-                      <p className="font-data text-siren-primary text-sm mt-1 tabular-nums">~${selectedToken.price.toFixed(4)} USD</p>
+                      <p className="font-mono text-[var(--accent-primary)] text-sm mt-1 tabular-nums">~${selectedToken.price.toFixed(4)} USD</p>
                     )}
-                    <p className="font-data text-siren-bags mt-2 text-sm">
+                    <p className="font-mono text-[var(--accent-bags)] mt-2 text-sm tabular-nums">
                       Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} SOL
                     </p>
                     {!sellMode ? (
                       <>
                         <div className="mt-3">
-                          <label className="text-xs text-siren-text-secondary block mb-1">SOL amount</label>
+                          <label className="text-xs text-[var(--text-secondary)] block mb-1">SOL amount (enter for each buy)</label>
                           <input
                             type="number"
                             step="0.001"
                             min="0.001"
+                            placeholder="0.01"
                             value={solAmount}
                             onChange={(e) => setSolAmount(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-siren-text-primary text-sm font-data"
+                            className="w-full px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                           />
                         </div>
                         <button
                           onClick={executeJupiterSwap}
                           disabled={loading}
-                          className="mt-3 w-full py-2.5 bg-siren-bags text-siren-bg font-heading font-semibold rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                          className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+                          style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
                         >
                           {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Swapping…</> : `Buy ${selectedToken.symbol} (Jupiter)`}
                         </button>
@@ -287,7 +399,7 @@ export function UnifiedBuyPanel() {
                     ) : (
                       <>
                         <div className="mt-3">
-                          <label className="text-xs text-siren-text-secondary block mb-1">Amount of {selectedToken.symbol} to sell</label>
+                          <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount of {selectedToken.symbol} to sell</label>
                           <input
                             type="number"
                             step="any"
@@ -295,19 +407,21 @@ export function UnifiedBuyPanel() {
                             placeholder="0"
                             value={sellAmount}
                             onChange={(e) => setSellAmount(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-siren-text-primary text-sm font-data"
+                            className="w-full px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                           />
                         </div>
                         <button
                           onClick={executeJupiterSwap}
                           disabled={loading}
-                          className="mt-3 w-full py-2.5 bg-siren-bags text-siren-bg font-heading font-semibold rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                          className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+                          style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
                         >
                           {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Selling…</> : `Sell ${selectedToken.symbol} → SOL`}
                         </button>
                       </>
                     )}
-                    <div className="h-16 mt-2 rounded-lg overflow-hidden bg-black/20">
+                    <div className="h-16 mt-2 rounded-lg overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={MOCK_CHART_DATA}>
                           <defs>
@@ -326,9 +440,9 @@ export function UnifiedBuyPanel() {
                   </div>
                 )}
               </div>
-              {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
-              {success && <p className="text-siren-bags text-sm mt-3">{success}</p>}
-              <p className="text-siren-text-secondary text-xs mt-4">Connect wallet to execute. Kalshi via Kalshi.com; tokens via Jupiter.</p>
+              {error && <p className="text-sm mt-3" style={{ color: "var(--red)" }}>{error}</p>}
+              {success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
+              <p className="text-[var(--text-secondary)] text-xs mt-4">Connect wallet. Markets: DFlow (in-app) or Kalshi. Tokens: Jupiter.</p>
             </div>
           </motion.div>
         </motion.div>

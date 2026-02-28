@@ -2,84 +2,90 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Light theme (default) – clean, minimal */
-:root,
-.light {
-  --siren-bg: #f0f4f8;
-  --siren-surface: #ffffff;
-  --siren-primary: #0d9488;
-  --siren-primary-hover: #0f766e;
-  --siren-secondary: #6366f1;
-  --siren-bags: #10b981;
-  --siren-kalshi: #059669;
-  --siren-text: #0f172a;
-  --siren-text-primary: #0f172a;
-  --siren-text-secondary: #64748b;
-  --siren-border: #e2e8f0;
-  --siren-accent: #14b8a6;
-}
+/* Typography — Satoshi from Fontshare (Syne + IBM Plex Mono loaded via layout) */
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap');
 
-/* Dark theme – teal accent, DeFi-style */
+/* Design system — flat dark, no gradients */
+:root,
+.light,
 .dark {
-  --siren-bg: #0a0f1a;
-  --siren-surface: #111827;
-  --siren-primary: #2dd4bf;
-  --siren-primary-hover: #5eead4;
-  --siren-secondary: #818cf8;
-  --siren-bags: #34d399;
-  --siren-kalshi: #10b981;
-  --siren-text: #f1f5f9;
-  --siren-text-primary: #f1f5f9;
-  --siren-text-secondary: #94a3b8;
-  --siren-border: #1e293b;
-  --siren-accent: #2dd4bf;
+  --bg-base: #07070E;
+  --bg-surface: #0D0D1A;
+  --bg-elevated: #12121F;
+  --bg-hover: #16162A;
+  --border: #1E1E35;
+  --border-active: #2E2E50;
+  --accent-primary: #C8FF00;
+  --accent-secondary: #7C3AED;
+  --accent-bags: #00FF85;
+  --accent-kalshi: #4ADE80;
+  --text-primary: #EEEEF0;
+  --text-secondary: #6B6B8A;
+  --text-tertiary: #3D3D5C;
+  --red: #FF4D6D;
+  --green: #00FF85;
+  --yellow: #FFD60A;
+
+  /* Legacy mappings for gradual migration */
+  --siren-bg: var(--bg-base);
+  --siren-surface: var(--bg-surface);
+  --siren-primary: var(--accent-primary);
+  --siren-primary-hover: #b8e600;
+  --siren-secondary: var(--accent-secondary);
+  --siren-bags: var(--accent-bags);
+  --siren-kalshi: var(--accent-kalshi);
+  --siren-text: var(--text-primary);
+  --siren-text-primary: var(--text-primary);
+  --siren-text-secondary: var(--text-secondary);
+  --siren-border: var(--border);
+  --siren-accent: var(--accent-primary);
 }
 
 body {
-  background-color: var(--siren-bg);
-  color: var(--siren-text-primary);
-  transition: background-color 0.2s ease, color 0.2s ease;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.dark body {
-  background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(45, 212, 191, 0.08), transparent),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(45, 212, 191, 0.04), transparent);
+/* No gradients on any surface */
+.dark body,
+.light body {
+  background-image: none;
 }
 
-/* Glass card */
-.glass-card {
-  border-radius: 0.75rem;
-  border: 1px solid var(--siren-border);
-  background: color-mix(in srgb, var(--siren-surface) 90%, transparent);
-  backdrop-filter: blur(12px);
-}
-
-/* Skeleton loader */
+/* Skeleton loader — shimmer left-to-right */
 @keyframes shimmer {
-  0% { opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { opacity: 0.6; }
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .skeleton {
-  animation: shimmer 1.5s ease-in-out infinite;
-  background: linear-gradient(90deg, var(--siren-border) 25%, color-mix(in srgb, var(--siren-border) 60%, transparent) 50%, var(--siren-border) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    var(--bg-hover) 50%,
+    var(--border) 75%
+  );
   background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
 }
 
-/* Subtle fade-in and stagger */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Number flash on update */
+@keyframes flash-accent {
+  0% { color: var(--accent-primary); }
+  100% { color: inherit; }
 }
 
-.animate-fade-in {
-  animation: fadeInUp 0.25s ease-out forwards;
+.flash-update {
+  animation: flash-accent 300ms ease;
 }
 
-/* Tap/click feedback – scale down slightly */
-@media (hover: none) {
-  button:active, [role="button"]:active {
-    transform: scale(0.98);
-  }
+/* Scrollbars hidden */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+

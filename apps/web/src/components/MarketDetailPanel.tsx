@@ -13,10 +13,10 @@ function VelocityBadge({ v }: { v: number }) {
 }
 
 export function MarketDetailPanel() {
-  const { selectedMarket, setSelectedMarket } = useSirenStore();
-  const isOpen = !!selectedMarket;
+  const { selectedMarket, setSelectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
+  const isOpen = !!selectedMarket && detailPanelOpen;
 
-  if (!selectedMarket) return null;
+  if (!selectedMarket || !detailPanelOpen) return null;
 
   const yesPct = Math.min(100, Math.max(0, selectedMarket.probability));
   const noPct = 100 - yesPct;
@@ -29,7 +29,7 @@ export function MarketDetailPanel() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedMarket(null)}
+          onClick={() => setDetailPanelOpen(false)}
         >
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <motion.div
@@ -47,7 +47,7 @@ export function MarketDetailPanel() {
               </div>
               <button
                 type="button"
-                onClick={() => { hapticLight(); setSelectedMarket(null); }}
+                onClick={() => { hapticLight(); setDetailPanelOpen(false); }}
                 className="p-2 rounded-full text-siren-text-secondary hover:text-siren-text-primary hover:bg-siren-border transition-colors"
                 aria-label="Close"
               >
@@ -106,19 +106,42 @@ export function MarketDetailPanel() {
                 </div>
               </div>
 
-              <a
-                href="https://kalshi.com/markets"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => hapticLight()}
-                className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-siren-primary text-white dark:text-siren-bg font-heading font-semibold text-base hover:opacity-90 active:scale-[0.98] transition-all"
-              >
-                Trade on Kalshi
-                <ExternalLink className="w-4 h-4" />
-              </a>
-              <p className="text-center text-siren-text-secondary text-xs">
-                Prediction markets are view-only here. Execute trades on Kalshi. DFlow in-app trading when API is enabled.
-              </p>
+              {(selectedMarket.yes_mint || selectedMarket.no_mint) ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { hapticLight(); setBuyPanelOpen(true, "market"); }}
+                    className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-siren-primary text-white dark:text-siren-bg font-heading font-semibold text-base hover:opacity-90 active:scale-[0.98] transition-all"
+                  >
+                    Buy YES / Buy NO
+                  </button>
+                  <a
+                    href={selectedMarket.kalshi_url || "https://kalshi.com"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => hapticLight()}
+                    className="block text-center text-siren-text-secondary text-xs hover:text-siren-primary"
+                  >
+                    View on Kalshi →
+                  </a>
+                </>
+              ) : (
+                <>
+                  <a
+                    href={selectedMarket.kalshi_url || "https://kalshi.com"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => hapticLight()}
+                    className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-siren-primary text-white dark:text-siren-bg font-heading font-semibold text-base hover:opacity-90 active:scale-[0.98] transition-all"
+                  >
+                    Trade on Kalshi
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                  <p className="text-center text-siren-text-secondary text-xs mt-2">
+                    In-app trading requires outcome mints. Use Kalshi for this market.
+                  </p>
+                </>
+              )}
             </div>
           </motion.div>
         </motion.div>

@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
+import { Syne, IBM_Plex_Mono } from "next/font/google";
 import { QueryProvider } from "@/components/QueryProvider";
 import { Providers } from "./providers";
 import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist", subsets: ["latin"] });
-const spaceGrotesk = Space_Grotesk({ variable: "--font-space-grotesk", subsets: ["latin"] });
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
-const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"] });
+const syne = Syne({ variable: "--font-syne", subsets: ["latin"], weight: ["400", "600", "700", "800"] });
+const ibmPlexMono = IBM_Plex_Mono({ variable: "--font-mono", subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
   title: "Siren — Event-Driven Meme Token Terminal",
@@ -23,7 +21,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${syne.variable} ${ibmPlexMono.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -33,7 +31,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="font-body bg-siren-bg text-siren-text-primary antialiased min-h-screen selection:bg-siren-primary/30 selection:text-siren-bg">
+      <body className="font-body bg-[var(--bg-base)] text-[var(--text-primary)] antialiased min-h-screen selection:bg-[var(--accent-primary)]/30 selection:text-[var(--bg-base)]">
         <Providers>
           <QueryProvider>
             <AppShell>{children}</AppShell>

@@ -33,9 +33,8 @@ export function Modal({ isOpen, onClose, children, title }: ModalProps) {
                 {title && <h2 className="font-heading font-semibold text-siren-text-primary">{title}</h2>}
                 <button
                   onClick={onClose}
-                  className="text-siren-text-secondary hover:text-siren-text-primary transition-colors p-1 rounded"
+                  className={`text-siren-text-secondary hover:text-siren-text-primary transition-colors p-1 rounded ${!title ? "absolute top-4 right-4" : ""}`}
                   aria-label="Close"
-                  className={!title ? "absolute top-4 right-4" : ""}
                 >
                   ✕
                 </button>

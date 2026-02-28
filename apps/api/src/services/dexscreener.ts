@@ -29,7 +29,9 @@ interface BoostedToken {
   tokenAddress: string;
   symbol?: string;
   name?: string;
+  description?: string;
   icon?: string;
+  url?: string;
 }
 
 interface BoostedResponse {
@@ -55,4 +57,23 @@ export async function getTopBoostedTokens(): Promise<BoostedToken[]> {
   if (!res.ok) throw new Error(`DexScreener boosted error: ${res.status}`);
   const json = (await res.json()) as BoostedResponse;
   return (json.data ?? []).filter((t) => t.chainId === "solana");
+}
+
+/** Get latest boosted tokens (new uprising). Returns raw array. Rate limit 60/min. */
+export async function getLatestBoostedTokens(): Promise<BoostedToken[]> {
+  const url = `${BASE_URL}/token-boosts/latest/v1`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`DexScreener boosted error: ${res.status}`);
+  const json = (await res.json()) as BoostedToken[] | BoostedResponse;
+  const arr = Array.isArray(json) ? json : (json as BoostedResponse).data ?? [];
+  return arr.filter((t) => t.chainId === "solana");
+}
+
+/** Get pairs for a token address. Returns Solana pairs with price/volume. */
+export async function getTokenPairs(tokenAddress: string): Promise<DexPair[]> {
+  const url = `${BASE_URL}/token-pairs/v1/solana/${encodeURIComponent(tokenAddress)}`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) return [];
+  const json = (await res.json()) as { schemaVersion?: string; pairs?: DexPair[] };
+  return (json.pairs ?? []).filter((p) => p.chainId === "solana");
 }

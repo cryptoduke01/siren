@@ -1,7 +1,7 @@
 import type { SurfacedToken } from "@siren/shared";
 import { getKeywordsForCategory } from "@siren/shared";
 import { matchTokenToKeywords } from "@siren/shared";
-import { searchPairs } from "./dexscreener.js";
+import { searchPairs, getLatestBoostedTokens } from "./dexscreener.js";
 import type { DexPair } from "./dexscreener.js";
 
 /** Fallback: Curated demo tokens when DexScreener fails or returns empty. */
@@ -59,20 +59,60 @@ function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedTo
   });
 }
 
-const TRENDING_KEYWORDS = ["trump", "jpow", "pepe", "bonk", "wif", "popcat"];
+const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
 
 function parseKeywordsParam(param?: string): string[] {
   if (!param?.trim()) return [];
   return param.split(/[\s,]+/).filter((k) => k.length >= 2).slice(0, 5);
 }
 
+/** Extract meaningful keywords from a market title for token search. */
+export function extractKeywordsFromTitle(title: string): string[] {
+  const lower = title.toLowerCase();
+  const words = lower.replace(/[^\w\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of words) {
+    if (!seen.has(w)) {
+      seen.add(w);
+      out.push(w);
+    }
+  }
+  return out.slice(0, 4);
+}
+
 export async function getSurfacedTokens(marketId?: string, categoryId?: string, keywordsParam?: string): Promise<SurfacedToken[]> {
+  const hasExplicitKeywords = parseKeywordsParam(keywordsParam).length > 0 || !!categoryId;
   const keywords =
     parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
     : categoryId ? getKeywordsForCategory(categoryId)
-    : TRENDING_KEYWORDS;
+    : [];
 
-  try {
+  if (!hasExplicitKeywords) {
+    try {
+      const boosted = await getLatestBoostedTokens();
+      const solanaMints = boosted.slice(0, 16).map((t) => t.tokenAddress);
+      const allPairs: DexPair[] = [];
+      for (const mint of solanaMints) {
+        const pairs = await searchPairs(mint);
+        if (pairs.length > 0) {
+          const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
+          allPairs.push(best);
+        }
+      }
+      const surfaced = pairsToSurfacedTokens(allPairs, []);
+      if (surfaced.length > 0) {
+        return surfaced
+          .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
+          .slice(0, 24);
+      }
+    } catch (e) {
+      console.warn("[tokens] Latest boosted fetch failed, falling back:", e);
+    }
+  }
+
+  if (keywords.length > 0) {
+    try {
       const searchTerms = keywords.slice(0, 5);
       const allPairs: DexPair[] = [];
       for (const term of searchTerms) {
@@ -85,8 +125,9 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
           .sort((a, b) => b.relevanceScore - a.relevanceScore)
           .slice(0, 24);
       }
-  } catch (e) {
-    console.warn("[tokens] DexScreener fetch failed, using mock:", e);
+    } catch (e) {
+      console.warn("[tokens] DexScreener search failed, using mock:", e);
+    }
   }
 
   const scored: SurfacedToken[] = MOCK_TOKENS.map((t) => {
