@@ -63,7 +63,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
         }
       }
 
-      select(wallet.adapter);
+      if (wallet.adapter.name) select(wallet.adapter.name);
       connect().catch(console.error);
       onClose();
     },
