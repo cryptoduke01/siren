@@ -1,2 +1,2 @@
-export * from "./types";
-export * from "./tag-library";
+export * from "./types.js";
+export * from "./tag-library.js";

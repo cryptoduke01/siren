@@ -6,8 +6,8 @@
     "declarationMap": true,
     "strict": true,
     "esModuleInterop": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "target": "ES2022"
   },
   "include": ["src/**/*"],
