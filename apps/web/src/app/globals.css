@@ -1,86 +1,98 @@
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=cabinet-grotesk@400,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Typography — Satoshi from Fontshare (Syne + IBM Plex Mono loaded via layout) */
-@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap');
+:root {
+  --bg-void: #060609;
+  --bg-base: #0A0A10;
+  --bg-surface: #0F0F18;
+  --bg-elevated: #141420;
+  --bg-hover: #1A1A28;
+  --border-subtle: #1C1C2E;
+  --border-default: #252538;
+  --border-active: #363654;
+  --accent: #D4FF00;
+  --accent-dim: #D4FF0018;
+  --accent-text: #060609;
+  --bags: #00FF85;
+  --bags-dim: #00FF8514;
+  --kalshi: #5DDFB0;
+  --text-1: #F0F0F5;
+  --text-2: #8888A8;
+  --text-3: #44445A;
+  --up: #00E87A;
+  --down: #FF4560;
+  --down-dim: #FF456014;
+  --yellow: #FFB800;
 
-/* Design system — flat dark, no gradients */
-:root,
-.light,
-.dark {
-  --bg-base: #07070E;
-  --bg-surface: #0D0D1A;
-  --bg-elevated: #12121F;
-  --bg-hover: #16162A;
-  --border: #1E1E35;
-  --border-active: #2E2E50;
-  --accent-primary: #C8FF00;
-  --accent-secondary: #7C3AED;
-  --accent-bags: #00FF85;
-  --accent-kalshi: #4ADE80;
-  --text-primary: #EEEEF0;
-  --text-secondary: #6B6B8A;
-  --text-tertiary: #3D3D5C;
-  --red: #FF4D6D;
-  --green: #00FF85;
-  --yellow: #FFD60A;
-
-  /* Legacy mappings for gradual migration */
-  --siren-bg: var(--bg-base);
-  --siren-surface: var(--bg-surface);
-  --siren-primary: var(--accent-primary);
-  --siren-primary-hover: #b8e600;
-  --siren-secondary: var(--accent-secondary);
-  --siren-bags: var(--accent-bags);
-  --siren-kalshi: var(--accent-kalshi);
-  --siren-text: var(--text-primary);
-  --siren-text-primary: var(--text-primary);
-  --siren-text-secondary: var(--text-secondary);
-  --siren-border: var(--border);
-  --siren-accent: var(--accent-primary);
+  /* Legacy mappings for components using old names */
+  --bg-hover-legacy: var(--bg-hover);
+  --border: var(--border-default);
+  --border-active-legacy: var(--border-active);
+  --accent-primary: var(--accent);
+  --accent-bags: var(--bags);
+  --accent-kalshi: var(--kalshi);
+  --text-primary: var(--text-1);
+  --text-secondary: var(--text-2);
+  --text-tertiary: var(--text-3);
+  --red: var(--down);
+  --green: var(--up);
 }
 
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
 body {
-  background-color: var(--bg-base);
-  color: var(--text-primary);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  background: var(--bg-void);
+  color: var(--text-1);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* No gradients on any surface */
-.dark body,
-.light body {
-  background-image: none;
+::-webkit-scrollbar {
+  display: none;
 }
 
-/* Skeleton loader — shimmer left-to-right */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Skeleton shimmer — no spinner, no "Loading..." text */
 @keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 
-.skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--border) 25%,
-    var(--bg-hover) 50%,
-    var(--border) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s linear infinite;
+.skeleton-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  height: 200px;
+  position: relative;
+  overflow: hidden;
 }
 
-/* Number flash on update */
-@keyframes flash-accent {
-  0% { color: var(--accent-primary); }
-  100% { color: inherit; }
+.skeleton-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--bg-elevated), transparent);
+  animation: shimmer 1.6s infinite;
 }
 
-.flash-update {
-  animation: flash-accent 300ms ease;
+/* Live number update flash */
+.flash {
+  color: var(--accent) !important;
+  transition: color 400ms ease-out;
 }
 
-/* Scrollbars hidden */
 .scrollbar-hidden {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -89,3 +101,56 @@ body {
   display: none;
 }
 
+/* Terminal grid layout */
+.app-shell {
+  display: grid;
+  grid-template-rows: 44px 1fr;
+  grid-template-columns: 300px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell .topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.app-shell .left-panel {
+  grid-column: 1;
+  grid-row: 2;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.app-shell .main-panel {
+  grid-column: 2;
+  grid-row: 2;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.token-grid {
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+@media (min-width: 768px) {
+  .token-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: 44px 1fr;
+  }
+  .app-shell .main-panel {
+    grid-column: 1;
+  }
+  .token-grid {
+    padding: 12px 16px;
+  }
+}

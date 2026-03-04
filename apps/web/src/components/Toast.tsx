@@ -16,20 +16,21 @@ export function ToastContainer() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="pointer-events-auto flex items-start gap-3 p-4 rounded-lg border shadow-lg"
+            className="pointer-events-auto flex items-start gap-3 p-4 rounded-[6px] border"
             style={{
               background: "var(--bg-surface)",
-              borderColor: t.type === "error" ? "var(--red)" : t.type === "success" ? "var(--green)" : "var(--border)",
+              borderColor: t.type === "error" ? "var(--down)" : t.type === "success" ? "var(--up)" : "var(--border-subtle)",
             }}
           >
-            {t.type === "error" && <AlertCircle className="w-5 h-5 shrink-0" style={{ color: "var(--red)" }} />}
-            {t.type === "success" && <CheckCircle className="w-5 h-5 shrink-0" style={{ color: "var(--green)" }} />}
-            {t.type === "info" && <Info className="w-5 h-5 shrink-0" style={{ color: "var(--accent-primary)" }} />}
-            <p className="flex-1 text-sm text-[var(--text-primary)]">{t.message}</p>
+            {t.type === "error" && <AlertCircle className="w-5 h-5 shrink-0" style={{ color: "var(--down)" }} />}
+            {t.type === "success" && <CheckCircle className="w-5 h-5 shrink-0" style={{ color: "var(--up)" }} />}
+            {t.type === "info" && <Info className="w-5 h-5 shrink-0" style={{ color: "var(--accent)" }} />}
+            <p className="flex-1 font-body text-sm" style={{ color: "var(--text-1)" }}>{t.message}</p>
             <button
               type="button"
               onClick={() => removeToast(t.id)}
-              className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-sm shrink-0"
+              className="font-body text-sm shrink-0 transition-colors duration-[120ms] ease"
+              style={{ color: "var(--text-3)" }}
             >
               Dismiss
             </button>

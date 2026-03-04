@@ -25,10 +25,11 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 function VelocityBadge({ v }: { v: number }) {
   const abs = Math.abs(v);
   const dir = v > 0 ? "+" : "";
-  const color = v > 0 ? "var(--green)" : "var(--red)";
+  const color = v > 0 ? "var(--up)" : "var(--down)";
+  const arrow = v > 0 ? "▲" : "▼";
   return (
-    <span className="font-mono font-semibold tabular-nums" style={{ fontSize: "0.95rem", color }}>
-      {dir}{abs.toFixed(1)}%/hr
+    <span className="font-mono text-[11px] tabular-nums" style={{ color }}>
+      {arrow} {dir}{abs.toFixed(1)}%/hr
     </span>
   );
 }
@@ -74,80 +75,82 @@ export function MarketFeed() {
         });
 
   return (
-    <div className="p-4 flex flex-col h-full lg:block">
-      <div className="mb-4 flex-shrink-0 lg:block">
-        <h1 className="font-heading font-bold text-base text-[var(--text-primary)] mb-1">Market feed</h1>
-        <p className="text-[var(--text-secondary)] text-xs hidden lg:block">Markets from DFlow. Buy YES/NO in-app or on Kalshi.</p>
+    <div
+      className="h-full flex flex-col overflow-hidden"
+      style={{
+        background: "var(--bg-base)",
+        borderRight: "1px solid var(--border-subtle)",
+      }}
+    >
+      <div className="flex-shrink-0 px-4 pt-4 pb-2">
+        <h2
+          className="font-heading font-semibold text-[10px]"
+          style={{ letterSpacing: "0.15em", color: "var(--text-3)" }}
+        >
+          MARKETS
+        </h2>
       </div>
-
-      <div className="flex gap-4 overflow-x-auto pb-2 mb-4 scrollbar-hidden flex-shrink-0 lg:flex-wrap">
+      <div className="flex gap-2 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-3">
         {CATEGORIES.map((cat) => (
           <button
             key={cat}
             type="button"
             onClick={() => { hapticLight(); setActiveCategory(cat); }}
-            className={`pb-2 text-xs font-heading font-semibold whitespace-nowrap transition-colors duration-[120ms] ${
-              activeCategory === cat
-                ? "text-[var(--text-primary)]"
-                : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-            }`}
-            style={
-              activeCategory === cat
-                ? { borderBottom: "1px solid var(--accent-primary)" }
-                : undefined
-            }
+            className="font-body font-medium text-[11px] uppercase whitespace-nowrap rounded-[4px] px-2.5 py-1.5 transition-all duration-[120ms] ease"
+            style={{
+              color: activeCategory === cat ? "var(--text-1)" : "var(--text-3)",
+              background: activeCategory === cat ? "var(--bg-elevated)" : "transparent",
+              border: activeCategory === cat ? "1px solid var(--border-active)" : "1px solid transparent",
+            }}
           >
             {cat}
           </button>
         ))}
       </div>
-
       {isError ? (
-        <div className="rounded-lg border p-6 text-center" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
-          <p className="text-[var(--text-secondary)] text-sm mb-3">Unable to load markets at the moment.</p>
+        <div
+          className="mx-2 rounded-[6px] border p-6 text-center flex flex-col items-center gap-3"
+          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+        >
+          <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+            Unable to load markets at the moment.
+          </p>
           <button
             type="button"
             onClick={() => { hapticLight(); refetch(); }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-heading font-semibold border"
-            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] font-body font-medium text-sm border transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+            style={{ background: "var(--bg-elevated)", borderColor: "var(--border-default)", color: "var(--text-1)" }}
           >
             <RefreshCw className="w-4 h-4" />
             Try again
           </button>
         </div>
       ) : isLoading ? (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="flex flex-col gap-[6px] px-2">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div
-              key={i}
-              className="rounded-lg border p-4 skeleton"
-              style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
-            >
-              <div className="h-4 w-16 rounded mb-3" style={{ background: "var(--border)" }} />
-              <div className="h-5 w-full rounded mb-2" style={{ background: "var(--border)" }} />
-              <div className="h-4 w-20 rounded mb-2" style={{ background: "var(--border)" }} />
-              <div className="h-2 w-full rounded" style={{ background: "var(--border)" }} />
-            </div>
+            <div key={i} className="skeleton-card" style={{ height: 120 }} />
           ))}
         </div>
       ) : (
-        <>
-          <ul className="flex flex-row gap-3 overflow-x-auto overflow-y-hidden lg:grid lg:grid-cols-1 lg:overflow-x-hidden lg:overflow-y-auto pr-1 min-h-0 scrollbar-hidden pb-2 lg:pb-0">
-            <AnimatePresence mode="popLayout">
-              {filteredMarkets.slice(0, shownCount).map((m, i) => (
+        <ul className="flex-1 overflow-y-auto scrollbar-hidden px-2 pb-4">
+          <AnimatePresence mode="popLayout">
+            {filteredMarkets.slice(0, shownCount).map((m, i) => {
+              const isSelected = selectedMarket?.ticker === m.ticker;
+              const yesPct = Math.min(100, Math.max(0, m.probability));
+              const noPct = 100 - yesPct;
+              return (
                 <motion.li
                   key={m.ticker}
                   layout
-                  initial={{ opacity: 0, transform: "translateY(4px)" }}
+                  initial={{ opacity: 0, transform: "translateY(6px)" }}
                   animate={{ opacity: 1, transform: "translateY(0)" }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2, delay: Math.min(i * 0.03, 0.2), ease: "easeOut" }}
-                  className="rounded-lg border overflow-hidden cursor-pointer transition-all duration-[120ms] ease-in-out hover:border-[var(--border-active)] hover:bg-[var(--bg-hover)]"
+                  transition={{ duration: 0.18, delay: Math.min(i * 0.03, 0.2), ease: "easeOut" }}
+                  className="cursor-pointer rounded-[6px] p-3 mb-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)]"
                   style={{
-                    background: "var(--bg-elevated)",
-                    borderColor: selectedMarket?.ticker === m.ticker ? "var(--border-active)" : "var(--border)",
-                    minWidth: "240px",
-                    flexShrink: 0,
+                    background: isSelected ? "var(--bg-elevated)" : "var(--bg-surface)",
+                    border: "1px solid var(--border-subtle)",
+                    borderLeft: isSelected ? "3px solid var(--accent)" : "1px solid var(--border-subtle)",
                   }}
                   onClick={() => {
                     hapticLight();
@@ -168,44 +171,64 @@ export function MarketFeed() {
                     });
                   }}
                 >
-                  <div className="p-4">
-                    {/* Hero: probability + velocity */}
-                    <div className="flex items-baseline justify-between gap-3 mb-3">
-                      <span className="font-mono font-semibold tabular-nums" style={{ fontSize: "1.75rem", color: "var(--accent-primary)" }}>
+                  <p
+                    className="font-heading font-semibold text-[13px] leading-[1.3] line-clamp-2 mb-2"
+                    style={{ color: "var(--text-1)" }}
+                  >
+                    {m.title}
+                  </p>
+                  <div className="flex items-baseline justify-between gap-2 mb-2">
+                    <div className="flex items-baseline gap-1.5">
+                      <span
+                        className="font-mono text-[22px] font-normal tabular-nums"
+                        style={{ color: "var(--accent)" }}
+                      >
                         {m.probability.toFixed(0)}%
                       </span>
-                      <VelocityBadge v={m.velocity_1h} />
+                      <span
+                        className="font-mono text-[13px] tabular-nums"
+                        style={{ color: "var(--text-3)" }}
+                      >
+                        {noPct.toFixed(0)}% NO
+                      </span>
                     </div>
-                    <p className="text-sm font-heading font-bold text-[var(--text-primary)] line-clamp-2 mb-3">{m.title}</p>
-                    {/* YES/NO bar — green YES, purple NO */}
-                    <div className="w-full h-2.5 rounded overflow-hidden mb-2 flex" style={{ background: "rgba(124,58,237,0.35)" }}>
-                      <motion.div
-                        className="h-full rounded-l shrink-0"
-                        style={{ background: "var(--accent-kalshi)" }}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(100, Math.max(0, m.probability))}%` }}
-                        transition={{ duration: 0.4, ease: "easeOut" }}
-                      />
-                    </div>
-                    <span className="font-mono text-[11px] text-[var(--text-tertiary)] tabular-nums">
-                      Vol: {m.volume?.toLocaleString() ?? "—"}
+                    <VelocityBadge v={m.velocity_1h} />
+                  </div>
+                  <div
+                    className="w-full h-[3px] rounded-[2px] mb-2 flex overflow-hidden"
+                    style={{ background: "var(--border-subtle)" }}
+                  >
+                    <div
+                      className="h-full rounded-l-[2px] shrink-0"
+                      style={{ width: `${yesPct}%`, background: "var(--accent)" }}
+                    />
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      Vol
+                    </span>
+                    <span
+                      className="font-mono text-[11px] tabular-nums"
+                      style={{ color: "var(--text-2)" }}
+                    >
+                      {m.volume?.toLocaleString() ?? "—"}
                     </span>
                   </div>
                 </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
+              );
+            })}
+          </AnimatePresence>
           {filteredMarkets.length > shownCount && (
             <button
               type="button"
               onClick={() => { hapticLight(); setShownCount((c) => c + 8); }}
-              className="mt-4 w-full py-2.5 rounded-md border text-sm font-heading font-semibold transition-all duration-[120ms] text-[var(--text-primary)] hover:border-[var(--border-active)] hover:bg-[var(--bg-hover)]"
-              style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}
+              className="w-full py-2.5 rounded-[6px] font-body font-medium text-xs border transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)", marginTop: 4 }}
             >
               Show more ({filteredMarkets.length - shownCount} left)
             </button>
           )}
-        </>
+        </ul>
       )}
       <MarketDetailPanel />
     </div>

@@ -23,16 +23,18 @@ export function WalletButton() {
 
   if (connected && publicKey) {
     return (
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleDisconnect}
-          title="Click to disconnect"
-          className="px-3 py-2 rounded-md font-mono text-xs text-[var(--text-primary)] border transition-colors duration-100 hover:bg-[var(--bg-hover)]"
-          style={{ borderColor: "var(--border-active)" }}
-        >
-          {short}
-        </button>
-      </div>
+      <button
+        onClick={handleDisconnect}
+        title="Click to disconnect"
+        className="font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+        style={{
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-default)",
+          color: "var(--text-2)",
+        }}
+      >
+        {short}
+      </button>
     );
   }
 
@@ -44,8 +46,12 @@ export function WalletButton() {
           hapticLight();
           setModalOpen(true);
         }}
-        className="px-3 py-2 rounded-md font-heading font-semibold text-xs uppercase tracking-[0.06em] border transition-colors duration-100 text-[var(--text-primary)] hover:border-[var(--border-active)] hover:bg-[var(--bg-hover)]"
-        style={{ borderColor: "var(--border-active)" }}
+        className="font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+        style={{
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-default)",
+          color: "var(--text-2)",
+        }}
       >
         Connect
       </button>

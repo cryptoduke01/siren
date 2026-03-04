@@ -28,32 +28,48 @@ export default function TrendingPage() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col bg-siren-bg">
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
       <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full">
-        <h1 className="font-heading font-bold text-2xl md:text-3xl text-siren-primary mb-2">Trending</h1>
-        <p className="text-siren-text-secondary text-sm mb-6">
+        <h1 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "var(--accent)" }}>
+          Trending
+        </h1>
+        <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
           Hot Solana tokens from DexScreener (refreshes every 60s).
         </p>
         {isError ? (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-            Failed to load tokens. Make sure the API is running on port 4000.
+          <div
+            className="rounded-[6px] border p-4 text-sm"
+            style={{ borderColor: "var(--down)", background: "var(--bg-surface)", color: "var(--down)" }}
+          >
+            Failed to load tokens.
           </div>
         ) : isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="token-grid">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <div key={i} className="h-40 bg-siren-border/50 rounded-lg animate-pulse" />
+              <div key={i} className="skeleton-card" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="token-grid">
             {tokens.map((t, i) => (
               <motion.div
                 key={t.mint}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
-                className="rounded-xl border border-white/10 bg-white/5 backdrop-blur p-4 hover:border-siren-bags/40 transition-colors cursor-pointer"
+                initial={{ opacity: 0, transform: "translateY(6px)" }}
+                animate={{ opacity: 1, transform: "translateY(0)" }}
+                transition={{ duration: 0.18, delay: i * 0.04, ease: "easeOut" }}
+                className="rounded-[8px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)]"
+                style={{
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-subtle)",
+                  borderTop: "2px solid var(--border-subtle)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = "0 0 0 1px var(--border-active)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "none";
+                }}
                 onClick={() =>
                   setSelectedToken({
                     mint: t.mint,
@@ -65,20 +81,31 @@ export default function TrendingPage() {
                   })
                 }
               >
-                <div className="flex items-center gap-3 mb-3">
-                  {t.imageUrl && <img src={t.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover" />}
-                  <div className="min-w-0">
-                    <p className="font-heading font-semibold text-siren-text-primary truncate">${t.symbol}</p>
-                    <p className="text-siren-text-secondary text-xs truncate">{t.name}</p>
-                  </div>
+                <div className="flex items-center gap-2 mb-2">
+                  {t.imageUrl && <img src={t.imageUrl} alt="" className="w-7 h-7 rounded-full object-cover" />}
+                  <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
+                    ${t.symbol}
+                  </p>
                 </div>
-                <div className="flex justify-between text-xs font-data tabular-nums">
-                  <span className="text-siren-text-secondary">24h Vol</span>
-                  <span className="text-siren-bags">{t.volume24h?.toLocaleString() ?? "-"} SOL</span>
+                <p className="font-body text-[11px] truncate mb-2" style={{ color: "var(--text-2)" }}>
+                  {t.name}
+                </p>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
+                    24h Vol
+                  </span>
+                  <span className="font-mono text-xs tabular-nums">
+                    <span style={{ color: "var(--text-1)" }}>{t.volume24h?.toLocaleString() ?? "-"}</span>
+                    <span style={{ color: "var(--text-3)" }}> SOL</span>
+                  </span>
                 </div>
-                <div className="flex justify-between text-xs font-data mt-1 tabular-nums">
-                  <span className="text-siren-text-secondary">CT mentions</span>
-                  <span className="text-siren-text-primary">{t.ctMentions ?? "-"}</span>
+                <div className="flex justify-between items-center mb-3">
+                  <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
+                    CT mentions
+                  </span>
+                  <span className="font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                    {t.ctMentions ?? "-"}
+                  </span>
                 </div>
                 <button
                   onClick={(e) => {
@@ -92,7 +119,12 @@ export default function TrendingPage() {
                       ctMentions: t.ctMentions,
                     });
                   }}
-                  className="mt-3 w-full py-2.5 bg-siren-bags text-siren-bg font-heading font-semibold rounded-lg text-sm hover:opacity-90 transition-opacity"
+                  className="w-full h-8 rounded-[6px] font-heading font-bold text-xs uppercase transition-all duration-[80ms] ease hover:brightness-[1.08]"
+                  style={{
+                    background: "var(--bags)",
+                    color: "var(--accent-text)",
+                    letterSpacing: "0.06em",
+                  }}
                 >
                   Buy
                 </button>

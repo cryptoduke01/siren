@@ -16,22 +16,21 @@ export function TopBar() {
 
   return (
     <header
-      className="h-12 flex-shrink-0 flex items-center justify-between px-4"
-      style={{ height: "48px", background: "var(--bg-base)" }}
+      className="h-[44px] flex items-center justify-between px-4"
+      style={{
+        background: "var(--bg-base)",
+        borderBottom: "1px solid var(--border-subtle)",
+      }}
     >
       <Link
         href="/"
-        className="font-heading font-extrabold text-xl tracking-[0.15em] flex flex-col items-start"
-        style={{ color: "var(--accent-primary)" }}
+        className="font-heading font-bold text-[18px]"
+        style={{ color: "var(--accent)", letterSpacing: "0.2em" }}
         onClick={() => hapticLight()}
       >
         SIREN
-        <span
-          className="mt-1 h-px"
-          style={{ width: "60%", background: "var(--accent-primary)" }}
-        />
       </Link>
-      <nav className="flex items-center gap-1 rounded-full border p-0.5" style={{ borderColor: "var(--border)" }}>
+      <nav className="flex items-center gap-6">
         {NAV.map(({ href, label }) => {
           const isActive = pathname === href || (href === "/" && pathname === "/");
           return (
@@ -39,16 +38,15 @@ export function TopBar() {
               key={href}
               href={href}
               onClick={() => hapticLight()}
-              className={`px-4 py-2 rounded-full text-xs font-heading font-semibold transition-all duration-[120ms] ease-in-out ${
-                isActive
-                  ? "text-[var(--bg-base)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
-              style={
-                isActive
-                  ? { background: "var(--accent-primary)" }
-                  : undefined
-              }
+              className="font-body font-medium text-xs uppercase"
+              style={{
+                letterSpacing: "0.08em",
+                color: isActive ? "var(--text-1)" : "var(--text-3)",
+                borderBottom: isActive ? "1px solid var(--accent)" : "1px solid transparent",
+                marginBottom: "-1px",
+                paddingBottom: "2px",
+                transition: "color 120ms ease, border-color 120ms ease",
+              }}
             >
               {label}
             </Link>

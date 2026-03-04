@@ -4,6 +4,7 @@ import { UnifiedBuyPanel } from "./UnifiedBuyPanel";
 import { ThemeSync } from "./ThemeSync";
 import { ToastContainer } from "./Toast";
 import { OnboardingModal } from "./OnboardingModal";
+import { IssueBadge } from "./IssueBadge";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -13,6 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <UnifiedBuyPanel />
       <ToastContainer />
       <OnboardingModal />
+      <IssueBadge />
     </>
   );
 }

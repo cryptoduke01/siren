@@ -133,79 +133,143 @@ export default function PortfolioPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-siren-bg">
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
       <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full">
-        <h1 className="font-heading font-bold text-2xl md:text-3xl text-siren-primary mb-2">Portfolio</h1>
-        <p className="text-siren-text-secondary text-sm mb-6">
+        <h1 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "var(--accent)" }}>
+          Portfolio
+        </h1>
+        <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
           Kalshi positions (DFlow) + token holdings (Jupiter). Fee earnings.
         </p>
         {!connected ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 md:p-12 text-center">
-            <p className="text-siren-text-secondary mb-4">Connect your wallet to view positions and balances.</p>
-            <p className="text-siren-text-secondary text-sm">
+          <div
+            className="rounded-[8px] border p-8 md:p-12 text-center"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+          >
+            <p className="font-body mb-4" style={{ color: "var(--text-2)" }}>
+              Connect your wallet to view positions and balances.
+            </p>
+            <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
               Connect Phantom, Solflare, or another supported wallet to see mainnet and devnet balances.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
-              <div className="p-6 border-b border-white/5">
-                <h2 className="font-heading font-semibold text-siren-primary text-sm uppercase tracking-wider">Wallet Balance</h2>
+            <div
+              className="rounded-[8px] border overflow-hidden"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+            >
+              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                <h2
+                  className="font-heading font-semibold text-xs uppercase"
+                  style={{ color: "var(--accent)", letterSpacing: "0.1em" }}
+                >
+                  Wallet Balance
+                </h2>
               </div>
-              <div className="p-6 grid grid-cols-2 gap-4">
+              <div className="p-4 grid grid-cols-2 gap-4">
                 {isLoading ? (
-                  <div className="col-span-2 text-siren-text-secondary text-sm">Loading…</div>
+                  <div className="col-span-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                    Loading…
+                  </div>
                 ) : isError ? (
                   <div className="col-span-2 space-y-2">
-                    <p className="text-red-400 text-sm">Failed to fetch balance.</p>
+                    <p className="font-body text-sm" style={{ color: "var(--down)" }}>
+                      Failed to fetch balance.
+                    </p>
                     <button
                       onClick={() => refetch()}
-                      className="text-siren-primary text-sm hover:underline"
+                      className="font-body text-sm transition-colors hover:text-[var(--text-1)]"
+                      style={{ color: "var(--accent)" }}
                     >
                       Retry
                     </button>
                   </div>
                 ) : balances ? (
                   <>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-siren-text-secondary text-xs mb-1">Mainnet</p>
-                      <p className="font-data text-siren-text-primary text-xl tabular-nums">{balances.mainnet.toFixed(4)}</p>
-                      <p className="text-siren-text-secondary text-xs">SOL</p>
+                    <div
+                      className="rounded-[6px] border p-4"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                    >
+                      <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>
+                        Mainnet
+                      </p>
+                      <p className="font-mono text-lg tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {balances.mainnet.toFixed(4)}
+                      </p>
+                      <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                        SOL
+                      </p>
                     </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-siren-text-secondary text-xs mb-1">Devnet</p>
-                      <p className="font-data text-siren-text-primary text-xl tabular-nums">{balances.devnet.toFixed(4)}</p>
-                      <p className="text-siren-text-secondary text-xs">SOL</p>
+                    <div
+                      className="rounded-[6px] border p-4"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                    >
+                      <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>
+                        Devnet
+                      </p>
+                      <p className="font-mono text-lg tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {balances.devnet.toFixed(4)}
+                      </p>
+                      <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                        SOL
+                      </p>
                     </div>
                   </>
                 ) : null}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
-              <div className="p-6 border-b border-white/5">
-                <h2 className="font-heading font-semibold text-siren-kalshi text-sm uppercase tracking-wider">Prediction market positions</h2>
+            <div
+              className="rounded-[8px] border overflow-hidden"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+            >
+              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                <h2
+                  className="font-heading font-semibold text-xs uppercase"
+                  style={{ color: "var(--kalshi)", letterSpacing: "0.1em" }}
+                >
+                  Prediction market positions
+                </h2>
               </div>
-              <div className="p-6">
+              <div className="p-4">
                 {predictionPositions.length === 0 ? (
-                  <p className="text-siren-text-secondary text-sm">No prediction market positions. Buy YES/NO from the terminal.</p>
+                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                    No prediction market positions. Buy YES/NO from the terminal.
+                  </p>
                 ) : (
                   <ul className="space-y-3">
                     {predictionPositions.map((p) => (
                       <li
                         key={`${p.ticker}-${p.side}`}
-                        className="rounded-xl border border-white/10 bg-black/20 p-4 hover:border-siren-kalshi/40 transition-colors"
+                        className="rounded-[6px] border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+                        style={{
+                          borderColor: "var(--border-subtle)",
+                          background: "var(--bg-elevated)",
+                        }}
                       >
-                        <p className="font-heading font-medium text-siren-text-primary text-sm line-clamp-1">{p.title}</p>
+                        <p className="font-heading font-medium text-sm line-clamp-1" style={{ color: "var(--text-1)" }}>
+                          {p.title}
+                        </p>
                         <div className="flex justify-between items-center mt-2">
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.side === "yes" ? "bg-siren-kalshi/20 text-siren-kalshi" : "bg-red-500/20 text-red-400"}`}>
+                          <span
+                            className="text-xs font-body font-medium px-2 py-0.5 rounded-[4px]"
+                            style={{
+                              background: p.side === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
+                              color: p.side === "yes" ? "var(--bags)" : "var(--down)",
+                            }}
+                          >
                             {p.side.toUpperCase()}
                           </span>
-                          <span className="font-data text-siren-kalshi tabular-nums">{p.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                          <span className="font-mono text-sm tabular-nums" style={{ color: "var(--kalshi)" }}>
+                            {p.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </span>
                         </div>
                         {p.probability != null && (
-                          <p className="text-siren-text-secondary text-xs mt-1">Market: {p.probability.toFixed(0)}% YES</p>
+                          <p className="font-mono text-xs mt-1" style={{ color: "var(--text-3)" }}>
+                            Market: {p.probability.toFixed(0)}% YES
+                          </p>
                         )}
                       </li>
                     ))}
@@ -214,32 +278,55 @@ export default function PortfolioPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
-              <div className="p-6 border-b border-white/5">
-                <h2 className="font-heading font-semibold text-siren-bags text-sm uppercase tracking-wider">Token Holdings</h2>
+            <div
+              className="rounded-[8px] border overflow-hidden"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+            >
+              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                <h2
+                  className="font-heading font-semibold text-xs uppercase"
+                  style={{ color: "var(--bags)", letterSpacing: "0.1em" }}
+                >
+                  Token Holdings
+                </h2>
               </div>
-              <div className="p-6">
+              <div className="p-4">
                 {tokensLoading ? (
-                  <p className="text-siren-text-secondary text-sm">Loading…</p>
+                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                    Loading…
+                  </p>
                 ) : tokenHoldings.length === 0 ? (
-                  <p className="text-siren-text-secondary text-sm">No tokens yet. Buy from the terminal or Trending.</p>
+                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                    No tokens yet. Buy from the terminal or Trending.
+                  </p>
                 ) : (
                   <ul className="space-y-3">
                     {tokenHoldings.map((t) => (
                       <li
                         key={t.mint}
-                        className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/20 p-4 hover:border-siren-bags/40 transition-colors"
+                        className="flex items-center justify-between gap-4 rounded-[6px] border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+                        style={{
+                          borderColor: "var(--border-subtle)",
+                          background: "var(--bg-elevated)",
+                        }}
                       >
                         <div className="min-w-0">
-                          <p className="font-heading font-medium text-siren-text-primary truncate">{t.symbol !== "—" ? t.symbol : t.mint.slice(0, 8) + "…"}</p>
-                          <p className="text-siren-text-secondary text-xs truncate">{t.name !== "Unknown" ? t.name : t.mint}</p>
+                          <p className="font-heading font-medium truncate" style={{ color: "var(--text-1)" }}>
+                            {t.symbol !== "—" ? t.symbol : t.mint.slice(0, 8) + "…"}
+                          </p>
+                          <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
+                            {t.name !== "Unknown" ? t.name : t.mint}
+                          </p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="font-data text-siren-bags tabular-nums">{t.balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}</p>
+                          <p className="font-mono text-sm tabular-nums" style={{ color: "var(--bags)" }}>
+                            {t.balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                          </p>
                           <button
                             type="button"
                             onClick={() => openSellPanel(t.mint, t.symbol, t.name)}
-                            className="mt-1 text-xs text-siren-primary hover:text-siren-bags transition-colors"
+                            className="mt-1 font-body text-xs transition-colors hover:text-[var(--bags)]"
+                            style={{ color: "var(--accent)" }}
                           >
                             Sell
                           </button>
@@ -251,12 +338,22 @@ export default function PortfolioPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
-              <div className="p-6 border-b border-white/5">
-                <h2 className="font-heading font-semibold text-siren-primary text-sm uppercase tracking-wider">Fee Earnings</h2>
+            <div
+              className="rounded-[8px] border overflow-hidden"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+            >
+              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                <h2
+                  className="font-heading font-semibold text-xs uppercase"
+                  style={{ color: "var(--accent)", letterSpacing: "0.1em" }}
+                >
+                  Fee Earnings
+                </h2>
               </div>
-              <div className="p-6">
-                <p className="text-siren-text-secondary text-sm">Builder Code (Kalshi) + partner fees will appear here.</p>
+              <div className="p-4">
+                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                  Builder Code (Kalshi) + partner fees will appear here.
+                </p>
               </div>
             </div>
           </div>

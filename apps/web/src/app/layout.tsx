@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
-import { Syne, IBM_Plex_Mono } from "next/font/google";
 import { QueryProvider } from "@/components/QueryProvider";
 import { Providers } from "./providers";
 import { AppShell } from "@/components/AppShell";
 import "./globals.css";
-
-const syne = Syne({ variable: "--font-syne", subsets: ["latin"], weight: ["400", "600", "700", "800"] });
-const ibmPlexMono = IBM_Plex_Mono({ variable: "--font-mono", subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
   title: "Siren — Event-Driven Meme Token Terminal",
@@ -19,11 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${syne.variable} ${ibmPlexMono.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -31,7 +23,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="font-body bg-[var(--bg-base)] text-[var(--text-primary)] antialiased min-h-screen selection:bg-[var(--accent-primary)]/30 selection:text-[var(--bg-base)]">
+      <body className="font-body bg-[var(--bg-void)] text-[var(--text-1)] antialiased min-h-screen selection:bg-[var(--accent-dim)] selection:text-[var(--accent-text)]">
         <Providers>
           <QueryProvider>
             <AppShell>{children}</AppShell>

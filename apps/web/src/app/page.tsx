@@ -61,30 +61,19 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-base)]">
-      <TopBar />
-      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
-        {/* Desktop: left panel with market feed */}
-        <aside
-          className="hidden lg:flex lg:w-[320px] lg:min-w-[320px] lg:max-w-[320px] flex-shrink-0 overflow-y-auto scrollbar-hidden border-r"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
-        >
-          <MarketFeed />
-        </aside>
-
-        {/* Main content: tokens. Mobile = full-width feed; Desktop = right panel */}
-        <section
-          className="flex-1 overflow-y-auto p-4 md:p-6 min-h-[50vh] lg:min-h-0 scrollbar-hidden flex flex-col"
-          style={{ background: "var(--bg-base)" }}
-        >
-          {/* Mobile: sticky market card at top */}
+    <div className="app-shell">
+      <header className="topbar" style={{ gridColumn: "1 / -1", gridRow: 1 }}>
+        <TopBar />
+      </header>
+      <aside className="left-panel hidden lg:block">
+        <MarketFeed />
+      </aside>
+      <main className="main-panel">
+        <div className="lg:hidden">
           <MobileStickyMarket onOpenMarkets={() => setSheetOpen(true)} />
-
-          <TokenSurface />
-        </section>
+        </div>
+        <TokenSurface />
       </main>
-
-      {/* Mobile: bottom sheet for market list */}
       <MarketBottomSheet
         isOpen={sheetOpen}
         onClose={() => setSheetOpen(false)}
@@ -94,6 +83,18 @@ export default function Home() {
         setActiveCategory={setMobileCategory}
         onSelectMarket={handleSelectMarket}
       />
+      <button
+        type="button"
+        onClick={() => setSheetOpen(true)}
+        className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-20 font-mono text-[11px] px-4 py-2 rounded-full transition-all duration-[120ms] ease"
+        style={{
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-default)",
+          color: "var(--text-1)",
+        }}
+      >
+        MARKETS
+      </button>
     </div>
   );
 }
