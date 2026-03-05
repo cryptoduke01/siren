@@ -4,8 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
+import Link from "next/link";
+import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useSirenStore } from "@/store/useSirenStore";
+import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -177,53 +180,103 @@ export default function PortfolioPage() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
-      <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full">
-        <h1 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "var(--accent)" }}>
-          Portfolio
-        </h1>
-        <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
-          Kalshi positions (DFlow) + token holdings (Jupiter). Fee earnings.
-        </p>
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 md:px-8 md:py-10">
+        <div className="mb-8">
+          <h1 className="font-heading font-bold text-2xl md:text-3xl mb-1" style={{ color: "var(--text-1)" }}>
+            Portfolio
+          </h1>
+          <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
+            Balances, prediction positions, token holdings & fee earnings in one place.
+          </p>
+        </div>
         {!connected ? (
           <div
-            className="rounded-[8px] border p-8 md:p-12 text-center"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+            className="rounded-2xl border p-10 md:p-14 text-center max-w-md mx-auto"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--bg-surface)",
+              boxShadow: "0 1px 0 0 var(--border-subtle)",
+            }}
           >
-            <p className="font-body mb-4" style={{ color: "var(--text-2)" }}>
-              Connect your wallet to view positions and balances.
+            <div
+              className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
+            >
+              <Wallet className="w-8 h-8" style={{ color: "var(--text-3)" }} />
+            </div>
+            <p className="font-heading font-semibold text-lg mb-2" style={{ color: "var(--text-1)" }}>
+              Connect your wallet
             </p>
-            <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-              Connect Phantom, Solflare, or another supported wallet to see mainnet and devnet balances.
+            <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
+              Connect Phantom, Solflare, or another supported wallet to view balances, positions, and token holdings.
+            </p>
+            <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+              Use the wallet button in the top bar to connect.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+          <>
             <div
-              className="rounded-[8px] border overflow-hidden"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+              className="rounded-2xl border p-6 md:p-8 mb-6"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "linear-gradient(145deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+                boxShadow: "0 1px 0 0 var(--border-subtle), 0 4px 24px rgba(0,0,0,0.06)",
+              }}
             >
-              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                <h2
-                  className="font-heading font-semibold text-xs uppercase"
-                  style={{ color: "var(--accent)", letterSpacing: "0.1em" }}
-                >
-                  Wallet Balance
-                </h2>
+              <p className="font-body text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-3)" }}>
+                Total portfolio value
+              </p>
+              {isLoading ? (
+                <div className="h-10 w-32 rounded bg-[var(--border-subtle)] animate-pulse" />
+              ) : (
+                <p className="font-heading font-bold text-3xl md:text-4xl tabular-nums" style={{ color: "var(--accent)" }}>
+                  ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              )}
+              <p className="font-body text-xs mt-1" style={{ color: "var(--text-3)" }}>
+                Mainnet SOL + token holdings (USD)
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            <div
+              className="rounded-2xl border overflow-hidden"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "var(--bg-surface)",
+                boxShadow: "0 1px 0 0 var(--border-subtle)",
+              }}
+            >
+              <div
+                className="px-5 py-4 flex items-center gap-3 border-b"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-dim)" }}>
+                  <Wallet className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                </div>
+                <div>
+                  <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                    Wallet balance
+                  </h2>
+                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                    Native SOL on mainnet & devnet
+                  </p>
+                </div>
               </div>
-              <div className="p-4 grid grid-cols-2 gap-4">
+              <div className="p-5 grid grid-cols-2 gap-4">
                 {isLoading ? (
-                  <div className="col-span-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                  <div className="col-span-2 font-body text-sm py-4" style={{ color: "var(--text-2)" }}>
                     Loading…
                   </div>
                 ) : isError ? (
-                  <div className="col-span-2 space-y-2">
+                  <div className="col-span-2 space-y-3 py-4">
                     <p className="font-body text-sm" style={{ color: "var(--down)" }}>
                       Failed to fetch balance.
                     </p>
                     <button
                       onClick={() => refetch()}
-                      className="font-body text-sm transition-colors hover:text-[var(--text-1)]"
-                      style={{ color: "var(--accent)" }}
+                      className="font-body text-sm px-4 py-2 rounded-xl transition-colors hover:opacity-90"
+                      style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                     >
                       Retry
                     </button>
@@ -231,42 +284,24 @@ export default function PortfolioPage() {
                 ) : balances ? (
                   <>
                     <div
-                      className="rounded-[6px] border p-4"
+                      className="rounded-xl border p-4"
                       style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
                     >
-                      <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>
-                        Mainnet
-                      </p>
-                      <p className="font-mono text-lg tabular-nums" style={{ color: "var(--text-1)" }}>
-                        {balances.mainnet.toFixed(4)}
-                      </p>
-                      <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-                        SOL
+                      <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Mainnet</p>
+                      <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
+                        {balances.mainnet.toFixed(4)} SOL
                       </p>
                       <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
                         ≈ ${(balances.mainnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                       </p>
                     </div>
                     <div
-                      className="rounded-[6px] border p-4"
+                      className="rounded-xl border p-4"
                       style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
                     >
-                      <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>
-                        Devnet
-                      </p>
-                      <p className="font-mono text-lg tabular-nums" style={{ color: "var(--text-1)" }}>
-                        {balances.devnet.toFixed(4)}
-                      </p>
-                      <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-                        SOL
-                      </p>
-                    </div>
-                    <div className="col-span-2 rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                      <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>
-                        Portfolio value (mainnet)
-                      </p>
-                      <p className="font-mono text-xl tabular-nums" style={{ color: "var(--accent)" }}>
-                        ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                      <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Devnet</p>
+                      <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
+                        {balances.devnet.toFixed(4)} SOL
                       </p>
                     </div>
                   </>
@@ -275,39 +310,66 @@ export default function PortfolioPage() {
             </div>
 
             <div
-              className="rounded-[8px] border overflow-hidden"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+              className="rounded-2xl border overflow-hidden"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "var(--bg-surface)",
+                boxShadow: "0 1px 0 0 var(--border-subtle)",
+              }}
             >
-              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                <h2
-                  className="font-heading font-semibold text-xs uppercase"
-                  style={{ color: "var(--kalshi)", letterSpacing: "0.1em" }}
-                >
-                  Prediction market positions
-                </h2>
-              </div>
-              <div className="p-4">
-                {predictionPositions.length === 0 ? (
-                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    No prediction market positions. Buy YES/NO from the terminal.
+              <div
+                className="px-5 py-4 flex items-center gap-3 border-b"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(139, 92, 246, 0.12)" }}>
+                  <TrendingUp className="w-4 h-4" style={{ color: "var(--kalshi)" }} />
+                </div>
+                <div>
+                  <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                    Prediction positions
+                  </h2>
+                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                    YES/NO shares from Kalshi (DFlow)
                   </p>
+                </div>
+              </div>
+              <div className="p-5">
+                {predictionPositions.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-40" style={{ color: "var(--text-3)" }} />
+                    <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
+                      No prediction positions yet
+                    </p>
+                    <p className="font-body text-xs mb-4" style={{ color: "var(--text-3)" }}>
+                      Buy YES/NO shares from the Terminal to add positions here.
+                    </p>
+                    <Link
+                      href="/"
+                      onClick={() => hapticLight()}
+                      className="inline-flex items-center gap-2 font-body text-sm font-medium px-4 py-2 rounded-xl transition-colors hover:opacity-90"
+                      style={{ background: "var(--kalshi)", color: "white" }}
+                    >
+                      Go to Terminal
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 ) : (
                   <ul className="space-y-3">
                     {predictionPositions.map((p) => (
                       <li
                         key={`${p.ticker}-${p.side}`}
-                        className="rounded-[6px] border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+                        className="rounded-xl border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
                         style={{
                           borderColor: "var(--border-subtle)",
                           background: "var(--bg-elevated)",
                         }}
                       >
-                        <p className="font-heading font-medium text-sm line-clamp-1" style={{ color: "var(--text-1)" }}>
+                        <p className="font-heading font-medium text-sm line-clamp-2 mb-3" style={{ color: "var(--text-1)" }}>
                           {p.title}
                         </p>
-                        <div className="flex justify-between items-center mt-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <span
-                            className="text-xs font-body font-medium px-2 py-0.5 rounded-[4px]"
+                            className="text-[11px] font-body font-semibold px-2.5 py-1 rounded-lg"
                             style={{
                               background: p.side === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
                               color: p.side === "yes" ? "var(--bags)" : "var(--down)",
@@ -315,15 +377,17 @@ export default function PortfolioPage() {
                           >
                             {p.side.toUpperCase()}
                           </span>
-                          <span className="font-mono text-sm tabular-nums" style={{ color: "var(--kalshi)" }}>
-                            {p.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                          </span>
+                          <div className="text-right">
+                            <p className="font-mono text-sm tabular-nums font-medium" style={{ color: "var(--kalshi)" }}>
+                              {p.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                            </p>
+                            {p.probability != null && (
+                              <p className="font-mono text-[11px] tabular-nums mt-0.5" style={{ color: "var(--text-3)" }}>
+                                Market {p.probability.toFixed(0)}% YES
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        {p.probability != null && (
-                          <p className="font-mono text-xs mt-1" style={{ color: "var(--text-3)" }}>
-                            Market: {p.probability.toFixed(0)}% YES
-                          </p>
-                        )}
                       </li>
                     ))}
                   </ul>
@@ -332,26 +396,55 @@ export default function PortfolioPage() {
             </div>
 
             <div
-              className="rounded-[8px] border overflow-hidden"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+              className="rounded-2xl border overflow-hidden"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "var(--bg-surface)",
+                boxShadow: "0 1px 0 0 var(--border-subtle)",
+              }}
             >
-              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                <h2
-                  className="font-heading font-semibold text-xs uppercase"
-                  style={{ color: "var(--bags)", letterSpacing: "0.1em" }}
-                >
-                  Token Holdings
-                </h2>
+              <div
+                className="px-5 py-4 flex items-center gap-3 border-b"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--bags-dim)" }}>
+                  <Coins className="w-4 h-4" style={{ color: "var(--bags)" }} />
+                </div>
+                <div>
+                  <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                    Token holdings
+                  </h2>
+                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                    SPL tokens (Jupiter / DexScreener)
+                  </p>
+                </div>
               </div>
-              <div className="p-4">
+              <div className="p-5">
                 {tokensLoading ? (
-                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Loading…
-                  </p>
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-16 rounded-xl bg-[var(--border-subtle)] animate-pulse" />
+                    ))}
+                  </div>
                 ) : tokenHoldings.length === 0 ? (
-                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    No tokens yet. Buy from the terminal or Trending.
-                  </p>
+                  <div className="py-8 text-center">
+                    <Coins className="w-10 h-10 mx-auto mb-3 opacity-40" style={{ color: "var(--text-3)" }} />
+                    <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
+                      No tokens yet
+                    </p>
+                    <p className="font-body text-xs mb-4" style={{ color: "var(--text-3)" }}>
+                      Buy from the Terminal or Trending to see holdings here.
+                    </p>
+                    <Link
+                      href="/"
+                      onClick={() => hapticLight()}
+                      className="inline-flex items-center gap-2 font-body text-sm font-medium px-4 py-2 rounded-xl transition-colors hover:opacity-90"
+                      style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                    >
+                      Browse tokens
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 ) : (
                   <ul className="space-y-3">
                     {tokenHoldings.map((t) => {
@@ -362,29 +455,26 @@ export default function PortfolioPage() {
                       return (
                         <li
                           key={t.mint}
-                          className="flex items-center justify-between gap-4 rounded-[6px] border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+                          className="flex items-center justify-between gap-4 rounded-xl border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)] cursor-pointer"
                           style={{
                             borderColor: "var(--border-subtle)",
                             background: "var(--bg-elevated)",
                           }}
+                          onClick={() => openSellPanel(t.mint, t.symbol, t.name)}
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             {info?.imageUrl ? (
-                              <img
-                                src={info.imageUrl}
-                                alt=""
-                                className="w-10 h-10 rounded-full object-cover shrink-0"
-                              />
+                              <img src={info.imageUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
                             ) : (
                               <div
-                                className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-mono text-xs"
+                                className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center font-mono text-sm font-semibold"
                                 style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
                               >
                                 {displaySymbol.slice(0, 2)}
                               </div>
                             )}
                             <div className="min-w-0">
-                              <p className="font-heading font-medium truncate" style={{ color: "var(--text-1)" }}>
+                              <p className="font-heading font-semibold truncate" style={{ color: "var(--text-1)" }}>
                                 {displaySymbol}
                               </p>
                               <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
@@ -393,7 +483,7 @@ export default function PortfolioPage() {
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="font-mono text-sm tabular-nums" style={{ color: "var(--bags)" }}>
+                            <p className="font-mono text-sm tabular-nums font-medium" style={{ color: "var(--bags)" }}>
                               {t.balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                             </p>
                             {valueUsd != null && (
@@ -401,14 +491,9 @@ export default function PortfolioPage() {
                                 ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                               </p>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => openSellPanel(t.mint, t.symbol, t.name)}
-                              className="mt-1 font-body text-xs transition-colors hover:text-[var(--bags)]"
-                              style={{ color: "var(--accent)" }}
-                            >
+                            <p className="font-body text-[11px] mt-1 font-medium" style={{ color: "var(--accent)" }}>
                               Sell
-                            </button>
+                            </p>
                           </div>
                         </li>
                       );
@@ -419,24 +504,46 @@ export default function PortfolioPage() {
             </div>
 
             <div
-              className="rounded-[8px] border overflow-hidden"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+              className="rounded-2xl border overflow-hidden"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "var(--bg-surface)",
+                boxShadow: "0 1px 0 0 var(--border-subtle)",
+              }}
             >
-              <div className="p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                <h2
-                  className="font-heading font-semibold text-xs uppercase"
-                  style={{ color: "var(--accent)", letterSpacing: "0.1em" }}
-                >
-                  Fee Earnings
-                </h2>
+              <div
+                className="px-5 py-4 flex items-center gap-3 border-b"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-dim)" }}>
+                  <Receipt className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                </div>
+                <div>
+                  <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                    Fee earnings
+                  </h2>
+                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                    Builder Code (Kalshi) & partner fees
+                  </p>
+                </div>
               </div>
-              <div className="p-4">
-                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-                  Builder Code (Kalshi) + partner fees will appear here.
-                </p>
+              <div className="p-5">
+                <div
+                  className="rounded-xl border border-dashed p-6 text-center"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                >
+                  <Receipt className="w-8 h-8 mx-auto mb-2 opacity-50" style={{ color: "var(--text-3)" }} />
+                  <p className="font-body text-sm mb-1" style={{ color: "var(--text-2)" }}>
+                    No fees earned yet
+                  </p>
+                  <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                    Fees from Kalshi referrals and partner programs will appear here.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
+        </>
         )}
       </main>
     </div>

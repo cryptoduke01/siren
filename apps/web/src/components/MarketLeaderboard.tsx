@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMarkets } from "@/hooks/useMarkets";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
@@ -39,14 +41,31 @@ export function MarketLeaderboard() {
     });
   };
 
+  const [collapsed, setCollapsed] = useState(false);
+
   if (markets.length === 0) return null;
 
   return (
-    <div className="flex-shrink-0 border-t px-4 py-3" style={{ borderColor: "var(--border-subtle)" }}>
-      <h3 className="font-heading font-semibold text-[10px] mb-2" style={{ letterSpacing: "0.1em", color: "var(--text-3)" }}>
-        TOP MARKETS
-      </h3>
-      <div className="grid grid-cols-2 gap-2">
+    <div className="flex-shrink-0 border-t px-4 py-2" style={{ borderColor: "var(--border-subtle)" }}>
+      <button
+        type="button"
+        onClick={() => {
+          hapticLight();
+          setCollapsed((c) => !c);
+        }}
+        className="w-full flex items-center justify-between gap-2 py-2 text-left"
+      >
+        <h3 className="font-heading font-semibold text-[10px]" style={{ letterSpacing: "0.1em", color: "var(--text-3)" }}>
+          TOP MARKETS
+        </h3>
+        {collapsed ? (
+          <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
+        ) : (
+          <ChevronUp className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
+        )}
+      </button>
+      {!collapsed && (
+      <div className="grid grid-cols-2 gap-2 pb-2">
         <div>
           <p className="font-body text-[10px] mb-1" style={{ color: "var(--text-3)" }}>By volume</p>
           {byVolume.map((m) => (
@@ -78,6 +97,7 @@ export function MarketLeaderboard() {
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 }
