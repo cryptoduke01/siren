@@ -98,23 +98,16 @@ export function MarketDetailPanel() {
 
               {(selectedMarket.yes_mint || selectedMarket.no_mint) ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => { hapticLight(); setBuyPanelOpen(true, "market"); }}
-                    className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90"
-                    style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                  >
-                    Buy YES / Buy NO
-                  </button>
                   <a
                     href={selectedMarket.kalshi_url || "https://kalshi.com"}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
-                    className="block text-center font-body text-xs transition-colors hover:text-[var(--accent)]"
-                    style={{ color: "var(--text-2)" }}
+                    className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2"
+                    style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    View on Kalshi →
+                    Trade on Kalshi
+                    <ExternalLink className="w-4 h-4" />
                   </a>
                 </>
               ) : (

@@ -40,6 +40,9 @@ export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
   const [symbol, setSymbol] = useState("");
   const [description, setDescription] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [twitter, setTwitter] = useState("");
+  const [telegram, setTelegram] = useState("");
+  const [website, setWebsite] = useState("");
   const [initialSol, setInitialSol] = useState("0.05");
   const [createdMint, setCreatedMint] = useState<string | null>(null);
 
@@ -63,7 +66,15 @@ export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
       const createRes = await fetch(`${API_URL}/api/bags/create-token-info`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, symbol, description, imageUrl }),
+        body: JSON.stringify({
+          name,
+          symbol,
+          description,
+          imageUrl,
+          ...(twitter.trim() && { twitter: twitter.trim() }),
+          ...(telegram.trim() && { telegram: telegram.trim() }),
+          ...(website.trim() && { website: website.trim() }),
+        }),
       });
       const createData = await createRes.json();
       if (!createRes.ok || !createData.success) {
@@ -119,6 +130,13 @@ export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
       const sig = await deserializeAndSend(connection, signTransaction, launchTxBase58);
       await connection.confirmTransaction(sig, "confirmed");
       setStep("done");
+      try {
+        const key = `siren-bags-launches-${wallet}`;
+        const raw = localStorage.getItem(key);
+        const arr: string[] = raw ? JSON.parse(raw) : [];
+        if (!arr.includes(tokenMint)) arr.push(tokenMint);
+        localStorage.setItem(key, JSON.stringify(arr));
+      } catch (_) {}
     } catch (e) {
       setError(e instanceof Error ? e.message : "Launch failed");
       setStep("error");
@@ -184,6 +202,36 @@ export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
                     <input
                       value={imageUrl}
                       onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="https://..."
+                      type="url"
+                      className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-siren-text-primary text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-siren-text-secondary block mb-1">Twitter URL (optional)</label>
+                    <input
+                      value={twitter}
+                      onChange={(e) => setTwitter(e.target.value)}
+                      placeholder="https://twitter.com/..."
+                      type="url"
+                      className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-siren-text-primary text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-siren-text-secondary block mb-1">Telegram URL (optional)</label>
+                    <input
+                      value={telegram}
+                      onChange={(e) => setTelegram(e.target.value)}
+                      placeholder="https://t.me/..."
+                      type="url"
+                      className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-siren-text-primary text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-siren-text-secondary block mb-1">Website (optional)</label>
+                    <input
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
                       placeholder="https://..."
                       type="url"
                       className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-siren-text-primary text-sm"

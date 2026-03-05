@@ -17,6 +17,8 @@ import type { MarketWithVelocity } from "@siren/shared";
 const INITIAL_SHOWN = 12;
 const CATEGORIES = ["All", "Politics", "Crypto", "Sports", "Business", "Entertainment"];
 
+type SortMode = "default" | "volume" | "open_interest" | "ending_soon" | "hot";
+
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   All: [],
   Politics: ["trump", "biden", "election", "senate", "congress", "vote", "democrat", "republican", "president", "governor", "primaries", "electoral"],
@@ -61,6 +63,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
   const [shownCount, setShownCount] = useState(INITIAL_SHOWN);
   const [activeCategory, setActiveCategory] = useState("All");
   const [marketSearchQuery, setMarketSearchQuery] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>("default");
 
   const addToast = useToastStore((s) => s.addToast);
   const { data: markets = [], isLoading, isError, error, refetch } = useMarkets();
@@ -89,6 +92,28 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         (m.subtitle && m.subtitle.toLowerCase().includes(q))
     );
   }, [categoryFiltered, marketSearchQuery]);
+
+  const sortedMarkets = useMemo(() => {
+    const base = [...filteredMarkets];
+    switch (sortMode) {
+      case "volume":
+        return base.sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0));
+      case "open_interest":
+        return base.sort((a, b) => (b.open_interest ?? 0) - (a.open_interest ?? 0));
+      case "hot":
+        return base.sort((a, b) => Math.abs(b.velocity_1h) - Math.abs(a.velocity_1h));
+      case "ending_soon":
+        return base.sort((a, b) => {
+          const aClose = a.close_time ?? Number.POSITIVE_INFINITY;
+          const bClose = b.close_time ?? Number.POSITIVE_INFINITY;
+          if (aClose === bClose) return 0;
+          return aClose - bClose;
+        });
+      case "default":
+      default:
+        return filteredMarkets;
+    }
+  }, [filteredMarkets, sortMode]);
 
   return (
     <div
@@ -120,7 +145,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           }}
         />
       </div>
-      <div className="flex gap-2 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-3">
+      <div className="flex gap-2 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-2">
         {CATEGORIES.map((cat) => (
           <button
             key={cat}
@@ -134,6 +159,32 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             }}
           >
             {cat}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-3">
+        {[
+          { id: "default", label: "Top" },
+          { id: "volume", label: "High volume" },
+          { id: "open_interest", label: "High OI" },
+          { id: "ending_soon", label: "Ending soon" },
+          { id: "hot", label: "Moving fast" },
+        ].map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => {
+              hapticLight();
+              setSortMode(s.id as SortMode);
+            }}
+            className="font-body text-[11px] whitespace-nowrap rounded-[4px] px-2.5 py-1.5 transition-all duration-[120ms] ease border"
+            style={{
+              background: sortMode === (s.id as SortMode) ? "var(--bg-elevated)" : "transparent",
+              borderColor: sortMode === (s.id as SortMode) ? "var(--border-active)" : "var(--border-subtle)",
+              color: sortMode === (s.id as SortMode) ? "var(--text-1)" : "var(--text-3)",
+            }}
+          >
+            {s.label}
           </button>
         ))}
       </div>
@@ -164,7 +215,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
       ) : (
         <ul className="flex-1 overflow-y-auto scrollbar-hidden px-2 pb-4">
           <AnimatePresence mode="popLayout">
-            {filteredMarkets.slice(0, shownCount).map((m, i) => {
+            {sortedMarkets.slice(0, shownCount).map((m, i) => {
               const isSelected = selectedMarket?.ticker === m.ticker;
               const yesPct = Math.min(100, Math.max(0, m.probability));
               const noPct = 100 - yesPct;

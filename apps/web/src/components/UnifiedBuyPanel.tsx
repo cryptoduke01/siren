@@ -5,16 +5,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { VersionedTransaction } from "@solana/web3.js";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
-import { Copy, Check, Loader2 } from "lucide-react";
+import { Copy, Check, Loader2, ExternalLink } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
-const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
-const USDC_DECIMALS = 1e6;
 
 const MOCK_CHART_DATA = [
   { t: "0h", v: 0.0003 },
@@ -57,8 +55,6 @@ export function UnifiedBuyPanel() {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [solAmount, setSolAmount] = useState("");
-  const [marketAmount, setMarketAmount] = useState("");
-  const [marketPayWith, setMarketPayWith] = useState<"sol" | "usdc">("sol");
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
 
@@ -187,61 +183,6 @@ export function UnifiedBuyPanel() {
     window.open(selectedMarket?.kalshi_url || "https://kalshi.com", "_blank");
   };
 
-  const executeDflowMarketOrder = async (side: "yes" | "no") => {
-    hapticLight();
-    const mint = side === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
-    if (!connected || !publicKey || !selectedMarket || !mint || !signTransaction) {
-      setError(side === "yes" ? "Connect wallet to buy YES." : "Connect wallet to buy NO.");
-      return;
-    }
-    setError(null);
-    setSuccess(null);
-    setLoading(true);
-    try {
-      const amountStr = marketAmount?.trim() || "";
-      const amountNum = parseFloat(amountStr);
-      if (!amountStr || amountNum <= 0 || !Number.isFinite(amountNum)) {
-        setError(`Enter a valid ${marketPayWith === "usdc" ? "USDC" : "SOL"} amount (e.g. 0.1)`);
-        setLoading(false);
-        return;
-      }
-      const minAmount = marketPayWith === "usdc" ? 1 : 0.01;
-      if (amountNum < minAmount) {
-        setError(`Minimum: ${minAmount} ${marketPayWith === "usdc" ? "USDC" : "SOL"}`);
-        setLoading(false);
-        return;
-      }
-      const amountScaled =
-        marketPayWith === "usdc"
-          ? Math.floor(amountNum * USDC_DECIMALS)
-          : Math.floor(amountNum * LAMPORTS_PER_SOL);
-      const inputMintParam = marketPayWith === "usdc" ? `&inputMint=${encodeURIComponent(USDC_MINT)}` : "";
-      const res = await fetch(
-        `${API_URL}/api/dflow/order?outputMint=${encodeURIComponent(mint)}&amount=${amountScaled}&userPublicKey=${encodeURIComponent(publicKey.toBase58())}&slippageBps=200${inputMintParam}`
-      );
-      const data = (await res.json()) as { success?: boolean; transaction?: string; error?: string };
-      if (!res.ok || !data.transaction) {
-        const errMsg = data.error || (res.status === 403 ? "Trading not available in your region." : "DFlow order failed");
-        throw new Error(errMsg);
-      }
-      const base64 = data.transaction;
-      const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const tx = VersionedTransaction.deserialize(bytes);
-      const signed = await signTransaction(tx);
-      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-      await connection.confirmTransaction(sig, "confirmed");
-      setSuccess(`${side.toUpperCase()} order sent! Tx: ${sig.slice(0, 8)}...`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Order failed";
-      setError(msg);
-      addToast(msg, "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <AnimatePresence>
       {buyPanelOpen && (
@@ -274,76 +215,17 @@ export function UnifiedBuyPanel() {
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction market</p>
                     <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-2">{selectedMarket.title}</p>
                     <p className="font-mono text-[var(--accent-kalshi)] mt-2">{selectedMarket.probability.toFixed(0)}% YES</p>
-                    {(selectedMarket.yes_mint || selectedMarket.no_mint) ? (
-                      <>
-                        <div className="mt-3">
-                          <div className="flex gap-2 mb-1">
-                            <button
-                              type="button"
-                              onClick={() => setMarketPayWith("sol")}
-                              className={`px-2 py-1 rounded-md text-xs font-heading font-semibold ${marketPayWith === "sol" ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)]"}`}
-                              style={marketPayWith === "sol" ? { background: "var(--accent-kalshi)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
-                            >
-                              SOL
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setMarketPayWith("usdc")}
-                              className={`px-2 py-1 rounded-md text-xs font-heading font-semibold ${marketPayWith === "usdc" ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)]"}`}
-                              style={marketPayWith === "usdc" ? { background: "var(--accent-kalshi)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
-                            >
-                              USDC
-                            </button>
-                          </div>
-                          <label className="text-xs text-[var(--text-secondary)] block mb-1">
-                            {marketPayWith === "usdc" ? "USDC" : "SOL"} amount (enter for each trade)
-                          </label>
-                          <input
-                            type="number"
-                            step={marketPayWith === "usdc" ? "0.1" : "0.01"}
-                            min={marketPayWith === "usdc" ? "0.1" : "0.01"}
-                            placeholder={marketPayWith === "usdc" ? "1" : "0.1"}
-                            value={marketAmount}
-                            onChange={(e) => setMarketAmount(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
-                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
-                          />
-                        </div>
-                        <button
-                          onClick={() => executeDflowMarketOrder("yes")}
-                          disabled={loading || !selectedMarket.yes_mint}
-                          className="mt-3 w-full py-2.5 bg-siren-kalshi text-siren-bg font-heading font-semibold rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : "Buy YES (DFlow)"}
-                        </button>
-                        <button
-                          onClick={() => executeDflowMarketOrder("no")}
-                          disabled={loading || !selectedMarket.no_mint}
-                          className="mt-2 w-full py-2 border border-siren-kalshi/50 text-siren-kalshi font-heading font-semibold rounded-lg text-sm hover:bg-siren-kalshi/10 disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : "Buy NO (DFlow)"}
-                        </button>
-                        <a
-                          href={selectedMarket.kalshi_url || "https://kalshi.com"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 block text-xs text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors"
-                        >
-                          View on Kalshi →
-                        </a>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={onBuyKalshi}
-                          className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
-                          style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
-                        >
-                          Trade on Kalshi
-                        </button>
-                        <p className="text-[var(--text-secondary)] text-xs mt-2">In-app trading requires outcome mints.</p>
-                      </>
-                    )}
+                    <p className="text-[var(--text-secondary)] text-xs mt-2 mb-3">Market trading is on Kalshi. Use the link below to trade.</p>
+                    <a
+                      href={selectedMarket.kalshi_url || "https://kalshi.com"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 flex items-center justify-center gap-2"
+                      style={{ background: "var(--accent-kalshi)", color: "var(--bg-base)", height: "36px" }}
+                    >
+                      Trade on Kalshi
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
                   </div>
                 )}
                 {buyPanelMode === "token" && selectedToken && (
@@ -444,7 +326,7 @@ export function UnifiedBuyPanel() {
               </div>
               {error && <p className="text-sm mt-3" style={{ color: "var(--red)" }}>{error}</p>}
               {success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
-              <p className="text-[var(--text-secondary)] text-xs mt-4">Connect wallet. Markets: DFlow (in-app) or Kalshi. Tokens: Jupiter.</p>
+              <p className="text-[var(--text-secondary)] text-xs mt-4">Connect wallet. Markets: trade on Kalshi. Tokens: Jupiter.</p>
             </div>
           </motion.div>
         </motion.div>

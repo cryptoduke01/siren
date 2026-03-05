@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Copy, Check } from "lucide-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
@@ -60,8 +61,10 @@ function getTokenCardTopBorder(token: SurfacedToken): string {
 
 export function TokenSurface() {
   const { selectedMarket, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
+  const { publicKey } = useWallet();
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
+  const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
 
   const searchQuery = searchInput.trim();
   const keywordsForApi = useMemo(() => (searchQuery ? [searchQuery] : selectedMarket?.keywords ?? []), [searchQuery, selectedMarket?.keywords]);
@@ -79,6 +82,20 @@ export function TokenSurface() {
   useEffect(() => {
     if (isError && error) addToast("Unable to load tokens. Please try again in a moment.", "error");
   }, [isError, error, addToast]);
+
+  useEffect(() => {
+    if (!publicKey) {
+      setBagsLaunches([]);
+      return;
+    }
+    try {
+      const key = `siren-bags-launches-${publicKey.toBase58()}`;
+      const raw = localStorage.getItem(key);
+      setBagsLaunches(raw ? JSON.parse(raw) : []);
+    } catch {
+      setBagsLaunches([]);
+    }
+  }, [publicKey]);
 
   const filteredTokens = useMemo(() => {
     if (!searchQuery) return tokens;
@@ -110,7 +127,11 @@ export function TokenSurface() {
             <>
               <button
                 type="button"
-                onClick={() => { hapticLight(); setBuyPanelOpen(true, "market"); }}
+                onClick={() => {
+                  hapticLight();
+                  if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank");
+                  else setBuyPanelOpen(true, "market");
+                }}
                 className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
                 style={{
                   background: "var(--bg-elevated)",
@@ -118,7 +139,7 @@ export function TokenSurface() {
                   color: "var(--text-1)",
                 }}
               >
-                Trade market
+                View on Kalshi
               </button>
               <button
                 type="button"
@@ -147,7 +168,7 @@ export function TokenSurface() {
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
       <p className="font-body font-normal text-[11px] mb-3" style={{ color: "var(--text-3)" }}>
         {selectedMarket
-          ? "Tokens matched by keywords from the market title (DexScreener search). Click Trade market to buy YES/NO."
+          ? "Tokens matched by keywords from the market title (DexScreener search). View on Kalshi to trade the market."
           : "New uprising tokens (DexScreener latest boosted)."}
       </p>
       <div className="mb-4">
@@ -194,6 +215,7 @@ export function TokenSurface() {
         <div className="token-grid">
           {filteredTokens.map((t, i) => {
             const topBorder = getTokenCardTopBorder(t);
+            const isUserLaunch = bagsLaunches.includes(t.mint);
             return (
               <motion.div
                 key={t.mint}
@@ -249,6 +271,11 @@ export function TokenSurface() {
                 >
                   {t.name}
                 </p>
+                {isUserLaunch && (
+                  <p className="font-body text-[10px] mb-1" style={{ color: "var(--bags)" }}>
+                    Launched on Bags (you)
+                  </p>
+                )}
                 {selectedMarket && (
                   <div className="mb-2">
                     <div

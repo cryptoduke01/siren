@@ -96,7 +96,8 @@ export function TokensForMarketSheet({
                       type="button"
                       onClick={() => {
                         hapticLight();
-                        setBuyPanelOpen(true, "market");
+                        if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank");
+                        else setBuyPanelOpen(true, "market");
                       }}
                       className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
                       style={{
@@ -105,7 +106,7 @@ export function TokensForMarketSheet({
                         color: "var(--text-1)",
                       }}
                     >
-                      Trade market
+                      View on Kalshi
                     </button>
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
-import { createTokenInfo, createFeeShareConfig, createLaunchTransaction } from "./services/bags.js";
+import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats } from "./services/bags.js";
 import { getDflowOrder } from "./services/dflow.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 
@@ -184,7 +184,7 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   /** Bags token launch step 1: create token info. Returns tokenMint + tokenMetadata for create-launch-transaction. */
-  app.post<{ Body: { name: string; symbol: string; description: string; imageUrl: string } }>(
+  app.post<{ Body: { name: string; symbol: string; description: string; imageUrl: string; telegram?: string; twitter?: string; website?: string } }>(
     "/api/bags/create-token-info",
     async (req, reply) => {
       if (!process.env.BAGS_API_KEY) {
@@ -193,12 +193,12 @@ export function registerRoutes(app: FastifyInstance) {
           error: "Bags API key not configured. Add BAGS_API_KEY to apps/api/.env (see .env.example).",
         });
       }
-      const { name, symbol, description, imageUrl } = req.body;
+      const { name, symbol, description, imageUrl, telegram, twitter, website } = req.body;
       if (!name || !symbol || !description || !imageUrl) {
         return reply.status(400).send({ success: false, error: "name, symbol, description, imageUrl required" });
       }
       try {
-        const result = await createTokenInfo({ name, symbol, description, imageUrl });
+        const result = await createTokenInfo({ name, symbol, description, imageUrl, telegram, twitter, website });
         return reply.send({ success: true, data: result });
       } catch (e) {
         app.log.error(e);
@@ -244,6 +244,36 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: (e as Error).message || "Bags launch tx failed" });
+    }
+  });
+
+  app.get<{ Querystring: { tokenMint: string } }>("/api/bags/token-creators", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { tokenMint } = req.query;
+    if (!tokenMint?.trim()) return reply.status(400).send({ success: false, error: "tokenMint required" });
+    try {
+      const creators = await getTokenCreators(tokenMint.trim());
+      return reply.send({ success: true, data: creators });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags token-creators failed" });
+    }
+  });
+
+  app.get<{ Querystring: { tokenMint: string } }>("/api/bags/claim-stats", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { tokenMint } = req.query;
+    if (!tokenMint?.trim()) return reply.status(400).send({ success: false, error: "tokenMint required" });
+    try {
+      const stats = await getTokenClaimStats(tokenMint.trim());
+      return reply.send({ success: true, data: stats });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags claim-stats failed" });
     }
   });
 }

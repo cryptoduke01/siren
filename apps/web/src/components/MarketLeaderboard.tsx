@@ -59,9 +59,9 @@ export function MarketLeaderboard() {
           TOP MARKETS
         </h3>
         {collapsed ? (
-          <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
+          <ChevronUp className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} aria-hidden />
         ) : (
-          <ChevronUp className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
+          <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} aria-hidden />
         )}
       </button>
       {!collapsed && (

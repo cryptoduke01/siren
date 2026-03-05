@@ -125,10 +125,10 @@ body {
   display: none;
 }
 
-/* Terminal grid layout */
+/* Terminal grid layout — single row so no gap under navbar */
 .app-shell {
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: 1fr;
   grid-template-columns: 300px 1fr;
   height: 100vh;
   overflow: hidden;
@@ -145,14 +145,14 @@ body {
 
 .app-shell .left-panel {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .app-shell .main-panel {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 20px 24px 24px 28px;

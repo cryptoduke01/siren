@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletModal } from "./WalletModal";
 import { useWalletTypeStore } from "@/store/useWalletTypeStore";
@@ -10,6 +11,7 @@ export function WalletButton() {
   const { connected, publicKey, disconnect } = useWallet();
   const { setWalletType } = useWalletTypeStore();
   const [modalOpen, setModalOpen] = useState(false);
+  const router = useRouter();
 
   const short = publicKey
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`
@@ -44,7 +46,7 @@ export function WalletButton() {
         type="button"
         onClick={() => {
           hapticLight();
-          setModalOpen(true);
+          router.push("/onboarding");
         }}
         className="font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
         style={{
@@ -53,7 +55,7 @@ export function WalletButton() {
           color: "var(--text-2)",
         }}
       >
-        Connect
+        Sign up
       </button>
       <WalletModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
     </>

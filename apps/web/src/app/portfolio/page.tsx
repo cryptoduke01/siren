@@ -1,11 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
-import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink } from "lucide-react";
+import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
@@ -106,6 +107,23 @@ export default function PortfolioPage() {
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
+  const [balanceView, setBalanceView] = useState<"mainnet" | "devnet">("mainnet");
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!publicKey) {
+      setBagsLaunches([]);
+      return;
+    }
+    try {
+      const key = `siren-bags-launches-${publicKey.toBase58()}`;
+      const raw = localStorage.getItem(key);
+      setBagsLaunches(raw ? JSON.parse(raw) : []);
+    } catch {
+      setBagsLaunches([]);
+    }
+  }, [publicKey]);
 
   const { data: balances, isLoading, isError, refetch } = useQuery({
     queryKey: ["wallet-balance", publicKey?.toBase58()],
@@ -142,6 +160,41 @@ export default function PortfolioPage() {
   tokenMints.forEach((mint, i) => {
     tokenInfoByMint.set(mint, tokenInfosList?.[i] ?? null);
   });
+
+  const { data: bagsLaunchInfos } = useQuery({
+    queryKey: ["bags-launch-infos", bagsLaunches],
+    queryFn: () => Promise.all(bagsLaunches.map((mint) => fetchTokenInfo(mint))),
+    enabled: bagsLaunches.length > 0,
+    staleTime: 60_000,
+  });
+  const bagsLaunchInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
+  bagsLaunches.forEach((mint, i) => {
+    bagsLaunchInfoByMint.set(mint, bagsLaunchInfos?.[i] ?? null);
+  });
+
+  async function fetchClaimStats(mint: string) {
+    const res = await fetch(`${API_URL}/api/bags/claim-stats?tokenMint=${encodeURIComponent(mint)}`, { credentials: "omit" });
+    if (!res.ok) return [];
+    const j = await res.json();
+    return Array.isArray(j.data) ? j.data : [];
+  }
+  const { data: claimStatsByMint } = useQuery({
+    queryKey: ["bags-claim-stats", publicKey?.toBase58(), bagsLaunches],
+    queryFn: () => Promise.all(bagsLaunches.map((mint) => fetchClaimStats(mint))),
+    enabled: !!publicKey && bagsLaunches.length > 0,
+    staleTime: 60_000,
+  });
+  const myClaimedByMint = new Map<string, string>();
+  if (publicKey && claimStatsByMint) {
+    const wallet = publicKey.toBase58();
+    claimStatsByMint.forEach((stats, i) => {
+      const mint = bagsLaunches[i];
+      const me = stats.find((s: { wallet: string }) => s.wallet === wallet);
+      if (me && typeof (me as { totalClaimed?: string }).totalClaimed === "string") {
+        myClaimedByMint.set(mint, (me as { totalClaimed: string }).totalClaimed);
+      }
+    });
+  }
 
   const totalUsd =
     (balances?.mainnet ?? 0) * solPriceUsd +
@@ -237,6 +290,58 @@ export default function PortfolioPage() {
               <p className="font-body text-xs mt-1" style={{ color: "var(--text-3)" }}>
                 Mainnet SOL + token holdings (USD)
               </p>
+              <div className="flex flex-wrap gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); setReceiveOpen(true); }}
+                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  Receive
+                </button>
+                <a
+                  href={publicKey ? `https://jup.ag/swap/SOL?wallet=${publicKey.toBase58()}` : "https://jup.ag/swap"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => hapticLight()}
+                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5" />
+                  Swap
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+                <a
+                  href="https://phantom.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => hapticLight()}
+                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Send
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              {receiveOpen && publicKey && (
+                <div className="mt-4 p-4 rounded-xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>Your address</p>
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-2)" }}>{publicKey.toBase58()}</code>
+                    <button
+                      type="button"
+                      onClick={() => { hapticLight(); navigator.clipboard.writeText(publicKey.toBase58()); }}
+                      className="font-body text-xs font-medium px-3 py-1.5 rounded-lg shrink-0"
+                      style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => { hapticLight(); setReceiveOpen(false); }} className="font-body text-[11px] mt-2" style={{ color: "var(--text-3)" }}>Close</button>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <div
@@ -259,9 +364,35 @@ export default function PortfolioPage() {
                     Wallet balance
                   </h2>
                   <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    Native SOL on mainnet & devnet
+                    Native SOL — toggle network below
                   </p>
                 </div>
+              </div>
+              <div className="px-5 pb-2 flex gap-2 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); setBalanceView("mainnet"); }}
+                  className="font-body text-[11px] font-medium px-3 py-2 rounded-lg transition-colors"
+                  style={{
+                    background: balanceView === "mainnet" ? "var(--accent-dim)" : "transparent",
+                    color: balanceView === "mainnet" ? "var(--accent)" : "var(--text-3)",
+                    border: balanceView === "mainnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+                  }}
+                >
+                  Mainnet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); setBalanceView("devnet"); }}
+                  className="font-body text-[11px] font-medium px-3 py-2 rounded-lg transition-colors"
+                  style={{
+                    background: balanceView === "devnet" ? "var(--accent-dim)" : "transparent",
+                    color: balanceView === "devnet" ? "var(--accent)" : "var(--text-3)",
+                    border: balanceView === "devnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+                  }}
+                >
+                  Devnet
+                </button>
               </div>
               <div className="p-5 grid grid-cols-2 gap-4">
                 {isLoading ? (
@@ -285,7 +416,10 @@ export default function PortfolioPage() {
                   <>
                     <div
                       className="rounded-xl border p-4"
-                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                      style={{
+                        borderColor: balanceView === "mainnet" ? "var(--border-active)" : "var(--border-subtle)",
+                        background: "var(--bg-elevated)",
+                      }}
                     >
                       <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Mainnet</p>
                       <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
@@ -297,11 +431,17 @@ export default function PortfolioPage() {
                     </div>
                     <div
                       className="rounded-xl border p-4"
-                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                      style={{
+                        borderColor: balanceView === "devnet" ? "var(--border-active)" : "var(--border-subtle)",
+                        background: "var(--bg-elevated)",
+                      }}
                     >
                       <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Devnet</p>
                       <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
                         {balances.devnet.toFixed(4)} SOL
+                      </p>
+                      <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
+                        ≈ ${(balances.devnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                       </p>
                     </div>
                   </>
@@ -523,7 +663,7 @@ export default function PortfolioPage() {
                     Fee earnings
                   </h2>
                   <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    Builder Code (Kalshi) & partner fees
+                    Fees from Kalshi referrals, partner programs, and Bags fee share will appear here.
                   </p>
                 </div>
               </div>
@@ -537,10 +677,112 @@ export default function PortfolioPage() {
                     No fees earned yet
                   </p>
                   <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-                    Fees from Kalshi referrals and partner programs will appear here.
+                    Fees from Kalshi referrals, partner programs, and Bags fee share will appear here.
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Your Bags launches */}
+          <div
+            className="mt-6 rounded-2xl border overflow-hidden"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--bg-surface)",
+              boxShadow: "0 1px 0 0 var(--border-subtle)",
+            }}
+          >
+            <div
+              className="px-5 py-4 flex items-center gap-3 border-b"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-dim)" }}>
+                <Rocket className="w-4 h-4" style={{ color: "var(--accent)" }} />
+              </div>
+              <div>
+                <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                  Your Bags launches
+                </h2>
+                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                  Tokens you launched via Bags and any fee share claimed.
+                </p>
+              </div>
+            </div>
+            <div className="p-5">
+              {bagsLaunches.length === 0 ? (
+                <div className="py-6 text-center">
+                  <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
+                    You haven&apos;t launched any tokens with Bags yet.
+                  </p>
+                  <Link
+                    href="/"
+                    onClick={() => hapticLight()}
+                    className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2 rounded-xl transition-colors hover:opacity-90"
+                    style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                  >
+                    Go to terminal
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              ) : (
+                <ul className="space-y-3">
+                  {bagsLaunches.map((mint) => {
+                    const info = bagsLaunchInfoByMint.get(mint);
+                    const claimedRaw = myClaimedByMint.get(mint);
+                    const claimedLamports = claimedRaw ? Number(claimedRaw) : 0;
+                    const claimedSol = claimedLamports / LAMPORTS_PER_SOL;
+                    const claimedUsd = claimedSol * solPriceUsd;
+                    return (
+                      <li
+                        key={mint}
+                        className="flex items-center justify-between gap-4 rounded-xl border p-4"
+                        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {info?.imageUrl ? (
+                            <img src={info.imageUrl} alt="" className="w-9 h-9 rounded-xl object-cover shrink-0" />
+                          ) : (
+                            <div
+                              className="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center font-mono text-xs font-semibold"
+                              style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
+                            >
+                              {(info?.symbol ?? mint).slice(0, 2)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-heading font-semibold truncate" style={{ color: "var(--text-1)" }}>
+                              {info?.symbol ?? mint.slice(0, 4)}
+                            </p>
+                            <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
+                              Launched on Bags
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {claimedLamports > 0 ? (
+                            <>
+                              <p className="font-body text-[10px] uppercase mb-1" style={{ color: "var(--text-3)" }}>
+                                Fees claimed
+                              </p>
+                              <p className="font-mono text-xs tabular-nums" style={{ color: "var(--bags)" }}>
+                                {claimedSol.toFixed(4)} SOL
+                              </p>
+                              <p className="font-mono text-[11px] tabular-nums" style={{ color: "var(--text-2)" }}>
+                                ≈ ${claimedUsd.toFixed(2)} USD
+                              </p>
+                            </>
+                          ) : (
+                            <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                              No fees claimed yet.
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           </div>
         </>

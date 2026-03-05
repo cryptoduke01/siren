@@ -19,6 +19,9 @@ export interface CreateTokenInfoParams {
   symbol: string;
   description: string;
   imageUrl: string;
+  telegram?: string;
+  twitter?: string;
+  website?: string;
 }
 
 export interface CreateTokenInfoResponse {
@@ -33,6 +36,9 @@ export async function createTokenInfo(params: CreateTokenInfoParams): Promise<Cr
   form.append("symbol", params.symbol.slice(0, 10).toUpperCase().replace("$", ""));
   form.append("description", params.description.slice(0, 1000));
   form.append("imageUrl", params.imageUrl);
+  if (params.telegram?.trim()) form.append("telegram", params.telegram.trim());
+  if (params.twitter?.trim()) form.append("twitter", params.twitter.trim());
+  if (params.website?.trim()) form.append("website", params.website.trim());
 
   const headers = getHeaders();
   const res = await fetch(`${BAGS_BASE}/token-launch/create-token-info`, {
@@ -96,4 +102,52 @@ export async function createLaunchTransaction(params: {
   }
   const tx = json.response ?? json;
   return typeof tx === "string" ? tx : tx?.transaction;
+}
+
+const BAGS_GET_HEADERS = () => {
+  const key = process.env.BAGS_API_KEY;
+  if (!key) throw new Error("BAGS_API_KEY not configured");
+  return { "x-api-key": key, Accept: "application/json" };
+};
+
+/** Token launch creators (v3). Returns array of creator info for a token. */
+export async function getTokenCreators(tokenMint: string): Promise<Array<{
+  username: string;
+  pfp: string;
+  royaltyBps: number;
+  isCreator: boolean;
+  wallet: string;
+  provider?: string | null;
+  providerUsername?: string | null;
+  twitterUsername?: string;
+  bagsUsername?: string;
+  isAdmin?: boolean;
+}>> {
+  const res = await fetch(
+    `${BAGS_BASE}/token-launch/creator/v3?tokenMint=${encodeURIComponent(tokenMint)}`,
+    { headers: BAGS_GET_HEADERS() }
+  );
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags get token creators: ${res.status}`);
+  const r = json.response ?? json;
+  return Array.isArray(r) ? r : [];
+}
+
+/** Token claim stats: total claimed per fee claimer. */
+export async function getTokenClaimStats(tokenMint: string): Promise<Array<{
+  wallet: string;
+  isCreator: boolean;
+  totalClaimed: string;
+  username?: string;
+  pfp?: string;
+  royaltyBps?: number;
+}>> {
+  const res = await fetch(
+    `${BAGS_BASE}/token-launch/claim-stats?tokenMint=${encodeURIComponent(tokenMint)}`,
+    { headers: BAGS_GET_HEADERS() }
+  );
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags get claim stats: ${res.status}`);
+  const r = json.response ?? json;
+  return Array.isArray(r) ? r : [];
 }
