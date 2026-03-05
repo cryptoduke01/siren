@@ -326,20 +326,52 @@ export default function PortfolioPage() {
                 </a>
               </div>
               {receiveOpen && publicKey && (
-                <div className="mt-4 p-4 rounded-xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                  <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>Your address</p>
-                  <div className="flex items-center gap-2">
-                    <code className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-2)" }}>{publicKey.toBase58()}</code>
+                <div
+                  className="fixed inset-0 z-40 flex items-center justify-center px-4"
+                  style={{ background: "rgba(0,0,0,0.6)" }}
+                  onClick={() => { hapticLight(); setReceiveOpen(false); }}
+                >
+                  <div
+                    className="w-full max-w-sm rounded-2xl border p-5"
+                    style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p className="font-heading text-sm mb-1" style={{ color: "var(--text-1)" }}>
+                      Receive SOL & tokens
+                    </p>
+                    <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-3)" }}>
+                      Scan this code or share your address to receive funds.
+                    </p>
+                    <div className="flex justify-center mb-3">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=192x192&data=${encodeURIComponent(publicKey.toBase58())}`}
+                        alt="Wallet QR code"
+                        className="rounded-lg border"
+                        style={{ borderColor: "var(--border-subtle)" }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <code className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-2)" }}>
+                        {publicKey.toBase58()}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => { hapticLight(); navigator.clipboard.writeText(publicKey.toBase58()); }}
+                        className="font-body text-xs font-medium px-3 py-1.5 rounded-lg shrink-0"
+                        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                      >
+                        Copy
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => { hapticLight(); navigator.clipboard.writeText(publicKey.toBase58()); }}
-                      className="font-body text-xs font-medium px-3 py-1.5 rounded-lg shrink-0"
-                      style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                      onClick={() => { hapticLight(); setReceiveOpen(false); }}
+                      className="mt-1 w-full font-body text-xs py-2 rounded-xl"
+                      style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
                     >
-                      Copy
+                      Close
                     </button>
                   </div>
-                  <button type="button" onClick={() => { hapticLight(); setReceiveOpen(false); }} className="font-body text-[11px] mt-2" style={{ color: "var(--text-3)" }}>Close</button>
                 </div>
               )}
             </div>

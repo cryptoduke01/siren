@@ -129,7 +129,7 @@ body {
 .app-shell {
   display: grid;
   grid-template-rows: 1fr;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: auto 1fr;
   height: 100vh;
   overflow: hidden;
 }
@@ -148,6 +148,9 @@ body {
   grid-row: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  resize: horizontal;
+  min-width: 240px;
+  max-width: 420px;
 }
 
 .app-shell .main-panel {
