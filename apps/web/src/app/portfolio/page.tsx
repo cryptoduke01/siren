@@ -12,6 +12,22 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const LAMPORTS_PER_SOL = 1e9;
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 
+async function fetchSolPrice(): Promise<number> {
+  const res = await fetch(`${API_URL}/api/sol-price`, { credentials: "omit" });
+  if (!res.ok) return 0;
+  const j = await res.json();
+  return j.usd ?? 0;
+}
+
+async function fetchTokenInfo(mint: string): Promise<{ name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null> {
+  const res = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
+  if (!res.ok) return null;
+  const j = await res.json();
+  const d = j.data;
+  if (!d) return null;
+  return { name: d.name, symbol: d.symbol, imageUrl: d.imageUrl, priceUsd: d.priceUsd };
+}
+
 async function fetchBalances(publicKey: string) {
   const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
   const mainnet = new Connection(rpcUrl, "confirmed");
@@ -97,6 +113,13 @@ export default function PortfolioPage() {
     staleTime: 0,
   });
 
+  const { data: solPriceUsd = 0 } = useQuery({
+    queryKey: ["sol-price"],
+    queryFn: fetchSolPrice,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   const { data: tokenHoldings = [], isLoading: tokensLoading } = useQuery({
     queryKey: ["wallet-tokens", publicKey?.toBase58()],
     queryFn: () => fetchTokenHoldings(connection, publicKey!.toBase58()),
@@ -104,6 +127,25 @@ export default function PortfolioPage() {
     refetchInterval: 30_000,
     staleTime: 20_000,
   });
+
+  const tokenMints = tokenHoldings.map((t) => t.mint);
+  const { data: tokenInfosList } = useQuery({
+    queryKey: ["portfolio-token-infos", tokenMints],
+    queryFn: () => Promise.all(tokenMints.map((mint) => fetchTokenInfo(mint))),
+    enabled: tokenMints.length > 0,
+    staleTime: 60_000,
+  });
+  const tokenInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
+  tokenMints.forEach((mint, i) => {
+    tokenInfoByMint.set(mint, tokenInfosList?.[i] ?? null);
+  });
+
+  const totalUsd =
+    (balances?.mainnet ?? 0) * solPriceUsd +
+    tokenHoldings.reduce(
+      (sum, t) => sum + t.balance * (tokenInfoByMint.get(t.mint)?.priceUsd ?? 0),
+      0
+    );
 
   const { data: markets = [] } = useQuery({
     queryKey: ["markets"],
@@ -201,6 +243,9 @@ export default function PortfolioPage() {
                       <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
                         SOL
                       </p>
+                      <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
+                        ≈ ${(balances.mainnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                      </p>
                     </div>
                     <div
                       className="rounded-[6px] border p-4"
@@ -214,6 +259,14 @@ export default function PortfolioPage() {
                       </p>
                       <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
                         SOL
+                      </p>
+                    </div>
+                    <div className="col-span-2 rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                      <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>
+                        Portfolio value (mainnet)
+                      </p>
+                      <p className="font-mono text-xl tabular-nums" style={{ color: "var(--accent)" }}>
+                        ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                       </p>
                     </div>
                   </>
@@ -301,38 +354,65 @@ export default function PortfolioPage() {
                   </p>
                 ) : (
                   <ul className="space-y-3">
-                    {tokenHoldings.map((t) => (
-                      <li
-                        key={t.mint}
-                        className="flex items-center justify-between gap-4 rounded-[6px] border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
-                        style={{
-                          borderColor: "var(--border-subtle)",
-                          background: "var(--bg-elevated)",
-                        }}
-                      >
-                        <div className="min-w-0">
-                          <p className="font-heading font-medium truncate" style={{ color: "var(--text-1)" }}>
-                            {t.symbol !== "—" ? t.symbol : t.mint.slice(0, 8) + "…"}
-                          </p>
-                          <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
-                            {t.name !== "Unknown" ? t.name : t.mint}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-mono text-sm tabular-nums" style={{ color: "var(--bags)" }}>
-                            {t.balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => openSellPanel(t.mint, t.symbol, t.name)}
-                            className="mt-1 font-body text-xs transition-colors hover:text-[var(--bags)]"
-                            style={{ color: "var(--accent)" }}
-                          >
-                            Sell
-                          </button>
-                        </div>
-                      </li>
-                    ))}
+                    {tokenHoldings.map((t) => {
+                      const info = tokenInfoByMint.get(t.mint);
+                      const displayName = info?.name ?? t.name;
+                      const displaySymbol = info?.symbol ?? (t.symbol !== "—" ? t.symbol : t.mint.slice(0, 8) + "…");
+                      const valueUsd = info?.priceUsd != null ? t.balance * info.priceUsd : undefined;
+                      return (
+                        <li
+                          key={t.mint}
+                          className="flex items-center justify-between gap-4 rounded-[6px] border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+                          style={{
+                            borderColor: "var(--border-subtle)",
+                            background: "var(--bg-elevated)",
+                          }}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {info?.imageUrl ? (
+                              <img
+                                src={info.imageUrl}
+                                alt=""
+                                className="w-10 h-10 rounded-full object-cover shrink-0"
+                              />
+                            ) : (
+                              <div
+                                className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-mono text-xs"
+                                style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
+                              >
+                                {displaySymbol.slice(0, 2)}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-heading font-medium truncate" style={{ color: "var(--text-1)" }}>
+                                {displaySymbol}
+                              </p>
+                              <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
+                                {displayName !== "Unknown" ? displayName : t.mint}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-mono text-sm tabular-nums" style={{ color: "var(--bags)" }}>
+                              {t.balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                            </p>
+                            {valueUsd != null && (
+                              <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--text-2)" }}>
+                                ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openSellPanel(t.mint, t.symbol, t.name)}
+                              className="mt-1 font-body text-xs transition-colors hover:text-[var(--bags)]"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              Sell
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

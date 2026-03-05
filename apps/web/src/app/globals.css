@@ -42,6 +42,30 @@
   --green: var(--up);
 }
 
+html.light {
+  --bg-void: #E8E8EC;
+  --bg-base: #F0F0F5;
+  --bg-surface: #F6F6FA;
+  --bg-elevated: #FAFAFC;
+  --bg-hover: #EEEEF4;
+  --border-subtle: #D8D8E4;
+  --border-default: #C4C4D4;
+  --border-active: #A8A8BC;
+  --accent: #5C6B00;
+  --accent-dim: #D4FF0024;
+  --accent-text: #FAFAFC;
+  --bags: #00A858;
+  --bags-dim: #00FF8520;
+  --kalshi: #2BA86E;
+  --text-1: #16161D;
+  --text-2: #44445A;
+  --text-3: #6B6B80;
+  --up: #00B85C;
+  --down: #D92B4A;
+  --down-dim: #FF456018;
+  --yellow: #C78A00;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -127,6 +151,16 @@ body {
   grid-row: 2;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* Mobile: single column, markets only (main panel hidden) */
+@media (max-width: 1023px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .app-shell .left-panel {
+    grid-column: 1;
+  }
 }
 
 .token-grid {

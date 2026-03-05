@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToastStore } from "@/store/useToastStore";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useMarkets } from "@/hooks/useMarkets";
 import { MarketDetailPanel } from "./MarketDetailPanel";
+import { MarketLeaderboard } from "./MarketLeaderboard";
+import { StarButton } from "./StarButton";
+import { MarketAlertButton } from "./AlertButton";
+import { MiniSparkline } from "./MiniSparkline";
 import { RefreshCw } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
@@ -52,10 +56,11 @@ function extractKeywords(title: string): string[] {
   return out;
 }
 
-export function MarketFeed() {
+export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: MarketWithVelocity) => void } = {}) {
   const { selectedMarket, setSelectedMarket, setDetailPanelOpen } = useSirenStore();
   const [shownCount, setShownCount] = useState(INITIAL_SHOWN);
   const [activeCategory, setActiveCategory] = useState("All");
+  const [marketSearchQuery, setMarketSearchQuery] = useState("");
 
   const addToast = useToastStore((s) => s.addToast);
   const { data: markets = [], isLoading, isError, error, refetch } = useMarkets();
@@ -64,7 +69,7 @@ export function MarketFeed() {
     if (isError && error) addToast("Unable to load markets. Please try again in a moment.", "error");
   }, [isError, error, addToast]);
 
-  const filteredMarkets =
+  const categoryFiltered =
     activeCategory === "All"
       ? markets
       : markets.filter((m) => {
@@ -73,6 +78,17 @@ export function MarketFeed() {
           const lower = `${m.title ?? ""} ${m.ticker ?? ""} ${m.subtitle ?? ""}`.toLowerCase();
           return kw.some((k) => lower.includes(k));
         });
+
+  const filteredMarkets = useMemo(() => {
+    if (!marketSearchQuery.trim()) return categoryFiltered;
+    const q = marketSearchQuery.trim().toLowerCase();
+    return categoryFiltered.filter(
+      (m) =>
+        (m.title && m.title.toLowerCase().includes(q)) ||
+        (m.ticker && m.ticker.toLowerCase().includes(q)) ||
+        (m.subtitle && m.subtitle.toLowerCase().includes(q))
+    );
+  }, [categoryFiltered, marketSearchQuery]);
 
   return (
     <div
@@ -89,6 +105,20 @@ export function MarketFeed() {
         >
           MARKETS
         </h2>
+      </div>
+      <div className="flex-shrink-0 px-4 pb-2">
+        <input
+          type="text"
+          placeholder="Search markets..."
+          value={marketSearchQuery}
+          onChange={(e) => setMarketSearchQuery(e.target.value)}
+          className="w-full font-mono text-[11px] h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
+          style={{
+            background: "var(--bg-surface)",
+            borderColor: "var(--border-subtle)",
+            color: "var(--text-1)",
+          }}
+        />
       </div>
       <div className="flex gap-2 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-3">
         {CATEGORIES.map((cat) => (
@@ -146,7 +176,7 @@ export function MarketFeed() {
                   animate={{ opacity: 1, transform: "translateY(0)" }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.18, delay: Math.min(i * 0.03, 0.2), ease: "easeOut" }}
-                  className="cursor-pointer rounded-[6px] p-3 mb-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)]"
+                  className="cursor-pointer rounded-[6px] p-3 mb-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative"
                   style={{
                     background: isSelected ? "var(--bg-elevated)" : "var(--bg-surface)",
                     border: "1px solid var(--border-subtle)",
@@ -169,8 +199,13 @@ export function MarketFeed() {
                       no_mint: m.no_mint,
                       kalshi_url: m.kalshi_url,
                     });
+                    onAfterSelectMarket?.(m);
                   }}
                 >
+                  <div className="absolute top-2 right-2 flex items-center gap-0">
+                    <MarketAlertButton ticker={m.ticker} probability={m.probability} />
+                    <StarButton type="market" id={m.ticker} />
+                  </div>
                   <p
                     className="font-heading font-semibold text-[13px] leading-[1.3] line-clamp-2 mb-2"
                     style={{ color: "var(--text-1)" }}
@@ -203,6 +238,8 @@ export function MarketFeed() {
                       style={{ width: `${yesPct}%`, background: "var(--accent)" }}
                     />
                   </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <MiniSparkline data={[Math.max(0, yesPct - 15), yesPct - 8, yesPct - 4, yesPct, yesPct]} width={56} height={18} />
                   <div className="flex items-baseline gap-1">
                     <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
                       Vol
@@ -213,6 +250,7 @@ export function MarketFeed() {
                     >
                       {m.volume?.toLocaleString() ?? "—"}
                     </span>
+                  </div>
                   </div>
                 </motion.li>
               );
@@ -230,6 +268,7 @@ export function MarketFeed() {
           )}
         </ul>
       )}
+      <MarketLeaderboard />
       <MarketDetailPanel />
     </div>
   );

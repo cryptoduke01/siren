@@ -3,16 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { WalletButton } from "./WalletButton";
+import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 
 const NAV = [
   { href: "/", label: "Terminal" },
   { href: "/trending", label: "Trending" },
+  { href: "/watchlist", label: "Watchlist" },
   { href: "/portfolio", label: "Portfolio" },
 ];
 
 export function TopBar() {
   const pathname = usePathname();
+  const { theme, toggleTheme } = useThemeStore();
 
   return (
     <header
@@ -53,7 +56,18 @@ export function TopBar() {
           );
         })}
       </nav>
-      <WalletButton />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => { hapticLight(); toggleTheme(); }}
+          className="w-8 h-8 rounded-[6px] flex items-center justify-center font-mono text-sm transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
+          style={{ color: "var(--text-2)" }}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? "☀" : "☽"}
+        </button>
+        <WalletButton />
+      </div>
     </header>
   );
 }

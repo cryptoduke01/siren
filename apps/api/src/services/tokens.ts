@@ -1,7 +1,7 @@
 import type { SurfacedToken } from "@siren/shared";
 import { getKeywordsForCategory } from "@siren/shared";
 import { matchTokenToKeywords } from "@siren/shared";
-import { searchPairs, getLatestBoostedTokens } from "./dexscreener.js";
+import { searchPairs, getLatestBoostedTokens, getTokenPairs } from "./dexscreener.js";
 import type { DexPair } from "./dexscreener.js";
 
 /** Fallback: Curated demo tokens when DexScreener fails or returns empty. */
@@ -146,4 +146,39 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
     .filter((t) => t.relevanceScore > 0.2 || keywords.length === 0)
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
     .slice(0, 24);
+}
+
+export interface TokenInfo {
+  mint: string;
+  name: string;
+  symbol: string;
+  imageUrl?: string;
+  priceUsd?: number;
+  volume24h?: number;
+}
+
+/** Get token metadata and price by mint (DexScreener token-pairs). */
+export async function getTokenInfoByMint(mint: string): Promise<TokenInfo | null> {
+  try {
+    const pairs = await getTokenPairs(mint);
+    if (pairs.length === 0) return null;
+    const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
+    const base = best.baseToken.address === mint ? best.baseToken : best.quoteToken;
+    const priceUsd = best.priceUsd ? parseFloat(best.priceUsd) : undefined;
+    const imageUrl = best.info?.imageUrl?.startsWith("http")
+      ? best.info.imageUrl
+      : best.info?.imageUrl
+        ? `https://cdn.dexscreener.com/cms/images/${best.info.imageUrl}?width=800&height=800&quality=90`
+        : undefined;
+    return {
+      mint,
+      name: base.name || base.symbol || "Unknown",
+      symbol: base.symbol || "???",
+      imageUrl,
+      priceUsd,
+      volume24h: best.volume?.h24 ? Math.round(best.volume.h24) : undefined,
+    };
+  } catch {
+    return null;
+  }
 }

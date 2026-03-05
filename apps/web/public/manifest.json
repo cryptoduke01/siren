@@ -1,0 +1,17 @@
+{
+  "name": "Siren",
+  "short_name": "Siren",
+  "description": "Event-driven meme token terminal. Kalshi markets, Bags tokens.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060609",
+  "theme_color": "#D4FF00",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

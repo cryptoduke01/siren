@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { getMarketsWithVelocity } from "./services/markets.js";
-import { getSurfacedTokens } from "./services/tokens.js";
+import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
 import { createTokenInfo, createFeeShareConfig, createLaunchTransaction } from "./services/bags.js";
 import { getDflowOrder } from "./services/dflow.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
@@ -87,6 +87,36 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch tokens" });
+    }
+  });
+
+  app.get<{ Querystring: { mint: string } }>("/api/token-info", async (req, reply) => {
+    const { mint } = req.query;
+    if (!mint?.trim()) {
+      return reply.status(400).send({ success: false, error: "mint required" });
+    }
+    try {
+      const info = await getTokenInfoByMint(mint.trim());
+      if (!info) return reply.send({ success: true, data: null });
+      return reply.send({ success: true, data: info });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch token info" });
+    }
+  });
+
+  app.get("/api/sol-price", async (_req, reply) => {
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) throw new Error("CoinGecko error");
+      const json = (await res.json()) as { solana?: { usd?: number } };
+      const usd = json.solana?.usd ?? 0;
+      return reply.send({ success: true, usd });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch SOL price" });
     }
   });
 

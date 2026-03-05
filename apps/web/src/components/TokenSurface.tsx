@@ -7,6 +7,9 @@ import { Copy, Check } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
+import { StarButton } from "./StarButton";
+import { TokenAlertButton } from "./AlertButton";
+import { MiniSparkline } from "./MiniSparkline";
 import { hapticLight } from "@/lib/haptics";
 import type { SurfacedToken } from "@siren/shared";
 
@@ -234,7 +237,11 @@ export function TokenSurface() {
                       ${t.symbol}
                     </p>
                   </div>
-                  <CopyCAButton mint={t.mint} />
+                  <div className="flex items-center gap-0">
+                    <TokenAlertButton mint={t.mint} symbol={t.symbol} price={t.price} />
+                    <StarButton type="token" id={t.mint} />
+                    <CopyCAButton mint={t.mint} />
+                  </div>
                 </div>
                 <p
                   className="font-body font-normal text-[11px] truncate mb-2"
@@ -243,32 +250,40 @@ export function TokenSurface() {
                   {t.name}
                 </p>
                 {selectedMarket && (
-                  <div
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[4px] mb-2"
-                    style={{
-                      background: "var(--bg-elevated)",
-                      border: "1px solid var(--border-subtle)",
-                    }}
-                  >
-                    <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--accent)" }}>
-                      {selectedMarket.probability.toFixed(0)}%
-                    </span>
-                    <span className="font-mono text-[10px]" style={{ color: "var(--text-3)" }}>
-                      YES
-                    </span>
+                  <div className="mb-2">
+                    <div
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[4px] mb-1"
+                      style={{
+                        background: "var(--bg-elevated)",
+                        border: "1px solid var(--border-subtle)",
+                      }}
+                    >
+                      <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--accent)" }}>
+                        {selectedMarket.probability.toFixed(0)}%
+                      </span>
+                      <span className="font-mono text-[10px]" style={{ color: "var(--text-3)" }}>
+                        YES
+                      </span>
+                    </div>
+                    <p className="font-body text-[10px] truncate" style={{ color: "var(--text-3)" }} title={selectedMarket.title}>
+                      Linked to: {selectedMarket.title}
+                    </p>
                   </div>
                 )}
                 {t.price != null && (
-                  <div className="flex items-baseline gap-1 mb-2">
-                    <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      ~$
-                    </span>
-                    <span className="font-mono text-[13px] tabular-nums" style={{ color: "var(--text-1)" }}>
-                      {t.price.toFixed(4)}
-                    </span>
-                    <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      USD
-                    </span>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-baseline gap-1">
+                      <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        ~$
+                      </span>
+                      <span className="font-mono text-[13px] tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {t.price.toFixed(4)}
+                      </span>
+                      <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        USD
+                      </span>
+                    </div>
+                    <MiniSparkline data={[t.price * 0.92, t.price * 0.96, t.price * 0.98, t.price, t.price]} width={48} height={18} />
                   </div>
                 )}
                 <div className="flex justify-between items-center mb-1">

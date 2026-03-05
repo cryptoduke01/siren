@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
+import { StarButton } from "./StarButton";
 import type { MarketWithVelocity } from "@siren/shared";
 
 const CATEGORIES = ["All", "Politics", "Crypto", "Sports", "Business", "Entertainment"];
@@ -139,12 +140,15 @@ export function MarketBottomSheet({
                           onSelectMarket(m);
                           onClose();
                         }}
-                        className="w-full text-left rounded-[6px] border p-3 transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)]"
+                        className="w-full text-left rounded-[6px] border p-3 transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative"
                         style={{
                           background: "var(--bg-elevated)",
                           borderColor: "var(--border-subtle)",
                         }}
                       >
+                        <div className="absolute top-2 right-2">
+                          <StarButton type="market" id={m.ticker} />
+                        </div>
                         <div className="flex items-baseline justify-between gap-2 mb-2">
                           <span
                             className="font-mono text-lg font-normal tabular-nums"

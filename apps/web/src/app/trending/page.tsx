@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { TopBar } from "@/components/TopBar";
 import { useSirenStore } from "@/store/useSirenStore";
+import { StarButton } from "@/components/StarButton";
 import type { SurfacedToken } from "@siren/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -81,11 +82,14 @@ export default function TrendingPage() {
                   })
                 }
               >
-                <div className="flex items-center gap-2 mb-2">
-                  {t.imageUrl && <img src={t.imageUrl} alt="" className="w-7 h-7 rounded-full object-cover" />}
-                  <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
-                    ${t.symbol}
-                  </p>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    {t.imageUrl && <img src={t.imageUrl} alt="" className="w-7 h-7 rounded-full object-cover" />}
+                    <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
+                      ${t.symbol}
+                    </p>
+                  </div>
+                  <StarButton type="token" id={t.mint} />
                 </div>
                 <p className="font-body text-[11px] truncate mb-2" style={{ color: "var(--text-2)" }}>
                   {t.name}
