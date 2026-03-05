@@ -146,11 +146,12 @@ body {
 .app-shell .left-panel {
   grid-column: 1;
   grid-row: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  resize: horizontal;
+  width: 300px;
   min-width: 240px;
   max-width: 420px;
+  overflow-y: auto;
+  overflow-x: auto;
+  resize: horizontal;
 }
 
 .app-shell .main-panel {
@@ -174,6 +175,10 @@ body {
   }
   .app-shell .left-panel {
     grid-column: 1;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    resize: none;
   }
 }
 

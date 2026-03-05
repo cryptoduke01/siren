@@ -229,6 +229,7 @@ export function UnifiedBuyPanel() {
                   </div>
                 )}
                 {buyPanelMode === "token" && selectedToken && (
+                  <>
                   <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Solana Token</p>
                     <div className="flex gap-2 mb-2">
@@ -305,23 +306,51 @@ export function UnifiedBuyPanel() {
                         </button>
                       </>
                     )}
-                    <div className="h-16 mt-2 rounded-lg overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={MOCK_CHART_DATA}>
-                          <defs>
-                            <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#00FF85" stopOpacity={0.3} />
-                              <stop offset="100%" stopColor="#00FF85" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <Area type="monotone" dataKey="v" stroke="#00FF85" strokeWidth={1.5} fill="url(#priceGrad)" />
-                          <XAxis dataKey="t" hide />
-                          <YAxis hide domain={["dataMin", "dataMax"]} />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                    <div className="mt-4 pt-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                      <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">24h price sketch</p>
+                      <div className="h-28 rounded-lg overflow-hidden" style={{ background: "var(--bg-surface)" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={MOCK_CHART_DATA}>
+                            <defs>
+                              <linearGradient id="priceGradPanel" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#00FF85" stopOpacity={0.35} />
+                                <stop offset="100%" stopColor="#00FF85" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <Area type="monotone" dataKey="v" stroke="#00FF85" strokeWidth={2} fill="url(#priceGradPanel)" />
+                            <XAxis dataKey="t" tick={{ fontSize: 9 }} stroke="var(--text-3)" />
+                            <YAxis hide domain={["dataMin", "dataMax"]} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <CopyCAButton mint={selectedToken.mint} />
                     </div>
-                    <CopyCAButton mint={selectedToken.mint} />
                   </div>
+                  <div className="rounded-lg border p-4 flex flex-col" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
+                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-3">Token info</p>
+                    <div className="space-y-2 text-sm">
+                      <p className="flex justify-between">
+                        <span className="text-[var(--text-3)]">Price (est.)</span>
+                        <span className="font-mono text-[var(--accent-primary)] tabular-nums">
+                          {selectedToken.price != null ? `$${selectedToken.price.toFixed(6)}` : "—"}
+                        </span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-[var(--text-3)]">24h volume</span>
+                        <span className="font-mono text-[var(--accent-bags)] tabular-nums">
+                          {selectedToken.volume24h != null ? `${selectedToken.volume24h.toLocaleString()} SOL` : "—"}
+                        </span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-[var(--text-3)]">Swap</span>
+                        <span className="text-[var(--text-2)]">Jupiter</span>
+                      </p>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-3)] mt-3 leading-relaxed">
+                      Chart is illustrative. Execute swaps via Jupiter; confirm in your wallet.
+                    </p>
+                  </div>
+                  </>
                 )}
               </div>
               {error && <p className="text-sm mt-3" style={{ color: "var(--red)" }}>{error}</p>}
