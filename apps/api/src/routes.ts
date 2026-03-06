@@ -22,13 +22,11 @@ export function registerRoutes(app: FastifyInstance) {
     const normalizedEmail = email.trim().toLowerCase();
     try {
       const supabase = getSupabaseAdminClient();
-      const { data: existing } = await supabase
+      const { data: existingRows } = await supabase
         .from("waitlist_signups")
         .select("id")
-        .eq("email", normalizedEmail)
-        .limit(1)
-        .maybeSingle();
-      if (existing) {
+        .eq("email", normalizedEmail);
+      if (existingRows && Array.isArray(existingRows) && existingRows.length > 0) {
         return reply.status(409).send({ success: false, error: "You're already on the waitlist." });
       }
       const payload = {

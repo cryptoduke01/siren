@@ -18,7 +18,6 @@ export default function WaitlistPage() {
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<"success" | "error" | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const theme = useThemeStore((s) => s.theme);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,12 +37,14 @@ export default function WaitlistPage() {
           wallet: wallet.trim() || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || "Something went wrong. Please try again.");
+        setErrorMessage(typeof data.error === "string" ? data.error : "Something went wrong. Please try again.");
+        setModal("error");
+        setLoading(false);
+        return;
       }
       setModal("success");
-      setSubmittedSuccess(true);
       setName("");
       setEmail("");
       setWallet("");
@@ -194,7 +195,7 @@ export default function WaitlistPage() {
               </div>
               <button
                 type="submit"
-                disabled={loading || !email?.trim() || submittedSuccess}
+                disabled={loading || !email?.trim()}
                 className="mt-6 w-full h-11 rounded-[8px] font-heading font-semibold text-xs md:text-sm uppercase tracking-[0.1em] transition-all duration-100 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: "var(--accent)", color: "var(--bg-void)" }}
               >
@@ -203,8 +204,6 @@ export default function WaitlistPage() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Joining…
                   </>
-                ) : submittedSuccess ? (
-                  "You're on the list"
                 ) : (
                   "Join Waitlist"
                 )}
