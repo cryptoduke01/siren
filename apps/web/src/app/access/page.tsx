@@ -54,28 +54,32 @@ export default function AccessPage() {
           <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
             The terminal is invite-only. Enter the code you received to continue.
           </p>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              type="password"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Access code"
-              className="w-full px-4 h-12 rounded-[10px] font-body text-sm border-2 transition-colors focus:outline-none focus:border-[var(--accent)]"
-              style={{
-                background: "var(--bg-elevated)",
-                borderColor: "var(--border-default)",
-                color: "var(--text-1)",
-              }}
-              autoComplete="one-time-code"
-            />
-            <button
-              type="submit"
-              disabled={loading || !code.trim()}
-              className="w-full h-12 rounded-[10px] font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-transparent"
-              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+          <form onSubmit={handleSubmit}>
+            <div
+              className="w-full rounded-[10px] border-2 overflow-hidden flex flex-col sm:flex-row"
+              style={{ borderColor: "var(--border-default)" }}
             >
-              {loading ? "Checking…" : "Continue"}
-            </button>
+              <input
+                type="password"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Access code"
+                className="flex-1 min-w-0 px-4 h-12 font-body text-sm focus:outline-none focus:border-[var(--accent)] focus:ring-0 border-0 rounded-none"
+                style={{
+                  background: "var(--bg-elevated)",
+                  color: "var(--text-1)",
+                }}
+                autoComplete="one-time-code"
+              />
+              <button
+                type="submit"
+                disabled={loading || !code.trim()}
+                className="h-12 px-6 font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed border-0 rounded-none shrink-0"
+                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+              >
+                {loading ? "…" : "Go"}
+              </button>
+            </div>
           </form>
           <p className="font-body text-xs mt-6 text-center" style={{ color: "var(--text-2)" }}>
             Don’t have a code?{" "}

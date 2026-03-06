@@ -211,10 +211,11 @@ body {
   }
 }
 
+/* Mobile: single column, markets panel fills viewport (no empty row) */
 @media (max-width: 767px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: 44px 1fr;
+    grid-template-rows: 1fr;
   }
   .app-shell .main-panel {
     grid-column: 1;
