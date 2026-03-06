@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { XCircle } from "lucide-react";
+import { hapticLight } from "@/lib/haptics";
 
 type WaitlistRow = {
   id: string;
@@ -42,6 +45,7 @@ export default function AdminPage() {
         window.localStorage.setItem(STORAGE_KEY, "true");
       }
       setInput("");
+      setError(null);
     } else {
       setError("Incorrect passcode.");
     }
@@ -66,15 +70,15 @@ export default function AdminPage() {
 
   if (!hasAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-void)" }}>
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "var(--bg-void)" }}>
         <div
-          className="w-full max-w-sm rounded-2xl border px-6 py-7"
+          className="w-full max-w-sm rounded-2xl border px-6 py-8"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
         >
-          <h1 className="font-heading text-lg mb-3" style={{ color: "var(--text-1)" }}>
+          <h1 className="font-heading font-bold text-xl mb-2" style={{ color: "var(--text-1)" }}>
             Admin access
           </h1>
-          <p className="font-body text-xs mb-5" style={{ color: "var(--text-2)" }}>
+          <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
             Enter the admin passcode to view waitlist signups.
           </p>
           <form onSubmit={handlePassSubmit} className="space-y-4">
@@ -83,27 +87,61 @@ export default function AdminPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Passcode"
-              className="w-full px-4 h-10 rounded-[8px] font-body text-sm border focus:outline-none"
+              className="w-full px-4 h-12 rounded-[10px] font-body text-sm border-2 transition-colors focus:outline-none focus:border-[var(--accent)]"
               style={{
                 background: "var(--bg-elevated)",
                 borderColor: "var(--border-default)",
                 color: "var(--text-1)",
               }}
             />
-            {error && (
-              <p className="font-body text-xs" style={{ color: "var(--down)" }}>
-                {error}
-              </p>
-            )}
             <button
               type="submit"
-              className="w-full h-10 rounded-[8px] font-heading text-xs uppercase tracking-[0.12em]"
+              className="w-full h-12 rounded-[10px] font-heading font-semibold text-sm uppercase tracking-[0.1em] border-2 border-transparent"
               style={{ background: "var(--accent)", color: "var(--accent-text)" }}
             >
               Enter
             </button>
           </form>
         </div>
+
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center px-4"
+              style={{ background: "rgba(0,0,0,0.6)" }}
+              onClick={() => { hapticLight(); setError(null); }}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ type: "spring", damping: 20 }}
+                className="w-full max-w-sm rounded-2xl border p-6 text-center"
+                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <XCircle className="w-12 h-12 mx-auto mb-4" style={{ color: "var(--down)" }} />
+                <h3 className="font-heading font-bold text-lg mb-2" style={{ color: "var(--text-1)" }}>
+                  Incorrect passcode
+                </h3>
+                <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); setError(null); }}
+                  className="w-full py-2.5 rounded-xl font-body text-sm font-medium border"
+                  style={{ background: "var(--bg-elevated)", color: "var(--text-1)", borderColor: "var(--border-default)" }}
+                >
+                  Close
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -128,9 +166,42 @@ export default function AdminPage() {
           </p>
         )}
         {error && (
-          <p className="font-body text-sm mb-4" style={{ color: "var(--down)" }}>
-            {error}
-          </p>
+          <AnimatePresence>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center px-4"
+              style={{ background: "rgba(0,0,0,0.6)" }}
+              onClick={() => { hapticLight(); setError(null); }}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ type: "spring", damping: 20 }}
+                className="w-full max-w-sm rounded-2xl border p-6 text-center"
+                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <XCircle className="w-12 h-12 mx-auto mb-4" style={{ color: "var(--down)" }} />
+                <h3 className="font-heading font-bold text-lg mb-2" style={{ color: "var(--text-1)" }}>
+                  Failed to load
+                </h3>
+                <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); setError(null); }}
+                  className="w-full py-2.5 rounded-xl font-body text-sm font-medium border"
+                  style={{ background: "var(--bg-elevated)", color: "var(--text-1)", borderColor: "var(--border-default)" }}
+                >
+                  Close
+                </button>
+              </motion.div>
+            </motion.div>
+          </AnimatePresence>
         )}
         <div className="overflow-x-auto rounded-[10px] border" style={{ borderColor: "var(--border-subtle)" }}>
           <table className="min-w-full text-left text-xs font-body" style={{ background: "var(--bg-surface)" }}>

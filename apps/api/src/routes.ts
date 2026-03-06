@@ -29,9 +29,10 @@ export function registerRoutes(app: FastifyInstance) {
       };
       const { error } = await supabase.from("waitlist_signups").insert(payload);
       if (error) {
-        // If table isn't created yet, return a clear error for setup.
         app.log.error({ err: error }, "Supabase waitlist insert failed");
-        return reply.status(503).send({ success: false, error: error.message || "Waitlist insert failed" });
+        const isDuplicate = error.code === "23505" || (error.message && /duplicate|unique|already exists/i.test(error.message));
+        const message = isDuplicate ? "You're already on the waitlist." : (error.message || "Waitlist insert failed");
+        return reply.status(isDuplicate ? 409 : 503).send({ success: false, error: message });
       }
       return reply.send({ success: true, message: "Thanks for joining the waitlist" });
     } catch (e) {

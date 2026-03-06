@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   title: "Siren — Event-Driven Meme Token Terminal",
   description: "Watch Kalshi markets, surface Bags tokens, trade both from one terminal.",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#060609" },
     { media: "(prefers-color-scheme: light)", color: "#F0F0F5" },

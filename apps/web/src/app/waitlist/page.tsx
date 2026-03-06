@@ -7,6 +7,7 @@ import { TopBar } from "@/components/TopBar";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { Footer } from "@/components/Footer";
+import { useThemeStore } from "@/store/useThemeStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -18,6 +19,7 @@ export default function WaitlistPage() {
   const [modal, setModal] = useState<"success" | "error" | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
+  const theme = useThemeStore((s) => s.theme);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +83,7 @@ export default function WaitlistPage() {
                 <span className="w-3 h-3 rounded-full" style={{ background: "var(--text-3)" }} />
               </div>
               <iframe
-                src="/preview"
+                src={`/preview?theme=${theme}`}
                 title="Siren terminal preview"
                 className="w-full border-0 bg-[var(--bg-void)]"
                 style={{ minHeight: "280px", height: "280px" }}
@@ -181,7 +183,7 @@ export default function WaitlistPage() {
                     placeholder="Your wallet address"
                     value={wallet}
                     onChange={(e) => setWallet(e.target.value)}
-                    className="w-full px-4 h-10 rounded-[8px] font-body text-sm font-mono border transition-colors focus:outline-none"
+                    className="w-full px-4 h-10 rounded-[8px] font-body text-sm border transition-colors focus:outline-none focus:border-[var(--accent)]"
                     style={{
                       background: "var(--bg-elevated)",
                       borderColor: "var(--border-default)",

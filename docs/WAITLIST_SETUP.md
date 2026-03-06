@@ -7,7 +7,7 @@ In **Supabase → SQL Editor**, run:
 ```sql
 create table if not exists public.waitlist_signups (
   id uuid primary key default gen_random_uuid(),
-  email text not null,
+  email text not null unique,
   wallet text,
   name text,
   created_at timestamptz not null default now()
@@ -16,6 +16,8 @@ create table if not exists public.waitlist_signups (
 create index if not exists idx_waitlist_signups_created_at
   on public.waitlist_signups (created_at desc);
 ```
+
+If the table already exists without `unique`, add it: `alter table public.waitlist_signups add constraint waitlist_signups_email_key unique (email);`
 
 ## 2. API env vars
 

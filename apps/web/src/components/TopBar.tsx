@@ -26,11 +26,11 @@ export function TopBar() {
         borderBottom: "1px solid var(--border-subtle)",
       }}
     >
-      <Link href="/" onClick={() => hapticLight()} className="flex items-center gap-2 py-2">
+      <Link href="/" onClick={() => hapticLight()} className="flex items-center gap-2 py-2 topbar-logo-wrap">
         <img
           src="/brand/mark.svg"
           alt="Siren"
-          className="h-8 w-auto md:h-9"
+          className="h-8 w-auto md:h-9 topbar-logo"
           style={{ display: "block" }}
         />
       </Link>

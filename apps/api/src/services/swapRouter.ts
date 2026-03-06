@@ -47,6 +47,7 @@ export interface SwapOrderParams {
   userPublicKey: string;
   slippageBps?: number;
   tryDflowFirst?: boolean;
+  countryCode?: string | null;
 }
 
 export interface SwapOrderResult {

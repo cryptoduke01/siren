@@ -52,10 +52,10 @@ html.light {
   --border-subtle: #D8D8E4;
   --border-default: #C4C4D4;
   --border-active: #A8A8BC;
-  --accent: #5C6B00;
+  --accent: #2D5C00;
   --accent-dim: #D4FF0024;
   --accent-text: #FAFAFC;
-  --bags: #00A858;
+  --bags: #008848;
   --bags-dim: #00FF8520;
   --kalshi: #2BA86E;
   --text-1: #16161D;
@@ -66,6 +66,11 @@ html.light {
   --down: #D92B4A;
   --down-dim: #FF456018;
   --yellow: #C78A00;
+}
+
+/* Light mode: logo visible (darken green mark) */
+html.light .topbar-logo {
+  filter: brightness(0.25);
 }
 
 * {
