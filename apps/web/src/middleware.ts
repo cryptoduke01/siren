@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-/** On production (onsiren.xyz): terminal is gated. Only /waitlist, /admin, /access, /preview (and static) are allowed without cookie. */
+/** Terminal gate: when enabled, / and terminal routes require siren_access cookie. Set SIREN_GATE_ENABLED=true on Vercel to force. */
 const ACCESS_COOKIE = "siren_access";
 const TERMINAL_PATHS = ["/", "/portfolio", "/trending", "/watchlist", "/onboarding"];
 
@@ -11,12 +11,16 @@ function isTerminalPath(pathname: string) {
 
 export function middleware(req: NextRequest) {
   const host = req.headers.get("host") || "";
+  const forwardedHost = (req.headers.get("x-forwarded-host") || "").split(",")[0]?.trim() || "";
+  const hostStr = `${host} ${forwardedHost}`.toLowerCase();
+  const forceGate = process.env.SIREN_GATE_ENABLED === "true" || process.env.SIREN_GATE_ENABLED === "1";
+  const isProdHost = hostStr.includes("onsiren.xyz");
+  const shouldGate = forceGate || isProdHost;
+
   const url = req.nextUrl.clone();
   const pathname = url.pathname;
 
-  const isProdHost = host.includes("onsiren.xyz");
-
-  if (isProdHost) {
+  if (shouldGate) {
     const allowedWithoutCookie =
       pathname === "/waitlist" ||
       pathname === "/admin" ||
@@ -25,6 +29,7 @@ export function middleware(req: NextRequest) {
       pathname.startsWith("/_next") ||
       pathname.startsWith("/api") ||
       pathname === "/icon.svg" ||
+      pathname === "/favicon.ico" ||
       pathname.startsWith("/brand") ||
       pathname === "/manifest.json";
 

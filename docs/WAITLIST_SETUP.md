@@ -40,3 +40,5 @@ Use the **service_role** key, not the anon/publishable key.
 ## 4. Access code (production)
 
 On `onsiren.xyz`, terminal routes (`/`, `/portfolio`, etc.) require an access code. Set **`SIREN_ACCESS_CODE`** in **`apps/api/.env`** (the main API env). The web app validates via `POST /api/access/validate`; users who click “Go to terminal” or any nav link are sent to `/access` to enter the code.
+
+**Force the gate on Vercel:** Add **`SIREN_GATE_ENABLED=true`** to your **web** app env on Vercel. This makes the terminal gate run on any host.
