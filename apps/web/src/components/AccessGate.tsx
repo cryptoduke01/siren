@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { XCircle } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
+import { PasscodeDigits } from "@/components/PasscodeDigits";
 
 const ACCESS_COOKIE = "siren_access";
 const TERMINAL_PATHS = ["/", "/portfolio", "/trending", "/watchlist", "/onboarding"];
@@ -46,31 +47,31 @@ export function AccessGate({ children }: { children: React.ReactNode }) {
     setStatus("gated");
   }, [pathname]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = () => {
+    if (!code.trim() || code.length !== 6) return;
     hapticLight();
     setError(null);
-    if (!code.trim()) return;
     setLoading(true);
-    try {
-      const res = await fetch("/api/access", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.trim() }),
+    fetch("/api/access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code.trim() }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.ok) {
+          setError(data.error || "Invalid code");
+          setLoading(false);
+          return;
+        }
+        setStatus("allowed");
+        setCode("");
+        window.location.reload();
+      })
+      .catch(() => {
+        setError("Something went wrong");
+        setLoading(false);
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Invalid code");
-        return;
-      }
-      setStatus("allowed");
-      setCode("");
-      window.location.reload();
-    } catch {
-      setError("Something went wrong");
-    } finally {
-      setLoading(false);
-    }
   };
 
   if (status === "checking") {
@@ -98,36 +99,15 @@ export function AccessGate({ children }: { children: React.ReactNode }) {
           <h1 className="font-heading font-bold text-xl mb-2" style={{ color: "var(--text-1)" }}>
             Enter access code
           </h1>
-          <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
-            The terminal is invite-only. Enter the code you received to continue.
-          </p>
-          <form onSubmit={handleSubmit}>
-            <div
-              className="w-full rounded-[10px] border-2 overflow-hidden flex flex-col sm:flex-row"
-              style={{ borderColor: "var(--border-default)" }}
-            >
-              <input
-                type="password"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Access code"
-                className="flex-1 min-w-0 px-4 h-12 font-body text-sm focus:outline-none focus:border-[var(--accent)] focus:ring-0 border-0 rounded-none"
-                style={{
-                  background: "var(--bg-elevated)",
-                  color: "var(--text-1)",
-                }}
-                autoComplete="one-time-code"
-              />
-              <button
-                type="submit"
-                disabled={loading || !code.trim()}
-                className="h-12 px-6 font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed border-0 rounded-none shrink-0"
-                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-              >
-                {loading ? "…" : "Go"}
-              </button>
-            </div>
-          </form>
+          <PasscodeDigits
+            value={code}
+            onChange={setCode}
+            onSubmit={handleSubmit}
+            loading={loading}
+            error={error}
+            label="Enter the 6-digit access code to continue"
+            submitLabel="Continue"
+          />
           <p className="font-body text-xs mt-6 text-center" style={{ color: "var(--text-2)" }}>
             Don’t have a code?{" "}
             <Link href="/waitlist" className="underline" style={{ color: "var(--accent)" }} onClick={() => hapticLight()}>

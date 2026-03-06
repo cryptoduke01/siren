@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { XCircle } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
+import { PasscodeDigits } from "@/components/PasscodeDigits";
 
 type WaitlistRow = {
   id: string;
@@ -24,6 +25,19 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const handlePassSubmit = () => {
+    if (input.trim() === ADMIN_PASSCODE) {
+      setHasAccess(true);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(STORAGE_KEY, "true");
+      }
+      setInput("");
+      setError(null);
+    } else {
+      setError("Incorrect passcode.");
+    }
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -36,20 +50,6 @@ export default function AdminPage() {
     if (!hasAccess) return;
     void loadRows();
   }, [hasAccess]);
-
-  const handlePassSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (input.trim() === ADMIN_PASSCODE) {
-      setHasAccess(true);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, "true");
-      }
-      setInput("");
-      setError(null);
-    } else {
-      setError("Incorrect passcode.");
-    }
-  };
 
   const loadRows = async () => {
     setLoading(true);
@@ -78,30 +78,14 @@ export default function AdminPage() {
           <h1 className="font-heading font-bold text-xl mb-2" style={{ color: "var(--text-1)" }}>
             Admin access
           </h1>
-          <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
-            Enter the admin passcode to view waitlist signups.
-          </p>
-          <form onSubmit={handlePassSubmit} className="space-y-4">
-            <input
-              type="password"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Passcode"
-              className="w-full px-4 h-12 rounded-[10px] font-body text-sm border-2 transition-colors focus:outline-none focus:border-[var(--accent)]"
-              style={{
-                background: "var(--bg-elevated)",
-                borderColor: "var(--border-default)",
-                color: "var(--text-1)",
-              }}
-            />
-            <button
-              type="submit"
-              className="w-full h-12 rounded-[10px] font-heading font-semibold text-sm uppercase tracking-[0.1em] border-2 border-transparent"
-              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-            >
-              Enter
-            </button>
-          </form>
+          <PasscodeDigits
+            value={input}
+            onChange={setInput}
+            onSubmit={handlePassSubmit}
+            error={error}
+            label="Enter the 6-digit passcode to continue"
+            submitLabel="Enter"
+          />
         </div>
 
         <AnimatePresence>
