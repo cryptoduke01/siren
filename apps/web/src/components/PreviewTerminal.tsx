@@ -17,37 +17,37 @@ const MOCK_TOKENS = [
 
 export function PreviewTerminal() {
   return (
-    <div className="app-shell h-[260px] min-h-[260px]">
-      <aside className="left-panel overflow-hidden" style={{ background: "var(--bg-base)", borderRight: "1px solid var(--border-subtle)" }}>
-        <div className="flex-shrink-0 px-3 pt-3 pb-1">
-          <h2 className="font-heading font-semibold text-[10px]" style={{ letterSpacing: "0.15em", color: "var(--text-3)" }}>
+    <div className="flex h-[260px] min-h-[260px] w-full">
+      <aside className="w-[140px] flex-shrink-0 overflow-hidden flex flex-col" style={{ background: "var(--bg-base)", borderRight: "1px solid var(--border-subtle)" }}>
+        <div className="flex-shrink-0 px-2 pt-2 pb-1">
+          <h2 className="font-heading font-semibold text-[10px]" style={{ letterSpacing: "0.1em", color: "var(--text-3)" }}>
             MARKETS
           </h2>
         </div>
-        <div className="flex-shrink-0 px-3 pb-1">
+        <div className="flex-shrink-0 px-2 pb-1">
           <input
             type="text"
-            placeholder="Search markets..."
+            placeholder="Search..."
             readOnly
-            className="w-full font-mono text-[11px] h-7 px-2 rounded-[6px] border"
+            className="w-full font-mono text-[10px] h-6 px-2 rounded-[4px] border"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
           />
         </div>
-        <ul className="overflow-y-auto scrollbar-hidden px-2 pb-2" style={{ maxHeight: 140 }}>
+        <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-1.5 pb-1 space-y-1">
           {MOCK_MARKETS.map((m) => (
             <li
               key={m.ticker}
-              className="rounded-[6px] p-2 mb-1 cursor-default"
+              className="rounded-[4px] p-1.5 flex-shrink-0"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
             >
-              <p className="font-body text-[11px] truncate mb-1" style={{ color: "var(--text-1)" }}>
+              <p className="font-body text-[10px] truncate mb-0.5" style={{ color: "var(--text-1)" }}>
                 {m.title}
               </p>
               <div className="flex justify-between items-center">
-                <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--accent)" }}>
+                <span className="font-mono text-[9px] tabular-nums" style={{ color: "var(--accent)" }}>
                   {m.probability}%
                 </span>
-                <span className="font-mono text-[10px] tabular-nums" style={{ color: m.velocity >= 0 ? "var(--up)" : "var(--down)" }}>
+                <span className="font-mono text-[9px] tabular-nums" style={{ color: m.velocity >= 0 ? "var(--up)" : "var(--down)" }}>
                   {m.velocity >= 0 ? "+" : ""}{m.velocity}%/hr
                 </span>
               </div>
@@ -55,37 +55,35 @@ export function PreviewTerminal() {
           ))}
         </ul>
       </aside>
-      <main className="main-panel overflow-hidden p-3" style={{ background: "var(--bg-void)" }}>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-heading font-semibold text-xs" style={{ color: "var(--text-1)" }}>
-            Tokens
-          </h2>
-        </div>
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden p-2" style={{ background: "var(--bg-void)" }}>
+        <h2 className="font-heading font-semibold text-[11px] flex-shrink-0 mb-1.5" style={{ color: "var(--text-1)" }}>
+          Tokens
+        </h2>
         <input
           type="text"
-          placeholder="Search by name, symbol, or contract address"
+          placeholder="Search tokens..."
           readOnly
-          className="w-full font-mono text-[11px] h-7 px-2 rounded-[6px] border mb-3"
+          className="w-full font-mono text-[10px] h-6 px-2 rounded-[4px] border flex-shrink-0 mb-2"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
         />
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5 min-h-0 overflow-auto flex-1 content-start">
           {MOCK_TOKENS.map((t) => (
             <div
               key={t.symbol}
-              className="rounded-[6px] p-2 border"
+              className="rounded-[4px] p-1.5 border flex-shrink-0"
               style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
             >
-              <p className="font-heading font-bold text-xs truncate mb-1" style={{ color: "var(--text-1)" }}>
+              <p className="font-heading font-bold text-[10px] truncate mb-0.5" style={{ color: "var(--text-1)" }}>
                 ${t.symbol}
               </p>
-              <p className="font-body text-[10px] truncate mb-1" style={{ color: "var(--text-2)" }}>
+              <p className="font-body text-[9px] truncate mb-0.5" style={{ color: "var(--text-2)" }}>
                 {t.name}
               </p>
               <div className="flex justify-between items-center">
-                <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--text-1)" }}>
+                <span className="font-mono text-[9px] tabular-nums" style={{ color: "var(--text-1)" }}>
                   ${t.price.toFixed(4)}
                 </span>
-                <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                <span className="font-mono text-[9px] tabular-nums" style={{ color: "var(--text-3)" }}>
                   {t.vol}
                 </span>
               </div>

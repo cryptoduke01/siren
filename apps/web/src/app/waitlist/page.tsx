@@ -56,7 +56,7 @@ export default function WaitlistPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
+    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: "var(--bg-void)" }}>
       <TopBar />
       <main className="flex-1 px-4 py-10 md:py-16">
         <div className="mx-auto w-full max-w-5xl grid gap-10 md:grid-cols-2 items-center">
@@ -66,7 +66,7 @@ export default function WaitlistPage() {
                 className="font-heading font-bold text-4xl md:text-[58px] leading-[1.03] mb-4"
                 style={{ color: "var(--text-1)" }}
               >
-                Join the Siren waitlist
+                Join the Siren Waitlist
               </h1>
               <p
                 className="font-body text-sm md:text-base max-w-xl"
@@ -206,7 +206,7 @@ export default function WaitlistPage() {
                 ) : submittedSuccess ? (
                   "You're on the list"
                 ) : (
-                  "Join waitlist"
+                  "Join Waitlist"
                 )}
               </button>
               <p className="font-body text-[12px] mt-3 text-center" style={{ color: "var(--text-2)" }}>

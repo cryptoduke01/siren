@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+/** On production (onsiren.xyz): terminal is gated. Only /waitlist, /admin, /access, /preview (and static) are allowed without cookie. */
 const ACCESS_COOKIE = "siren_access";
 const TERMINAL_PATHS = ["/", "/portfolio", "/trending", "/watchlist", "/onboarding"];
 

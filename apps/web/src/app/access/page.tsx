@@ -41,7 +41,7 @@ export default function AccessPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
+    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: "var(--bg-void)" }}>
       <TopBar />
       <main className="flex-1 flex items-center justify-center px-4">
         <div
@@ -80,7 +80,7 @@ export default function AccessPage() {
           <p className="font-body text-xs mt-6 text-center" style={{ color: "var(--text-2)" }}>
             Don’t have a code?{" "}
             <Link href="/waitlist" className="underline" style={{ color: "var(--accent)" }} onClick={() => hapticLight()}>
-              Join the waitlist
+              Join the Waitlist
             </Link>
           </p>
         </div>

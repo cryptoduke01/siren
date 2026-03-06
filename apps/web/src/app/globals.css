@@ -84,6 +84,7 @@ body {
   background: var(--bg-void);
   color: var(--text-1);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 ::-webkit-scrollbar {

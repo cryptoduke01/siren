@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { hapticLight } from "@/lib/haptics";
 
@@ -28,15 +29,17 @@ const STEPS = [
 export function OnboardingModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState(0);
+  const pathname = usePathname();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (pathname === "/waitlist" || pathname === "/access") return;
     const seen = localStorage.getItem(ONBOARDING_KEY);
     if (!seen) {
       const t = setTimeout(() => setIsOpen(true), 800);
       return () => clearTimeout(t);
     }
-  }, []);
+  }, [pathname]);
 
   const handleClose = () => {
     hapticLight();

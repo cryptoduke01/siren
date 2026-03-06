@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { WalletButton } from "./WalletButton";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
+import { WaitlistHeader } from "./WaitlistHeader";
 
 const NAV = [
   { href: "/", label: "Terminal" },
@@ -17,6 +18,10 @@ const NAV = [
 export function TopBar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useThemeStore();
+
+  if (pathname === "/waitlist") {
+    return <WaitlistHeader />;
+  }
 
   return (
     <header
