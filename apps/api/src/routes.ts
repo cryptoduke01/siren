@@ -13,16 +13,26 @@ const SOL_MINT = "So11111111111111111111111111111111111111112";
 export function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true, ts: Date.now() }));
 
-  /** Waitlist signup. Store in DB/CRM when ready. */
+  /** Waitlist signup. Store in DB/CRM when ready. Reject if email already exists. */
   app.post<{ Body: { email: string; wallet?: string; name?: string; building?: string } }>("/api/waitlist", async (req, reply) => {
     const { email, wallet, name } = req.body || {};
     if (!email || typeof email !== "string" || !email.includes("@")) {
       return reply.status(400).send({ success: false, error: "Valid email required" });
     }
+    const normalizedEmail = email.trim().toLowerCase();
     try {
       const supabase = getSupabaseAdminClient();
+      const { data: existing } = await supabase
+        .from("waitlist_signups")
+        .select("id")
+        .eq("email", normalizedEmail)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        return reply.status(409).send({ success: false, error: "You're already on the waitlist." });
+      }
       const payload = {
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         wallet: wallet?.trim() || null,
         name: name?.trim() || null,
         created_at: new Date().toISOString(),
@@ -67,6 +77,21 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch waitlist" });
+    }
+  });
+
+  /** Admin: delete a waitlist signup by id. */
+  app.delete<{ Params: { id: string } }>("/api/admin/waitlist/:id", async (req, reply) => {
+    const { id } = req.params;
+    if (!id?.trim()) return reply.status(400).send({ success: false, error: "id required" });
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { error } = await supabase.from("waitlist_signups").delete().eq("id", id.trim());
+      if (error) return reply.status(503).send({ success: false, error: error.message || "Delete failed" });
+      return reply.send({ success: true });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to delete" });
     }
   });
 

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { XCircle } from "lucide-react";
+import { XCircle, Trash2 } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { PasscodeDigits } from "@/components/PasscodeDigits";
+import { AdminNav } from "@/components/AdminNav";
 
 type WaitlistRow = {
   id: string;
@@ -65,6 +66,18 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Failed to load waitlist.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    hapticLight();
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete");
     }
   };
 
@@ -131,7 +144,9 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-8" style={{ background: "var(--bg-void)", color: "var(--text-1)" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)", color: "var(--text-1)" }}>
+      <AdminNav />
+      <div className="flex-1 px-4 py-8">
       <div className="max-w-5xl mx-auto">
         <header className="flex items-center justify-between mb-6">
           <h1 className="font-heading text-xl">Waitlist admin</h1>
@@ -203,12 +218,15 @@ export default function AdminPage() {
                 <th className="px-3 py-2 border-b" style={{ borderColor: "var(--border-subtle)" }}>
                   Wallet
                 </th>
+                <th className="px-3 py-2 border-b w-20" style={{ borderColor: "var(--border-subtle)" }}>
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-3 text-center text-xs" colSpan={4} style={{ color: "var(--text-3)" }}>
+                  <td className="px-3 py-3 text-center text-xs" colSpan={5} style={{ color: "var(--text-3)" }}>
                     No signups yet.
                   </td>
                 </tr>
@@ -223,12 +241,24 @@ export default function AdminPage() {
                     <td className="px-3 py-2 align-top font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
                       {row.wallet || "—"}
                     </td>
+                    <td className="px-3 py-2 align-top">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(row.id)}
+                        className="p-2 rounded-[8px] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                        style={{ color: "var(--down)", background: "transparent" }}
+                        aria-label="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </div>
   );
