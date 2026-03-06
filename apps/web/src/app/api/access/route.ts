@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const COOKIE_NAME = "siren_access";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export async function POST(req: NextRequest) {
@@ -21,9 +20,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: data.error || "Invalid code" }, { status: 403 });
     }
     const out = NextResponse.json({ ok: true });
+    // Session cookie: no maxAge so browser drops it when closed; user must re-enter code after restart
     out.cookies.set(COOKIE_NAME, "1", {
       path: "/",
-      maxAge: COOKIE_MAX_AGE,
       sameSite: "lax",
       httpOnly: false,
       secure: process.env.NODE_ENV === "production",
@@ -32,4 +31,11 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid request" }, { status: 400 });
   }
+}
+
+/** Clear access cookie so user must re-enter code (e.g. sign out from terminal). */
+export async function DELETE() {
+  const res = NextResponse.json({ ok: true });
+  res.cookies.set(COOKIE_NAME, "", { path: "/", maxAge: 0 });
+  return res;
 }
