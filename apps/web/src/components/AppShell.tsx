@@ -7,6 +7,7 @@ import { OnboardingModal } from "./OnboardingModal";
 import { IssueBadge } from "./IssueBadge";
 import { AlertChecker } from "./AlertChecker";
 import { RegisterSW } from "./RegisterSW";
+import { AccessGate } from "./AccessGate";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -14,7 +15,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ThemeSync />
       <RegisterSW />
       <AlertChecker />
-      {children}
+      <AccessGate>
+        {children}
+      </AccessGate>
       <UnifiedBuyPanel />
       <ToastContainer />
       <OnboardingModal />

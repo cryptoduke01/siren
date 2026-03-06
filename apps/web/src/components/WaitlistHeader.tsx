@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
-import { WalletButton } from "./WalletButton";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -106,9 +105,6 @@ export function WaitlistHeader() {
                   >
                     {theme === "dark" ? "☀" : "☽"}
                   </button>
-                </div>
-                <div className="pt-2">
-                  <WalletButton />
                 </div>
               </nav>
             </motion.aside>

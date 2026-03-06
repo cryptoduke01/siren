@@ -40,7 +40,7 @@ export function middleware(req: NextRequest) {
     if (isTerminalPath(pathname)) {
       const hasAccess = req.cookies.get(ACCESS_COOKIE)?.value === "1";
       if (!hasAccess) {
-        url.pathname = "/access";
+        url.pathname = pathname === "/" ? "/waitlist" : "/access";
         return NextResponse.redirect(url);
       }
     } else {
