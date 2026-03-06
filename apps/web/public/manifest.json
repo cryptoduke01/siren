@@ -4,8 +4,8 @@
   "description": "Event-driven meme token terminal. Kalshi markets, Bags tokens.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#060609",
-  "theme_color": "#D4FF00",
+  "background_color": "#000000",
+  "theme_color": "#00FF85",
   "icons": [
     {
       "src": "/icon.svg",

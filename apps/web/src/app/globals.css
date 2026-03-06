@@ -14,15 +14,16 @@
   --border-subtle: #1C1C2E;
   --border-default: #252538;
   --border-active: #363654;
-  --accent: #D4FF00;
-  --accent-dim: #D4FF0018;
+  --accent: #00FF85;
+  --accent-dim: #00FF8514;
   --accent-text: #060609;
   --bags: #00FF85;
   --bags-dim: #00FF8514;
   --kalshi: #5DDFB0;
   --text-1: #F0F0F5;
-  --text-2: #8888A8;
-  --text-3: #44445A;
+  --text-2: #B0B0C8;
+  --text-3: #7878A0;
+  --placeholder: #9090B0;
   --up: #00E87A;
   --down: #FF4560;
   --down-dim: #FF456014;
@@ -58,8 +59,9 @@ html.light {
   --bags-dim: #00FF8520;
   --kalshi: #2BA86E;
   --text-1: #16161D;
-  --text-2: #44445A;
-  --text-3: #6B6B80;
+  --text-2: #505068;
+  --text-3: #383850;
+  --placeholder: #606078;
   --up: #00B85C;
   --down: #D92B4A;
   --down-dim: #FF456018;
@@ -86,6 +88,12 @@ body {
 * {
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* Brighter placeholders for inputs */
+::placeholder {
+  color: var(--placeholder);
+  opacity: 1;
 }
 
 /* Skeleton shimmer — no spinner, no "Loading..." text */

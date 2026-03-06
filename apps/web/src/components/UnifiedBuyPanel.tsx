@@ -57,6 +57,7 @@ export function UnifiedBuyPanel() {
   const [solAmount, setSolAmount] = useState("");
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
+  const [slippageBps, setSlippageBps] = useState(200);
 
   useEffect(() => {
     if (openForSell && selectedToken) setSellMode(true);
@@ -72,7 +73,7 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
   };
 
-  const executeJupiterSwap = async () => {
+  const executeSwap = async () => {
     hapticLight();
     if (!connected || !publicKey || !selectedToken || !signTransaction) {
       setError("Connect your wallet to execute trades.");
@@ -83,6 +84,10 @@ export function UnifiedBuyPanel() {
     setLoading(true);
     try {
       const isSell = !!sellMode;
+      let inputMint: string;
+      let outputMint: string;
+      let amount: string;
+
       if (isSell) {
         const amountStr = sellAmount?.trim() || "0";
         const amountNum = parseFloat(amountStr);
@@ -92,40 +97,9 @@ export function UnifiedBuyPanel() {
           return;
         }
         const decimals = 6;
-        const amountInSmallestUnit = BigInt(Math.floor(amountNum * 10 ** decimals));
-        const quoteRes = await fetch(
-          `${API_URL}/api/jupiter/quote?inputMint=${selectedToken.mint}&outputMint=${NATIVE_SOL_MINT}&amount=${amountInSmallestUnit.toString()}&slippageBps=200`
-        );
-        const quote = await quoteRes.json();
-        if (!quoteRes.ok) {
-          const msg = quoteRes.status === 503 && (quote.error || "").toLowerCase().includes("jupiter")
-            ? "Jupiter API key not configured. Add JUPITER_API_KEY to apps/api/.env (see .env.example)."
-            : (quote.error || quote.message || "Quote failed");
-          throw new Error(msg);
-        }
-        if (quote.error) throw new Error(quote.error || quote.message || "Quote failed");
-        const swapRes = await fetch(`${API_URL}/api/jupiter/swap`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quoteResponse: quote, userPublicKey: publicKey.toBase58() }),
-        });
-        const swapData = await swapRes.json();
-        if (!swapRes.ok) {
-          const msg = swapRes.status === 503 && (swapData.error || "").toLowerCase().includes("jupiter")
-            ? "Jupiter API key not configured. Add JUPITER_API_KEY to apps/api/.env (see .env.example)."
-            : (swapData.error || swapData.message || "Swap build failed");
-          throw new Error(msg);
-        }
-        if (swapData.error) throw new Error(swapData.error || swapData.message || "Swap build failed");
-        const swapTransactionB64 = swapData.swapTransaction;
-        if (!swapTransactionB64) throw new Error("No swap transaction returned");
-        const swapTransactionBuf = Buffer.from(swapTransactionB64, "base64");
-        const tx = VersionedTransaction.deserialize(swapTransactionBuf);
-        const signed = await signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-        await connection.confirmTransaction(sig, "confirmed");
-        setSuccess(`Sold! Tx: ${sig.slice(0, 8)}...`);
-        setSellAmount("");
+        amount = String(BigInt(Math.floor(amountNum * 10 ** decimals)));
+        inputMint = selectedToken.mint;
+        outputMint = NATIVE_SOL_MINT;
       } else {
         const amountStr = solAmount?.trim() || "";
         const amountNum = parseFloat(amountStr);
@@ -134,40 +108,36 @@ export function UnifiedBuyPanel() {
           setLoading(false);
           return;
         }
-        const amountLamports = Math.floor(amountNum * LAMPORTS_PER_SOL);
-        const quoteRes = await fetch(
-          `${API_URL}/api/jupiter/quote?inputMint=${NATIVE_SOL_MINT}&outputMint=${selectedToken.mint}&amount=${amountLamports}&slippageBps=200`
-        );
-        const quote = await quoteRes.json();
-        if (!quoteRes.ok) {
-          const msg = quoteRes.status === 503 && (quote.error || "").toLowerCase().includes("jupiter")
-            ? "Jupiter API key not configured. Add JUPITER_API_KEY to apps/api/.env (see .env.example)."
-            : (quote.error || quote.message || "Quote failed");
-          throw new Error(msg);
-        }
-        if (quote.error) throw new Error(quote.error || quote.message || "Quote failed");
-        const swapRes = await fetch(`${API_URL}/api/jupiter/swap`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quoteResponse: quote, userPublicKey: publicKey.toBase58() }),
-        });
-        const swapData = await swapRes.json();
-        if (!swapRes.ok) {
-          const msg = swapRes.status === 503 && (swapData.error || "").toLowerCase().includes("jupiter")
-            ? "Jupiter API key not configured. Add JUPITER_API_KEY to apps/api/.env (see .env.example)."
-            : (swapData.error || swapData.message || "Swap build failed");
-          throw new Error(msg);
-        }
-        if (swapData.error) throw new Error(swapData.error || swapData.message || "Swap build failed");
-        const swapTransactionB64 = swapData.swapTransaction;
-        if (!swapTransactionB64) throw new Error("No swap transaction returned");
-        const swapTransactionBuf = Buffer.from(swapTransactionB64, "base64");
-        const tx = VersionedTransaction.deserialize(swapTransactionBuf);
-        const signed = await signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-        await connection.confirmTransaction(sig, "confirmed");
-        setSuccess(`Swap successful! ${sig.slice(0, 8)}...`);
+        amount = String(Math.floor(amountNum * LAMPORTS_PER_SOL));
+        inputMint = NATIVE_SOL_MINT;
+        outputMint = selectedToken.mint;
       }
+
+      const res = await fetch(`${API_URL}/api/swap/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inputMint,
+          outputMint,
+          amount,
+          userPublicKey: publicKey.toBase58(),
+          slippageBps,
+          tryDflowFirst: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Swap failed");
+      }
+      const txB64 = data.transaction;
+      if (!txB64) throw new Error("No transaction returned");
+      const txBuf = Buffer.from(txB64, "base64");
+      const tx = VersionedTransaction.deserialize(txBuf);
+      const signed = await signTransaction(tx);
+      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      await connection.confirmTransaction(sig, "confirmed");
+      setSuccess(isSell ? `Sold! Tx: ${sig.slice(0, 8)}...` : `Swap successful! ${sig.slice(0, 8)}...`);
+      if (isSell) setSellAmount("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const friendly = msg.includes("0x1771") || msg.toLowerCase().includes("slippage") ? "Price moved. Try a smaller amount." : msg;
@@ -257,6 +227,22 @@ export function UnifiedBuyPanel() {
                     <p className="font-mono text-[var(--accent-bags)] mt-2 text-sm tabular-nums">
                       Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} SOL
                     </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
+                        MEV protected
+                      </span>
+                      <span className="text-[10px] text-[var(--text-3)]">Slippage:</span>
+                      {[100, 200, 500].map((bps) => (
+                        <button
+                          key={bps}
+                          type="button"
+                          onClick={() => { hapticLight(); setSlippageBps(bps); }}
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${slippageBps === bps ? "bg-[var(--accent)] text-[var(--accent-text)]" : "bg-[var(--bg-surface)] text-[var(--text-2)] hover:text-[var(--text-1)]"}`}
+                        >
+                          {(bps / 100).toFixed(1)}%
+                        </button>
+                      ))}
+                    </div>
                     {!sellMode ? (
                       <>
                         <div className="mt-3">
@@ -273,12 +259,12 @@ export function UnifiedBuyPanel() {
                           />
                         </div>
                         <button
-                          onClick={executeJupiterSwap}
+                          onClick={executeSwap}
                           disabled={loading}
                           className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
                           style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
                         >
-                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Swapping…</> : `Buy ${selectedToken.symbol} (Jupiter)`}
+                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Swapping…</> : `Buy ${selectedToken.symbol}`}
                         </button>
                       </>
                     ) : (
@@ -297,7 +283,7 @@ export function UnifiedBuyPanel() {
                           />
                         </div>
                         <button
-                          onClick={executeJupiterSwap}
+                          onClick={executeSwap}
                           disabled={loading}
                           className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
                           style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
@@ -343,7 +329,7 @@ export function UnifiedBuyPanel() {
                       </p>
                       <p className="flex justify-between">
                         <span className="text-[var(--text-3)]">Swap</span>
-                        <span className="text-[var(--text-2)]">Jupiter</span>
+                        <span className="text-[var(--text-2)]">DFlow / Jupiter</span>
                       </p>
                     </div>
                     <p className="text-[10px] text-[var(--text-3)] mt-3 leading-relaxed">
@@ -355,7 +341,7 @@ export function UnifiedBuyPanel() {
               </div>
               {error && <p className="text-sm mt-3" style={{ color: "var(--red)" }}>{error}</p>}
               {success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
-              <p className="text-[var(--text-secondary)] text-xs mt-4">Connect wallet. Markets: trade on Kalshi. Tokens: Jupiter.</p>
+              <p className="text-[var(--text-secondary)] text-xs mt-4">Connect wallet. Markets: Kalshi. Swaps: DFlow (market tokens) or Jupiter (fallback). MEV protected.</p>
             </div>
           </motion.div>
         </motion.div>

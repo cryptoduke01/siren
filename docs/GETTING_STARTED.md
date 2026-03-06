@@ -75,6 +75,7 @@ Edit `.env` and fill only what you have:
 - **Minimum to run:** With `DFLOW_API_KEY` set, use production URLs (`e.prediction-markets-api.dflow.net`, `e.quote-api.dflow.net`). Without a key, you can try dev URLs for testing (rate-limited).
 - **For real trading:** Set `DFLOW_API_KEY` and `BAGS_API_KEY`.
 - **For DB/Redis later:** Set `DATABASE_URL` and `REDIS_URL` when you add Postgres/Redis.
+- **For waitlist:** Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (from Supabase → Settings → API). Create the `waitlist_signups` table in the SQL editor; see `docs/WAITLIST_SETUP.md`.
 
 ### Frontend (`apps/web`)
 

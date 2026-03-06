@@ -3,13 +3,71 @@ import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
 import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats } from "./services/bags.js";
 import { getDflowOrder } from "./services/dflow.js";
+import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
+import { getSupabaseAdminClient } from "./services/supabase.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 export function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true, ts: Date.now() }));
+
+  /** Waitlist signup. Store in DB/CRM when ready. */
+  app.post<{ Body: { email: string; wallet?: string; name?: string; building?: string } }>("/api/waitlist", async (req, reply) => {
+    const { email, wallet, name } = req.body || {};
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return reply.status(400).send({ success: false, error: "Valid email required" });
+    }
+    try {
+      const supabase = getSupabaseAdminClient();
+      const payload = {
+        email: email.trim().toLowerCase(),
+        wallet: wallet?.trim() || null,
+        name: name?.trim() || null,
+        created_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from("waitlist_signups").insert(payload);
+      if (error) {
+        // If table isn't created yet, return a clear error for setup.
+        app.log.error({ err: error }, "Supabase waitlist insert failed");
+        return reply.status(503).send({ success: false, error: error.message || "Waitlist insert failed" });
+      }
+      return reply.send({ success: true, message: "Thanks for joining the waitlist" });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to join waitlist" });
+    }
+  });
+
+  /** Access code validation — used by web app to gate terminal on production. Code lives in API env. */
+  app.post<{ Body: { code?: string } }>("/api/access/validate", async (req, reply) => {
+    const { code } = req.body || {};
+    const secret = process.env.SIREN_ACCESS_CODE || "";
+    if (!secret || typeof code !== "string" || code.trim() !== secret) {
+      return reply.status(403).send({ ok: false, error: "Invalid code" });
+    }
+    return reply.send({ ok: true });
+  });
+
+  /** Admin: list waitlist signups (passcode gate happens on web). */
+  app.get<{ Querystring: { limit?: string; offset?: string } }>("/api/admin/waitlist", async (req, reply) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "50", 10) || 50, 1), 500);
+    const offset = Math.max(parseInt(req.query.offset || "0", 10) || 0, 0);
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from("waitlist_signups")
+        .select("id,email,wallet,name,created_at")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (error) return reply.status(503).send({ success: false, error: error.message || "Query failed" });
+      return reply.send({ success: true, data: data ?? [] });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch waitlist" });
+    }
+  });
 
   /** DFlow prediction market order: get quote + transaction. Geo-fenced for US/restricted. */
   app.get<{
@@ -117,6 +175,36 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch SOL price" });
+    }
+  });
+
+  /** Unified swap: DFlow first for prediction market tokens, Jupiter fallback. */
+  app.post<{
+    Body: { inputMint: string; outputMint: string; amount: string; userPublicKey: string; slippageBps?: number; tryDflowFirst?: boolean };
+    Querystring: { countryCode?: string };
+  }>("/api/swap/order", async (req, reply) => {
+    const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true } = req.body || {};
+    const countryCode = (req.body as { countryCode?: string })?.countryCode ?? req.query.countryCode ?? req.headers["cf-ipcountry"] ?? req.headers["x-country-code"];
+    if (!inputMint || !outputMint || !amount || !userPublicKey) {
+      return reply.status(400).send({ success: false, error: "inputMint, outputMint, amount, userPublicKey required" });
+    }
+    try {
+      const result = await getSwapOrder({
+        inputMint,
+        outputMint,
+        amount,
+        userPublicKey,
+        slippageBps: Number(slippageBps) || 200,
+        tryDflowFirst,
+        countryCode: countryCode as string | undefined,
+      });
+      if (result.error || !result.transaction) {
+        return reply.status(503).send({ success: false, error: result.error || "Swap failed" });
+      }
+      return reply.send({ success: true, provider: result.provider, transaction: result.transaction });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Swap failed" });
     }
   });
 

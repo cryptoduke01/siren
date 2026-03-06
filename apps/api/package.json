@@ -15,6 +15,7 @@
     "@fastify/websocket": "^11.0.1",
     "@prisma/client": "^6.0.0",
     "@siren/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.98.0",
     "bullmq": "^5.25.2",
     "dotenv": "^17.3.1",
     "fastify": "^5.1.0",

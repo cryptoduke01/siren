@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletModal } from "./WalletModal";
 import { useWalletTypeStore } from "@/store/useWalletTypeStore";
@@ -12,6 +12,8 @@ export function WalletButton() {
   const { setWalletType } = useWalletTypeStore();
   const [modalOpen, setModalOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const isWaitlist = pathname === "/waitlist";
 
   const short = publicKey
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`
@@ -27,15 +29,16 @@ export function WalletButton() {
     return (
       <button
         onClick={handleDisconnect}
-        title="Click to disconnect"
-        className="font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+        title="Log out"
+        className="font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] flex items-center gap-2"
         style={{
           background: "var(--bg-elevated)",
           border: "1px solid var(--border-default)",
           color: "var(--text-2)",
         }}
       >
-        {short}
+        <span>{short}</span>
+        {isWaitlist && <span className="font-body font-medium uppercase tracking-wider" style={{ color: "var(--text-1)" }}>Log out</span>}
       </button>
     );
   }

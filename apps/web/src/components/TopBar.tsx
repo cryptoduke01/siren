@@ -11,6 +11,7 @@ const NAV = [
   { href: "/trending", label: "Trending" },
   { href: "/watchlist", label: "Watchlist" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/waitlist", label: "Waitlist" },
 ];
 
 export function TopBar() {
@@ -19,19 +20,19 @@ export function TopBar() {
 
   return (
     <header
-      className="h-[44px] flex items-center justify-between px-4"
+      className="h-[56px] flex items-center justify-between px-5"
       style={{
         background: "var(--bg-base)",
         borderBottom: "1px solid var(--border-subtle)",
       }}
     >
-      <Link
-        href="/"
-        className="font-heading font-bold text-[18px]"
-        style={{ color: "var(--accent)", letterSpacing: "0.2em" }}
-        onClick={() => hapticLight()}
-      >
-        SIREN
+      <Link href="/" onClick={() => hapticLight()} className="flex items-center gap-2 py-2">
+        <img
+          src="/brand/mark.svg"
+          alt="Siren"
+          className="h-8 w-auto md:h-9"
+          style={{ display: "block" }}
+        />
       </Link>
       <nav className="flex items-center gap-6">
         {NAV.map(({ href, label }) => {
