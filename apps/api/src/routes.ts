@@ -22,13 +22,22 @@ export function registerRoutes(app: FastifyInstance) {
     const normalizedEmail = email.trim().toLowerCase();
     try {
       const supabase = getSupabaseAdminClient();
-      const { data: existingRows } = await supabase
+
+      const { data: existingData, error: selectError } = await supabase
         .from("waitlist_signups")
         .select("id")
         .eq("email", normalizedEmail);
-      if (existingRows && Array.isArray(existingRows) && existingRows.length > 0) {
+
+      if (selectError) {
+        app.log.error({ err: selectError }, "Waitlist duplicate check failed");
+        return reply.status(503).send({ success: false, error: "Cannot check waitlist. Please try again." });
+      }
+
+      const existingList = Array.isArray(existingData) ? existingData : [];
+      if (existingList.length > 0) {
         return reply.status(409).send({ success: false, error: "You're already on the waitlist." });
       }
+
       const payload = {
         email: normalizedEmail,
         wallet: wallet?.trim() || null,
