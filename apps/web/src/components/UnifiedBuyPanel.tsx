@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { VersionedTransaction } from "@solana/web3.js";
+import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import { Copy, Check, Loader2, ExternalLink } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
+import { ResultModal } from "./ResultModal";
 import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -51,13 +53,35 @@ export function UnifiedBuyPanel() {
   const { connected, publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const addToast = useToastStore((s) => s.addToast);
+  const queryClient = useQueryClient();
+  const { data: solPriceUsd = 0 } = useQuery({
+    queryKey: ["sol-price"],
+    queryFn: () => fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
+    staleTime: 60_000,
+  });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [resultModal, setResultModal] = useState<{ type: "success" | "error"; title: string; message: string; txSignature?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [solAmount, setSolAmount] = useState("");
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
   const [slippageBps, setSlippageBps] = useState(200);
+
+  const { data: tokenBalance = 0 } = useQuery({
+    queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
+    queryFn: async () => {
+      if (!publicKey || !selectedToken || !sellMode) return 0;
+      const accounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+        mint: new PublicKey(selectedToken.mint),
+      });
+      const acc = accounts.value[0];
+      const info = (acc?.account?.data as { parsed?: { info?: { tokenAmount?: { uiAmount: number } } } })?.parsed?.info;
+      return info?.tokenAmount?.uiAmount ?? 0;
+    },
+    enabled: !!publicKey && !!selectedToken && sellMode,
+    staleTime: 10_000,
+  });
 
   useEffect(() => {
     if (openForSell && selectedToken) setSellMode(true);
@@ -71,6 +95,7 @@ export function UnifiedBuyPanel() {
     setBuyPanelOpen(false);
     setError(null);
     setSuccess(null);
+    setResultModal(null);
   };
 
   const executeSwap = async () => {
@@ -138,10 +163,14 @@ export function UnifiedBuyPanel() {
       await connection.confirmTransaction(sig, "confirmed");
       setSuccess(isSell ? `Sold! Tx: ${sig.slice(0, 8)}...` : `Swap successful! ${sig.slice(0, 8)}...`);
       if (isSell) setSellAmount("");
+      queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
+      setResultModal({ type: "success", title: "Swap complete", message: isSell ? `Sold ${selectedToken.symbol}.` : `Swap successful.`, txSignature: sig });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const friendly = msg.includes("0x1771") || msg.toLowerCase().includes("slippage") ? "Price moved. Try a smaller amount." : msg;
       setError(friendly);
+      setResultModal({ type: "error", title: "Swap failed", message: friendly });
       addToast(friendly, "error");
     } finally {
       setLoading(false);
@@ -157,11 +186,12 @@ export function UnifiedBuyPanel() {
     <AnimatePresence>
       {buyPanelOpen && (
         <motion.div
+          key="unified-buy-panel"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
           onClick={onClose}
         >
           <div className="absolute inset-0 bg-black/60" />
@@ -170,16 +200,20 @@ export function UnifiedBuyPanel() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="relative w-full max-w-2xl rounded-lg border"
-            style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+            className="relative w-full max-w-2xl max-h-[90vh] md:max-h-[85vh] overflow-hidden flex flex-col rounded-2xl border shadow-xl"
+            style={{
+              background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+              borderColor: "var(--border-subtle)",
+              boxShadow: "0 0 0 1px var(--border-subtle), 0 20px 50px -15px rgba(0,0,0,0.35)",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-              <h3 className="font-heading font-bold text-[var(--accent-primary)]">Unified Buy Panel</h3>
-              <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-100 p-1 rounded" aria-label="Close">✕</button>
+            <div className="flex justify-between items-center px-4 md:px-6 py-3 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+              <h3 className="font-heading font-bold text-[var(--accent-primary)] text-base">Unified Buy Panel</h3>
+              <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors p-2 -m-2 rounded-lg hover:bg-[var(--bg-elevated)]" aria-label="Close">✕</button>
             </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-4 md:p-6 overflow-y-auto flex-1 min-h-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                 {buyPanelMode === "market" && selectedMarket && (
                   <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction market</p>
@@ -200,7 +234,7 @@ export function UnifiedBuyPanel() {
                 )}
                 {buyPanelMode === "token" && selectedToken && (
                   <>
-                  <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
+                  <div className="rounded-xl border p-4 md:p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Solana Token</p>
                     <div className="flex gap-2 mb-2">
                       <button
@@ -224,8 +258,13 @@ export function UnifiedBuyPanel() {
                     {selectedToken.price != null && (
                       <p className="font-mono text-[var(--accent-primary)] text-sm mt-1 tabular-nums">~${selectedToken.price.toFixed(4)} USD</p>
                     )}
-                    <p className="font-mono text-[var(--accent-bags)] mt-2 text-sm tabular-nums">
+                    <p className="font-mono text-[var(--text-1)] mt-2 text-sm tabular-nums">
                       Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} SOL
+                      {selectedToken.volume24h != null && solPriceUsd > 0 && (
+                        <span className="text-[var(--text-3)] ml-1">
+                          (≈${(selectedToken.volume24h * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                        </span>
+                      )}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
@@ -271,11 +310,32 @@ export function UnifiedBuyPanel() {
                       <>
                         <div className="mt-3">
                           <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount of {selectedToken.symbol} to sell</label>
+                          <div className="flex gap-1.5 mb-2">
+                            {([25, 50, 75, 100] as const).map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => {
+                                  hapticLight();
+                                  const amt = tokenBalance > 0 ? (tokenBalance * pct) / 100 : 0;
+                                  setSellAmount(amt > 0 ? amt.toString() : "");
+                                }}
+                                className="flex-1 py-1.5 rounded-md text-[11px] font-heading font-semibold transition-all duration-100"
+                                style={{
+                                  background: "var(--bg-surface)",
+                                  color: "var(--text-2)",
+                                  border: "1px solid var(--border-subtle)",
+                                }}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
                           <input
                             type="number"
                             step="any"
                             min="0"
-                            placeholder="0"
+                            placeholder={tokenBalance > 0 ? tokenBalance.toLocaleString() : "0"}
                             value={sellAmount}
                             onChange={(e) => setSellAmount(e.target.value)}
                             className="w-full px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
@@ -292,9 +352,9 @@ export function UnifiedBuyPanel() {
                         </button>
                       </>
                     )}
-                    <div className="mt-4 pt-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                    <div className="mt-3 md:mt-4 pt-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
                       <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">24h price sketch</p>
-                      <div className="h-28 rounded-lg overflow-hidden" style={{ background: "var(--bg-surface)" }}>
+                      <div className="h-20 md:h-28 rounded-lg overflow-hidden" style={{ background: "var(--bg-surface)" }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart data={MOCK_CHART_DATA}>
                             <defs>
@@ -312,7 +372,7 @@ export function UnifiedBuyPanel() {
                       <CopyCAButton mint={selectedToken.mint} />
                     </div>
                   </div>
-                  <div className="rounded-lg border p-4 flex flex-col" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
+                  <div className="rounded-xl border p-4 flex flex-col" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-3">Token info</p>
                     <div className="space-y-2 text-sm">
                       <p className="flex justify-between">
@@ -339,12 +399,22 @@ export function UnifiedBuyPanel() {
                   </>
                 )}
               </div>
-              {error && <p className="text-sm mt-3" style={{ color: "var(--red)" }}>{error}</p>}
-              {success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
-              <p className="text-[var(--text-secondary)] text-xs mt-4">Connect wallet. Markets: Kalshi. Swaps: DFlow (market tokens) or Jupiter (fallback). MEV protected.</p>
+              {!resultModal && error && <p className="text-sm mt-3" style={{ color: "var(--down)" }}>{error}</p>}
+              {!resultModal && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
+              <p className="text-[var(--text-secondary)] text-[11px] mt-3 md:mt-4 leading-relaxed">Connect wallet. Markets: Kalshi. Swaps: DFlow (market tokens) or Jupiter (fallback). MEV protected.</p>
             </div>
           </motion.div>
         </motion.div>
+      )}
+      {resultModal && (
+        <ResultModal
+          key="result-modal"
+          type={resultModal.type}
+          title={resultModal.title}
+          message={resultModal.message}
+          txSignature={resultModal.txSignature}
+          onClose={() => setResultModal(null)}
+        />
       )}
     </AnimatePresence>
   );

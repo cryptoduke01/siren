@@ -1,15 +1,21 @@
 /**
- * Swap router: DFlow first for prediction market tokens (yes/no), Jupiter fallback.
+ * Swap router: DFlow for prediction market tokens, Bags for Bags tokens, Jupiter fallback.
  * DFlow: Kalshi prediction market tokens only (geo-fenced).
+ * Bags: Tokens launched on Bags (mint ends with "BAGS").
  * Jupiter: All SPL tokens, MEV-protected routing.
  */
 
 import { getDflowOrder } from "./dflow.js";
 import { getMarketsWithVelocity } from "./markets.js";
 import { shouldBlockByCountry } from "../lib/geo-fence.js";
+import { getBagsTradeQuote, createBagsSwapTransaction } from "./bags.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+
+function isBagsMint(mint: string): boolean {
+  return mint.endsWith("BAGS");
+}
 
 let marketMintsCache: Set<string> = new Set();
 let marketMintsCacheTs = 0;
@@ -38,7 +44,7 @@ function isMarketMint(mint: string, mints: Set<string>): boolean {
   return mints.has(mint);
 }
 
-export type SwapProvider = "dflow" | "jupiter";
+export type SwapProvider = "dflow" | "bags" | "jupiter";
 
 export interface SwapOrderParams {
   inputMint: string;
@@ -76,6 +82,23 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
     });
     if (dflow.transaction) {
       return { provider: "dflow", transaction: dflow.transaction };
+    }
+  }
+
+  const inputIsBags = isBagsMint(inputMint);
+  const outputIsBags = isBagsMint(outputMint);
+  if ((inputIsBags || outputIsBags) && process.env.BAGS_API_KEY) {
+    try {
+      const quote = await getBagsTradeQuote({
+        inputMint,
+        outputMint,
+        amount,
+        slippageMode: "manual",
+        slippageBps,
+      });
+      const tx = await createBagsSwapTransaction(quote, userPublicKey);
+      if (tx) return { provider: "bags", transaction: tx };
+    } catch {
     }
   }
 

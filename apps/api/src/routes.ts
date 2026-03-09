@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
+import bs58 from "bs58";
 import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
-import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats } from "./services/bags.js";
+import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats, getBagsPools, getBagsPoolByTokenMint, getTokenLifetimeFees, getBagsTradeQuote, createBagsSwapTransaction } from "./services/bags.js";
 import { getDflowOrder } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
@@ -211,6 +212,32 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Wallet transaction history via Helius Enhanced Transactions API. */
+  app.get<{ Querystring: { address: string; limit?: string; cursor?: string } }>("/api/transactions", async (req, reply) => {
+    const key = process.env.HELIUS_API_KEY;
+    if (!key) {
+      return reply.status(503).send({ success: false, error: "Helius API key not configured. Add HELIUS_API_KEY to apps/api/.env" });
+    }
+    const { address, limit = "20", cursor } = req.query;
+    if (!address?.trim()) {
+      return reply.status(400).send({ success: false, error: "address required" });
+    }
+    try {
+      const params = new URLSearchParams({ "api-key": key, limit });
+      if (cursor) params.set("before", cursor);
+      const res = await fetch(
+        `https://api.helius.xyz/v0/addresses/${encodeURIComponent(address.trim())}/transactions?${params}`,
+        { headers: { Accept: "application/json" } }
+      );
+      const data = await res.json();
+      if (!res.ok) return reply.status(res.status).send(data);
+      return reply.send({ success: true, data: Array.isArray(data) ? data : [] });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch transactions" });
+    }
+  });
+
   /** Unified swap: DFlow first for prediction market tokens, Jupiter fallback. */
   app.post<{
     Body: { inputMint: string; outputMint: string; amount: string; userPublicKey: string; slippageBps?: number; tryDflowFirst?: boolean };
@@ -234,7 +261,16 @@ export function registerRoutes(app: FastifyInstance) {
       if (result.error || !result.transaction) {
         return reply.status(503).send({ success: false, error: result.error || "Swap failed" });
       }
-      return reply.send({ success: true, provider: result.provider, transaction: result.transaction });
+      let txBase64 = result.transaction;
+      if (result.provider === "bags" || result.provider === "dflow") {
+        try {
+          const buf = Buffer.from(bs58.decode(result.transaction));
+          txBase64 = buf.toString("base64");
+        } catch {
+          return reply.status(500).send({ success: false, error: "Invalid transaction format" });
+        }
+      }
+      return reply.send({ success: true, provider: result.provider, transaction: txBase64 });
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: (e as Error).message || "Swap failed" });
@@ -395,6 +431,120 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: (e as Error).message || "Bags claim-stats failed" });
+    }
+  });
+
+  app.get<{ Querystring: { wallet: string } }>("/api/bags/my-launches", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { wallet } = req.query;
+    if (!wallet?.trim()) return reply.status(400).send({ success: false, error: "wallet required" });
+    const w = wallet.trim().toLowerCase();
+    try {
+      const pools = await getBagsPools(false);
+      const mints: string[] = [];
+      const toCheck = pools.filter((p) => p.tokenMint.toLowerCase().endsWith("bags"));
+      for (const p of toCheck) {
+        try {
+          const creators = await getTokenCreators(p.tokenMint);
+          const isCreator = creators.some((c) => (c.wallet ?? "").toLowerCase() === w);
+          if (isCreator) mints.push(p.tokenMint);
+        } catch {
+          // skip
+        }
+      }
+      return reply.send({ success: true, data: mints });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags my-launches failed" });
+    }
+  });
+
+  app.get<{ Querystring: { onlyMigrated?: string } }>("/api/bags/pools", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    try {
+      const onlyMigrated = req.query.onlyMigrated === "true";
+      const pools = await getBagsPools(onlyMigrated);
+      return reply.send({ success: true, data: pools });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags pools failed" });
+    }
+  });
+
+  app.get<{ Querystring: { tokenMint: string } }>("/api/bags/pool", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { tokenMint } = req.query;
+    if (!tokenMint?.trim()) return reply.status(400).send({ success: false, error: "tokenMint required" });
+    try {
+      const pool = await getBagsPoolByTokenMint(tokenMint.trim());
+      return reply.send({ success: true, data: pool });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags pool failed" });
+    }
+  });
+
+  app.get<{ Querystring: { tokenMint: string } }>("/api/bags/token/lifetime-fees", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { tokenMint } = req.query;
+    if (!tokenMint?.trim()) return reply.status(400).send({ success: false, error: "tokenMint required" });
+    try {
+      const fees = await getTokenLifetimeFees(tokenMint.trim());
+      return reply.send({ success: true, data: fees });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags lifetime-fees failed" });
+    }
+  });
+
+  app.get<{ Querystring: { inputMint: string; outputMint: string; amount: string; slippageBps?: string } }>(
+    "/api/bags/trade/quote",
+    async (req, reply) => {
+      if (!process.env.BAGS_API_KEY) {
+        return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+      }
+      const { inputMint, outputMint, amount, slippageBps } = req.query;
+      if (!inputMint || !outputMint || !amount) {
+        return reply.status(400).send({ success: false, error: "inputMint, outputMint, amount required" });
+      }
+      try {
+        const quote = await getBagsTradeQuote({
+          inputMint,
+          outputMint,
+          amount,
+          slippageMode: slippageBps ? "manual" : "auto",
+          slippageBps: slippageBps ? parseInt(slippageBps, 10) : undefined,
+        });
+        return reply.send({ success: true, data: quote });
+      } catch (e) {
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: (e as Error).message || "Bags trade quote failed" });
+      }
+    }
+  );
+
+  app.post<{ Body: { quoteResponse: unknown; userPublicKey: string } }>("/api/bags/trade/swap", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { quoteResponse, userPublicKey } = req.body || {};
+    if (!quoteResponse || !userPublicKey) {
+      return reply.status(400).send({ success: false, error: "quoteResponse, userPublicKey required" });
+    }
+    try {
+      const tx = await createBagsSwapTransaction(quoteResponse, userPublicKey);
+      return reply.send({ success: true, data: { transaction: tx } });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags trade swap failed" });
     }
   });
 }

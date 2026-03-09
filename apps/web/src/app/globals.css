@@ -1,4 +1,5 @@
-@import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=cabinet-grotesk@400,500&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap');
 
 @tailwind base;
@@ -79,6 +80,10 @@ html.light .topbar-logo {
   padding: 0;
 }
 
+html {
+  font-size: 15px;
+}
+
 html,
 body {
   background: var(--bg-void);
@@ -145,7 +150,7 @@ body {
 .app-shell {
   display: grid;
   grid-template-rows: 1fr;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto auto 1fr;
   height: 100vh;
   overflow: hidden;
 }
@@ -163,19 +168,23 @@ body {
   grid-column: 1;
   grid-row: 1;
   width: 300px;
-  min-width: 240px;
-  max-width: 420px;
+  min-width: 220px;
+  max-width: 440px;
   overflow-y: auto;
-  overflow-x: auto;
-  resize: horizontal;
+  overflow-x: hidden;
 }
 
 .app-shell .main-panel {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 20px 24px 24px 28px;
+  min-width: 0;
+}
+
+.app-shell .main-panel > * {
+  min-width: 0;
 }
 
 @media (min-width: 1280px) {
@@ -191,10 +200,9 @@ body {
   }
   .app-shell .left-panel {
     grid-column: 1;
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    resize: none;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
   }
 }
 
@@ -203,6 +211,7 @@ body {
   grid-template-columns: repeat(1, 1fr);
   gap: 8px;
   padding: 12px 16px;
+  min-width: 0;
 }
 
 @media (min-width: 768px) {

@@ -37,9 +37,14 @@ export interface BagsToken {
   launchedAt?: number;
 }
 
+/** Launchpad identifier (mint suffix). */
+export type LaunchpadId = "bags" | "pump" | "bonk" | "moonshot" | "other";
+
 export interface SurfacedToken extends BagsToken {
   relevanceScore: number;
   matchType: "name" | "volume" | "ct";
+  /** Launchpad detected from mint (Bags, Pump.fun, Bonk.fun, etc.). */
+  launchpad?: LaunchpadId;
 }
 
 export interface DFlowMarket {

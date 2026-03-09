@@ -11,6 +11,7 @@
     "exec": "tsx"
   },
   "dependencies": {
+    "bs58": "^6.0.0",
     "@fastify/cors": "^10.0.0",
     "@fastify/websocket": "^11.0.1",
     "@prisma/client": "^6.0.0",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Bell } from "lucide-react";
 import { useAlertStore } from "@/store/useAlertStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -31,7 +32,7 @@ export function MarketAlertButton({ ticker, probability }: { ticker: string; pro
         style={{ color: hasAlert ? "var(--yellow)" : "var(--text-3)" }}
         title="Set alert"
       >
-        🔔
+        <Bell className="w-3.5 h-3.5" strokeWidth={2} />
       </button>
       {open && (
         <>
@@ -90,7 +91,7 @@ export function TokenAlertButton({ mint, symbol, price }: { mint: string; symbol
         style={{ color: hasAlert ? "var(--yellow)" : "var(--text-3)" }}
         title="Set alert"
       >
-        🔔
+        <Bell className="w-3.5 h-3.5" strokeWidth={2} />
       </button>
       {open && (
         <>

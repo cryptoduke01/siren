@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+/** Watchlist is persisted to localStorage (key: siren-watchlist) — survives refresh, new tabs, browser restarts.
+ * Clearing site data will reset it. For cross-device sync, a backend (e.g. Supabase) would be needed. */
 interface WatchlistState {
   starredMarketTickers: string[];
   starredTokenMints: string[];

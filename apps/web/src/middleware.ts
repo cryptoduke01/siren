@@ -40,11 +40,7 @@ export function middleware(req: NextRequest) {
     }
 
     if (isTerminalPath(pathname)) {
-      const hasAccess = req.cookies.get(ACCESS_COOKIE)?.value === "1";
-      if (!hasAccess) {
-        url.pathname = pathname === "/" ? "/waitlist" : "/access";
-        return NextResponse.redirect(url);
-      }
+      // Let terminal routes through — AccessGate shows the modal when no cookie
     } else {
       url.pathname = "/waitlist";
       return NextResponse.redirect(url);

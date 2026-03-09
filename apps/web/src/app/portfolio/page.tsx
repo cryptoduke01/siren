@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
-import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket } from "lucide-react";
+import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
@@ -55,16 +56,25 @@ interface TokenHolding {
   decimals: number;
 }
 
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+
 async function fetchTokenHoldings(connection: Connection, publicKey: string): Promise<TokenHolding[]> {
   const pubkey = new PublicKey(publicKey);
-  const accounts = await connection.getParsedTokenAccountsByOwner(pubkey, { programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") });
+  const [splAccounts, token2022Accounts] = await Promise.all([
+    connection.getParsedTokenAccountsByOwner(pubkey, { programId: new PublicKey(TOKEN_PROGRAM) }),
+    connection.getParsedTokenAccountsByOwner(pubkey, { programId: new PublicKey(TOKEN_2022_PROGRAM) }),
+  ]);
   const holdings: TokenHolding[] = [];
-  for (const { account } of accounts.value) {
+  const seenMints = new Set<string>();
+
+  for (const { account } of [...splAccounts.value, ...token2022Accounts.value]) {
     const data = account.data as { parsed?: { info?: { mint?: string; tokenAmount?: { uiAmount: number; decimals: number }; symbol?: string; name?: string } } };
     const info = data.parsed?.info;
     if (!info?.tokenAmount || info.tokenAmount.uiAmount == null || info.tokenAmount.uiAmount <= 0) continue;
     const mint = info.mint ?? "";
-    if (mint === NATIVE_SOL_MINT) continue;
+    if (mint === NATIVE_SOL_MINT || seenMints.has(mint)) continue;
+    seenMints.add(mint);
     holdings.push({
       mint,
       symbol: info.symbol ?? "—",
@@ -92,6 +102,200 @@ async function fetchMarkets(): Promise<MarketWithVelocity[]> {
   return j.data ?? [];
 }
 
+function TransactionHistoryList({ address }: { address: string }) {
+  const { data: txs = [], isLoading, isError } = useQuery({
+    queryKey: ["transactions", address],
+    queryFn: () =>
+      fetch(`${API_URL}/api/transactions?address=${encodeURIComponent(address)}&limit=15`, { credentials: "omit" })
+        .then((r) => r.json())
+        .then((j) => (j.success && Array.isArray(j.data) ? j.data : [])),
+    enabled: !!address && address.length >= 32,
+    staleTime: 30_000,
+    refetchOnMount: "always",
+  });
+  if (!address) return null;
+  if (isError) {
+    return (
+      <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
+        Unable to load. Add HELIUS_API_KEY to the API.
+      </p>
+    );
+  }
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-12 rounded-lg bg-[var(--border-subtle)] animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+  if (txs.length === 0) {
+    return (
+      <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
+        No recent transactions.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {txs.slice(0, 15).map((tx: { signature?: string; timestamp?: number; type?: string; description?: string; source?: string }) => {
+        const sig = tx.signature ?? "";
+        const ts = tx.timestamp ? new Date(tx.timestamp * 1000) : null;
+        const type = tx.type ?? tx.source ?? "Transaction";
+        const desc = tx.description ?? type;
+        return (
+          <li
+            key={sig}
+            className="flex items-center justify-between gap-3 rounded-lg border p-3"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+          >
+            <div className="min-w-0">
+              <p className="font-body text-sm truncate" style={{ color: "var(--text-1)" }}>
+                {desc}
+              </p>
+              {ts && (
+                <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>
+                  {ts.toLocaleDateString()} {ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
+            </div>
+            {sig && (
+              <a
+                href={`https://solscan.io/tx/${sig}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => hapticLight()}
+                className="shrink-0 font-body text-[11px] px-2 py-1 rounded"
+                style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+              >
+                View
+              </a>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function AddressCopyButton({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(address);
+    setCopied(true);
+    hapticLight();
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button type="button" onClick={handleCopy} className="p-1.5 rounded-lg shrink-0 hover:bg-[var(--bg-elevated)] transition-colors" aria-label="Copy address">
+      {copied ? <Check className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} /> : <Copy className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />}
+    </button>
+  );
+}
+
+function SendSolModal({
+  balanceMainnet,
+  balanceDevnet,
+  solPriceUsd,
+  onClose,
+}: {
+  balanceMainnet: number;
+  balanceDevnet: number;
+  solPriceUsd: number;
+  onClose: () => void;
+}) {
+  const { publicKey, signTransaction } = useWallet();
+  const [network, setNetwork] = useState<"mainnet" | "devnet">("mainnet");
+  const [toAddress, setToAddress] = useState("");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [resultModal, setResultModal] = useState<{ type: "success" | "error"; title: string; message: string; txSignature?: string } | null>(null);
+  const queryClient = useQueryClient();
+
+  const balanceSol = network === "mainnet" ? balanceMainnet : balanceDevnet;
+  const conn = new Connection(
+    network === "mainnet" ? (process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta")) : clusterApiUrl("devnet"),
+    "confirmed"
+  );
+  const amt = parseFloat(amount) || 0;
+  const usdEst = network === "mainnet" && amt > 0 ? amt * solPriceUsd : undefined;
+
+  const handleSend = async () => {
+    if (!signTransaction || !publicKey) return;
+    if (!toAddress.trim() || amt <= 0 || amt > balanceSol) {
+      setError("Enter valid address and amount");
+      return;
+    }
+    let to: PublicKey;
+    try {
+      to = new PublicKey(toAddress.trim());
+    } catch {
+      setError("Invalid address");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const lamports = BigInt(Math.floor(amt * LAMPORTS_PER_SOL));
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: new PublicKey(publicKey.toBase58()),
+          toPubkey: to,
+          lamports,
+        })
+      );
+      const { blockhash } = await conn.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = new PublicKey(publicKey.toBase58());
+      const signed = await signTransaction(tx);
+      const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      await conn.confirmTransaction(sig, "confirmed");
+      setSuccess(`Sent ${amt} SOL on ${network}. Tx: ${sig.slice(0, 8)}...`);
+      setAmount("");
+      setToAddress("");
+      if (publicKey) queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
+      setResultModal({ type: "success", title: "Send complete", message: `Sent ${amt} SOL on ${network}.`, txSignature: sig });
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : "Send failed";
+      setError(errMsg);
+      setResultModal({ type: "error", title: "Send failed", message: errMsg });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Send SOL</p>
+          <div className="flex gap-1">
+            {(["mainnet", "devnet"] as const).map((n) => (
+              <button key={n} type="button" onClick={() => { setNetwork(n); setError(null); }} className="px-2.5 py-1 rounded text-[11px] font-medium" style={{ background: network === n ? "var(--accent-dim)" : "transparent", color: network === n ? "var(--accent)" : "var(--text-3)" }}>{n === "mainnet" ? "Mainnet" : "Devnet"}</button>
+            ))}
+          </div>
+        </div>
+        <input type="text" placeholder="Recipient" value={toAddress} onChange={(e) => setToAddress(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-2 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
+        <input type="number" step="0.001" min="0" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-1 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
+        <p className={`font-body text-[11px] ${amt > 0 ? "mb-1" : "mb-3"}`} style={{ color: "var(--text-3)" }}>Balance: {balanceSol.toFixed(4)} SOL</p>
+        {amt > 0 && (usdEst != null ? <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-2)" }}>≈ ${usdEst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</p> : <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-3)" }}>Devnet</p>)}
+        {!resultModal && error && <p className="text-xs mb-2" style={{ color: "var(--down)" }}>{error}</p>}
+        {!resultModal && success && <p className="text-xs mb-2" style={{ color: "var(--bags)" }}>{success}</p>}
+        <div className="flex gap-2">
+          <button type="button" onClick={handleSend} disabled={loading} className="flex-1 py-2 rounded-lg font-heading font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: "var(--bags)", color: "var(--accent-text)" }}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Send</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Close</button>
+        </div>
+        {resultModal && (
+          <ResultModal type={resultModal.type} title={resultModal.title} message={resultModal.message} txSignature={resultModal.txSignature} onClose={() => setResultModal(null)} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function buildMintToMarket(
   markets: MarketWithVelocity[]
 ): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number }> {
@@ -109,13 +313,13 @@ export default function PortfolioPage() {
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
   const [balanceView, setBalanceView] = useState<"mainnet" | "devnet">("mainnet");
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
+  const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
 
-  useEffect(() => {
-    if (!publicKey) {
-      setBagsLaunches([]);
-      return;
-    }
+  const loadBagsLaunches = () => {
+    if (!publicKey) return;
     try {
       const key = `siren-bags-launches-${publicKey.toBase58()}`;
       const raw = localStorage.getItem(key);
@@ -123,7 +327,32 @@ export default function PortfolioPage() {
     } catch {
       setBagsLaunches([]);
     }
-  }, [publicKey]);
+  };
+
+  useEffect(() => {
+    if (!publicKey) setBagsLaunches([]);
+    else loadBagsLaunches();
+  }, [publicKey?.toBase58()]);
+
+  const syncBagsLaunches = async () => {
+    if (!publicKey) return;
+    setBagsSyncLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/bags/my-launches?wallet=${encodeURIComponent(publicKey.toBase58())}`, { credentials: "omit" });
+      const j = await res.json();
+      const mints: string[] = Array.isArray(j.data) ? j.data : [];
+      const key = `siren-bags-launches-${publicKey.toBase58()}`;
+      const raw = localStorage.getItem(key);
+      const existing: string[] = raw ? JSON.parse(raw) : [];
+      const merged = [...new Set([...existing, ...mints])];
+      localStorage.setItem(key, JSON.stringify(merged));
+      setBagsLaunches(merged);
+    } catch {
+      // ignore
+    } finally {
+      setBagsSyncLoading(false);
+    }
+  };
 
   const { data: balances, isLoading, isError, refetch } = useQuery({
     queryKey: ["wallet-balance", publicKey?.toBase58()],
@@ -141,12 +370,13 @@ export default function PortfolioPage() {
     staleTime: 30_000,
   });
 
-  const { data: tokenHoldings = [], isLoading: tokensLoading } = useQuery({
+  const { data: tokenHoldings = [], isLoading: tokensLoading, refetch: refetchTokens } = useQuery({
     queryKey: ["wallet-tokens", publicKey?.toBase58()],
     queryFn: () => fetchTokenHoldings(connection, publicKey!.toBase58()),
     enabled: !!connected && !!publicKey,
     refetchInterval: 30_000,
-    staleTime: 20_000,
+    staleTime: 15_000,
+    refetchOnMount: "always",
   });
 
   const tokenMints = tokenHoldings.map((t) => t.mint);
@@ -235,7 +465,7 @@ export default function PortfolioPage() {
       <TopBar />
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 md:px-8 md:py-10">
         <div className="mb-8">
-          <h1 className="font-heading font-bold text-2xl md:text-3xl mb-1" style={{ color: "var(--text-1)" }}>
+          <h1 className="font-heading font-bold text-2xl md:text-3xl mb-1" style={{ color: "var(--accent)" }}>
             Portfolio
           </h1>
           <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
@@ -300,31 +530,75 @@ export default function PortfolioPage() {
                   <QrCode className="w-3.5 h-3.5" />
                   Receive
                 </button>
-                <a
-                  href={publicKey ? `https://jup.ag/swap/SOL?wallet=${publicKey.toBase58()}` : "https://jup.ag/swap"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => hapticLight()}
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); setSwapOpen(true); }}
                   className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
                   style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
                 >
                   <ArrowLeftRight className="w-3.5 h-3.5" />
                   Swap
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-                <a
-                  href="https://phantom.app/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => hapticLight()}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); setSendOpen(true); }}
                   className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
                   style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
                 >
                   <Send className="w-3.5 h-3.5" />
                   Send
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                </button>
               </div>
+              {swapOpen && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={() => { hapticLight(); setSwapOpen(false); }}>
+                  <div className="w-full max-w-md rounded-2xl border overflow-hidden shadow-2xl" style={{ background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)", borderColor: "var(--border-subtle)", boxShadow: "0 0 0 1px var(--border-subtle), 0 24px 48px -12px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
+                    <div className="px-5 py-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                      <h3 className="font-heading font-semibold text-base" style={{ color: "var(--text-1)" }}>Sell token</h3>
+                      <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>Select a token to sell</p>
+                    </div>
+                    <div className="p-4">
+                      {tokenHoldings.length === 0 ? (
+                        <p className="font-body text-sm py-6 text-center" style={{ color: "var(--text-3)" }}>No tokens. Buy from Terminal first.</p>
+                      ) : (
+                        <ul className="space-y-2 max-h-64 overflow-y-auto overflow-x-hidden">
+                          {tokenHoldings.map((t) => {
+                            const info = tokenInfoByMint.get(t.mint);
+                            const sym = info?.symbol ?? (t.symbol !== "—" ? t.symbol : t.mint.slice(0, 6));
+                            const name = info?.name ?? t.name;
+                            return (
+                              <li key={t.mint} className="flex items-center gap-3 rounded-xl border p-3 min-w-0" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>${sym}</p>
+                                  <p className="font-mono text-xs tabular-nums truncate" style={{ color: "var(--text-3)" }}>{t.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => { hapticLight(); setSelectedToken({ mint: t.mint, name, symbol: sym }, { openForSell: true }); setBuyPanelOpen(true, "token"); setSwapOpen(false); }}
+                                  className="shrink-0 px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110"
+                                  style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                                >
+                                  Sell
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="px-4 pb-4">
+                      <button type="button" onClick={() => { hapticLight(); setSwapOpen(false); }} className="w-full py-2.5 rounded-xl font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {sendOpen && (
+                <SendSolModal
+                  balanceMainnet={balances?.mainnet ?? 0}
+                  balanceDevnet={balances?.devnet ?? 0}
+                  solPriceUsd={solPriceUsd}
+                  onClose={() => { hapticLight(); setSendOpen(false); }}
+                />
+              )}
               {receiveOpen && publicKey && (
                 <div
                   className="fixed inset-0 z-40 flex items-center justify-center px-4"
@@ -385,47 +659,57 @@ export default function PortfolioPage() {
               }}
             >
               <div
-                className="px-5 py-4 flex items-center gap-3 border-b"
+                className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 border-b"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-dim)" }}>
-                  <Wallet className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent-dim)" }}>
+                    <Wallet className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                      Wallet balance
+                    </h2>
+                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      Native SOL
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                    Wallet balance
-                  </h2>
-                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    Native SOL — toggle network below
-                  </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => { hapticLight(); setBalanceView("mainnet"); }}
+                    className="font-body text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+                    style={{
+                      background: balanceView === "mainnet" ? "var(--accent-dim)" : "transparent",
+                      color: balanceView === "mainnet" ? "var(--accent)" : "var(--text-3)",
+                      border: balanceView === "mainnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    Mainnet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { hapticLight(); setBalanceView("devnet"); }}
+                    className="font-body text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+                    style={{
+                      background: balanceView === "devnet" ? "var(--accent-dim)" : "transparent",
+                      color: balanceView === "devnet" ? "var(--accent)" : "var(--text-3)",
+                      border: balanceView === "devnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    Devnet
+                  </button>
                 </div>
               </div>
-              <div className="px-5 pb-2 flex gap-2 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setBalanceView("mainnet"); }}
-                  className="font-body text-[11px] font-medium px-3 py-2 rounded-lg transition-colors"
-                  style={{
-                    background: balanceView === "mainnet" ? "var(--accent-dim)" : "transparent",
-                    color: balanceView === "mainnet" ? "var(--accent)" : "var(--text-3)",
-                    border: balanceView === "mainnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
-                  }}
-                >
-                  Mainnet
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setBalanceView("devnet"); }}
-                  className="font-body text-[11px] font-medium px-3 py-2 rounded-lg transition-colors"
-                  style={{
-                    background: balanceView === "devnet" ? "var(--accent-dim)" : "transparent",
-                    color: balanceView === "devnet" ? "var(--accent)" : "var(--text-3)",
-                    border: balanceView === "devnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
-                  }}
-                >
-                  Devnet
-                </button>
-              </div>
+              {publicKey && (
+                <div className="px-5 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                  <code className="font-mono text-[11px] truncate flex-1" style={{ color: "var(--text-2)" }}>
+                    {publicKey.toBase58()}
+                  </code>
+                  <AddressCopyButton address={publicKey.toBase58()} />
+                </div>
+              )}
               <div className="p-5 grid grid-cols-2 gap-4">
                 {isLoading ? (
                   <div className="col-span-2 font-body text-sm py-4" style={{ color: "var(--text-2)" }}>
@@ -576,20 +860,31 @@ export default function PortfolioPage() {
               }}
             >
               <div
-                className="px-5 py-4 flex items-center gap-3 border-b"
+                className="px-5 py-4 flex items-center justify-between gap-3 border-b"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--bags-dim)" }}>
-                  <Coins className="w-4 h-4" style={{ color: "var(--bags)" }} />
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--bags-dim)" }}>
+                    <Coins className="w-4 h-4" style={{ color: "var(--bags)" }} />
+                  </div>
+                  <div>
+                    <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                      Token holdings
+                    </h2>
+                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      SPL & Token-2022 (Pump, Jupiter, etc.)
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                    Token holdings
-                  </h2>
-                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    SPL tokens (Jupiter / DexScreener)
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => { hapticLight(); refetchTokens(); }}
+                  disabled={tokensLoading}
+                  className="shrink-0 font-body text-[11px] px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                >
+                  {tokensLoading ? "…" : "Refresh"}
+                </button>
               </div>
               <div className="p-5">
                 {tokensLoading ? (
@@ -627,14 +922,13 @@ export default function PortfolioPage() {
                       return (
                         <li
                           key={t.mint}
-                          className="flex items-center justify-between gap-4 rounded-xl border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)] cursor-pointer"
+                          className="flex items-center justify-between gap-4 rounded-xl border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
                           style={{
                             borderColor: "var(--border-subtle)",
                             background: "var(--bg-elevated)",
                           }}
-                          onClick={() => openSellPanel(t.mint, t.symbol, t.name)}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" onClick={() => { hapticLight(); openSellPanel(t.mint, t.symbol, t.name); }}>
                             {info?.imageUrl ? (
                               <img src={info.imageUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
                             ) : (
@@ -654,18 +948,25 @@ export default function PortfolioPage() {
                               </p>
                             </div>
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="font-mono text-sm tabular-nums font-medium" style={{ color: "var(--bags)" }}>
-                              {t.balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                            </p>
-                            {valueUsd != null && (
-                              <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--text-2)" }}>
-                                ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                          <div className="text-right shrink-0 flex flex-col items-end gap-2">
+                            <div>
+                              <p className="font-mono text-sm tabular-nums font-medium" style={{ color: "var(--bags)" }}>
+                                {t.balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                               </p>
-                            )}
-                            <p className="font-body text-[11px] mt-1 font-medium" style={{ color: "var(--accent)" }}>
+                              {valueUsd != null && (
+                                <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--text-2)" }}>
+                                  ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); hapticLight(); openSellPanel(t.mint, t.symbol, t.name); }}
+                              className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
+                              style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                            >
                               Sell
-                            </p>
+                            </button>
                           </div>
                         </li>
                       );
@@ -716,6 +1017,36 @@ export default function PortfolioPage() {
             </div>
           </div>
 
+          {/* Transaction history */}
+          <div
+            className="mt-6 rounded-2xl border overflow-hidden"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--bg-surface)",
+              boxShadow: "0 1px 0 0 var(--border-subtle)",
+            }}
+          >
+            <div
+              className="px-5 py-4 flex items-center gap-3 border-b"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent-dim)" }}>
+                <History className="w-4 h-4" style={{ color: "var(--accent)" }} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                  Transaction history
+                </h2>
+                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                  For {publicKey ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}` : "your wallet"} — Helius
+                </p>
+              </div>
+            </div>
+            <div className="p-5">
+              <TransactionHistoryList address={publicKey?.toBase58() ?? ""} key={publicKey?.toBase58() ?? "none"} />
+            </div>
+          </div>
+
           {/* Your Bags launches */}
           <div
             className="mt-6 rounded-2xl border overflow-hidden"
@@ -729,10 +1060,10 @@ export default function PortfolioPage() {
               className="px-5 py-4 flex items-center gap-3 border-b"
               style={{ borderColor: "var(--border-subtle)" }}
             >
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-dim)" }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent-dim)" }}>
                 <Rocket className="w-4 h-4" style={{ color: "var(--accent)" }} />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
                   Your Bags launches
                 </h2>
@@ -740,6 +1071,15 @@ export default function PortfolioPage() {
                   Tokens you launched via Bags and any fee share claimed.
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => { hapticLight(); syncBagsLaunches(); }}
+                disabled={bagsSyncLoading}
+                className="shrink-0 font-body text-[11px] px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
+                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+              >
+                {bagsSyncLoading ? "Syncing…" : "Sync"}
+              </button>
             </div>
             <div className="p-5">
               {bagsLaunches.length === 0 ? (
@@ -747,15 +1087,27 @@ export default function PortfolioPage() {
                   <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
                     You haven&apos;t launched any tokens with Bags yet.
                   </p>
-                  <Link
-                    href="/"
-                    onClick={() => hapticLight()}
-                    className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2 rounded-xl transition-colors hover:opacity-90"
-                    style={{ background: "var(--bags)", color: "var(--accent-text)" }}
-                  >
-                    Go to terminal
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </Link>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <button
+                      type="button"
+                      onClick={() => { hapticLight(); syncBagsLaunches(); }}
+                      disabled={bagsSyncLoading}
+                      className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2 rounded-xl transition-colors hover:opacity-90 disabled:opacity-50"
+                      style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-subtle)" }}
+                    >
+                      {bagsSyncLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      Sync from Bags
+                    </button>
+                    <Link
+                      href="/"
+                      onClick={() => hapticLight()}
+                      className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2 rounded-xl transition-colors hover:opacity-90"
+                      style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                    >
+                      Go to terminal
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 </div>
               ) : (
                 <ul className="space-y-3">

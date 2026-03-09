@@ -29,7 +29,7 @@ export function PreviewTerminal() {
             type="text"
             placeholder="Search..."
             readOnly
-            className="w-full font-mono text-[10px] h-6 px-2 rounded-[4px] border"
+            className="w-full font-body text-[10px] h-6 px-2 rounded-[4px] border"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
           />
         </div>
@@ -63,7 +63,7 @@ export function PreviewTerminal() {
           type="text"
           placeholder="Search tokens..."
           readOnly
-          className="w-full font-mono text-[10px] h-6 px-2 rounded-[4px] border flex-shrink-0 mb-2"
+          className="w-full font-body text-[10px] h-6 px-2 rounded-[4px] border flex-shrink-0 mb-2"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
         />
         <div className="grid grid-cols-3 gap-1.5 min-h-0 overflow-auto flex-1 content-start">

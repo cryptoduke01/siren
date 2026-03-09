@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { TopBar } from "@/components/TopBar";
 import { useSirenStore } from "@/store/useSirenStore";
 import { StarButton } from "@/components/StarButton";
+import { LaunchpadBadge } from "@/components/LaunchpadBadge";
 import type { SurfacedToken } from "@siren/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -20,7 +21,11 @@ function fetchTrendingTokens(): Promise<SurfacedToken[]> {
 
 export default function TrendingPage() {
   const { setSelectedToken } = useSirenStore();
-
+  const { data: solPriceUsd = 0 } = useQuery({
+    queryKey: ["sol-price"],
+    queryFn: () => fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
+    staleTime: 60_000,
+  });
   const { data: tokens = [], isLoading, isError } = useQuery({
     queryKey: ["trending-tokens"],
     queryFn: fetchTrendingTokens,
@@ -83,11 +88,12 @@ export default function TrendingPage() {
                 }
               >
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {t.imageUrl && <img src={t.imageUrl} alt="" className="w-7 h-7 rounded-full object-cover" />}
                     <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
                       ${t.symbol}
                     </p>
+                    <LaunchpadBadge launchpad={t.launchpad} />
                   </div>
                   <StarButton type="token" id={t.mint} />
                 </div>
@@ -101,6 +107,11 @@ export default function TrendingPage() {
                   <span className="font-mono text-xs tabular-nums">
                     <span style={{ color: "var(--text-1)" }}>{t.volume24h?.toLocaleString() ?? "-"}</span>
                     <span style={{ color: "var(--text-3)" }}> SOL</span>
+                    {t.volume24h != null && solPriceUsd > 0 && (
+                      <span className="font-mono text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
+                        (≈${(t.volume24h * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between items-center mb-3">

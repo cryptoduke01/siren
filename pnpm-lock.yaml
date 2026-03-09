@@ -29,6 +29,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.98.0
         version: 2.98.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      bs58:
+        specifier: ^6.0.0
+        version: 6.0.0
       bullmq:
         specifier: ^5.25.2
         version: 5.70.1

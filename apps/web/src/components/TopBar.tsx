@@ -39,7 +39,7 @@ export function TopBar() {
   return (
     <>
       <header
-        className="h-14 flex items-center justify-between px-4 md:px-5 flex-shrink-0"
+        className="h-12 flex items-center justify-between px-3 md:px-4 flex-shrink-0"
         style={{
           background: "var(--bg-base)",
           borderBottom: "1px solid var(--border-subtle)",
@@ -49,7 +49,7 @@ export function TopBar() {
           <img
             src="/brand/mark.svg"
             alt="Siren"
-            className="h-7 w-auto md:h-9 topbar-logo"
+            className="h-6 w-auto md:h-8 topbar-logo"
             style={{ display: "block" }}
           />
         </Link>
@@ -64,7 +64,7 @@ export function TopBar() {
                 className="font-body font-medium text-xs uppercase"
                 style={{
                   letterSpacing: "0.08em",
-                  color: isActive ? "var(--text-1)" : "var(--text-3)",
+                  color: isActive ? "var(--accent)" : "var(--text-3)",
                   borderBottom: isActive ? "1px solid var(--accent)" : "1px solid transparent",
                   marginBottom: "-1px",
                   paddingBottom: "2px",
@@ -124,7 +124,7 @@ export function TopBar() {
                 boxShadow: "-4px 0 24px rgba(0,0,0,0.3)",
               }}
             >
-              <div className="flex items-center justify-between h-14 px-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+              <div className="flex items-center justify-between h-12 px-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <span className="font-heading font-semibold text-sm uppercase" style={{ color: "var(--text-1)" }}>Menu</span>
                 <button
                   type="button"

@@ -151,3 +151,93 @@ export async function getTokenClaimStats(tokenMint: string): Promise<Array<{
   const r = json.response ?? json;
   return Array.isArray(r) ? r : [];
 }
+
+/** Bags pool info. */
+export interface BagsPoolInfo {
+  tokenMint: string;
+  dbcConfigKey: string;
+  dbcPoolKey: string;
+  dammV2PoolKey?: string | null;
+}
+
+/** Get all Bags pools. */
+export async function getBagsPools(onlyMigrated?: boolean): Promise<BagsPoolInfo[]> {
+  const qs = onlyMigrated ? "?onlyMigrated=true" : "";
+  const res = await fetch(`${BAGS_BASE}/solana/bags/pools${qs}`, {
+    headers: BAGS_GET_HEADERS(),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags get pools: ${res.status}`);
+  const r = json.response ?? json;
+  return Array.isArray(r) ? r : [];
+}
+
+/** Get Bags pool by token mint. Returns null if not a Bags token. */
+export async function getBagsPoolByTokenMint(tokenMint: string): Promise<BagsPoolInfo | null> {
+  const res = await fetch(
+    `${BAGS_BASE}/solana/bags/pools/token-mint?tokenMint=${encodeURIComponent(tokenMint)}`,
+    { headers: BAGS_GET_HEADERS() }
+  );
+  const json = await res.json();
+  if (!res.ok) {
+    if (res.status === 400 || res.status === 404) return null;
+    throw new Error(json.error || `Bags get pool: ${res.status}`);
+  }
+  const r = json.response ?? json;
+  return r ?? null;
+}
+
+/** Get token lifetime fees (lamports as string). */
+export async function getTokenLifetimeFees(tokenMint: string): Promise<string> {
+  const res = await fetch(
+    `${BAGS_BASE}/token-launch/lifetime-fees?tokenMint=${encodeURIComponent(tokenMint)}`,
+    { headers: BAGS_GET_HEADERS() }
+  );
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags lifetime fees: ${res.status}`);
+  const r = json.response ?? json;
+  return typeof r === "string" ? r : String(r ?? "0");
+}
+
+export interface BagsTradeQuoteParams {
+  inputMint: string;
+  outputMint: string;
+  amount: string;
+  slippageMode?: "auto" | "manual";
+  slippageBps?: number;
+}
+
+/** Get trade quote for swapping tokens. */
+export async function getBagsTradeQuote(params: BagsTradeQuoteParams) {
+  const qs = new URLSearchParams({
+    inputMint: params.inputMint,
+    outputMint: params.outputMint,
+    amount: params.amount,
+    slippageMode: params.slippageMode ?? "auto",
+  });
+  if (params.slippageMode === "manual" && params.slippageBps != null) {
+    qs.set("slippageBps", String(params.slippageBps));
+  }
+  const res = await fetch(`${BAGS_BASE}/trade/quote?${qs}`, {
+    headers: BAGS_GET_HEADERS(),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags trade quote: ${res.status}`);
+  return json.response ?? json;
+}
+
+/** Create swap transaction from quote. Returns base58 transaction. */
+export async function createBagsSwapTransaction(
+  quoteResponse: unknown,
+  userPublicKey: string
+): Promise<string> {
+  const res = await fetch(`${BAGS_BASE}/trade/swap`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ quoteResponse, userPublicKey }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags create swap: ${res.status}`);
+  const r = json.response ?? json;
+  return r?.swapTransaction ?? r;
+}

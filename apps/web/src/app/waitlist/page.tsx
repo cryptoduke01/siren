@@ -215,8 +215,8 @@ export default function WaitlistPage() {
 
             <p className="font-body text-xs text-center mt-2" style={{ color: "var(--text-2)" }}>
               Already have access?{" "}
-              <Link href="/" className="underline" style={{ color: "var(--accent)" }} onClick={() => hapticLight()}>
-                Go to terminal
+              <Link href="/access" className="underline" style={{ color: "var(--accent)" }} onClick={() => hapticLight()}>
+                Enter code
               </Link>
             </p>
           </section>

@@ -10,7 +10,9 @@ import { useToastStore } from "@/store/useToastStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
 import { StarButton } from "./StarButton";
 import { TokenAlertButton } from "./AlertButton";
+import { MarketAlertButton } from "./AlertButton";
 import { MiniSparkline } from "./MiniSparkline";
+import { LaunchpadBadge } from "./LaunchpadBadge";
 import { hapticLight } from "@/lib/haptics";
 import type { SurfacedToken } from "@siren/shared";
 
@@ -70,6 +72,11 @@ export function TokenSurface() {
   const keywordsForApi = useMemo(() => (searchQuery ? [searchQuery] : selectedMarket?.keywords ?? []), [searchQuery, selectedMarket?.keywords]);
 
   const addToast = useToastStore((s) => s.addToast);
+  const { data: solPriceUsd = 0 } = useQuery({
+    queryKey: ["sol-price"],
+    queryFn: () => fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
+    staleTime: 60_000,
+  });
   const { data: tokens = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["tokens", selectedMarket?.ticker, keywordsForApi.join(",")],
     queryFn: () => fetchTokens(selectedMarket?.ticker, undefined, keywordsForApi.length ? keywordsForApi : undefined),
@@ -112,7 +119,7 @@ export function TokenSurface() {
 
   return (
     <div
-      className="flex flex-col min-h-0 p-4 md:p-6"
+      className="flex flex-col min-h-0 min-w-0 p-4 md:p-6 overflow-hidden"
       style={{ background: "var(--bg-void)" }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -125,6 +132,8 @@ export function TokenSurface() {
         <div className="flex items-center gap-2">
           {selectedMarket && (
             <>
+              <MarketAlertButton ticker={selectedMarket.ticker} probability={selectedMarket.probability} />
+              <StarButton type="market" id={selectedMarket.ticker} />
               <button
                 type="button"
                 onClick={() => {
@@ -177,7 +186,7 @@ export function TokenSurface() {
           placeholder="Search by name, symbol, or contract address"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          className="w-full font-mono text-xs h-[36px] px-4 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
+          className="w-full font-body text-xs h-[36px] px-4 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
           style={{
             background: "var(--bg-surface)",
             borderColor: "var(--border-subtle)",
@@ -222,7 +231,7 @@ export function TokenSurface() {
                 initial={{ opacity: 0, transform: "translateY(6px)" }}
                 animate={{ opacity: 1, transform: "translateY(0)" }}
                 transition={{ duration: 0.18, delay: i * 0.05, ease: "easeOut" }}
-                className="rounded-[8px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)]"
+                className="rounded-[8px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border-subtle)",
@@ -247,7 +256,7 @@ export function TokenSurface() {
                 }}
               >
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     {t.imageUrl && (
                       <img
                         src={t.imageUrl}
@@ -258,6 +267,7 @@ export function TokenSurface() {
                     <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
                       ${t.symbol}
                     </p>
+                    <LaunchpadBadge launchpad={t.launchpad} />
                   </div>
                   <div className="flex items-center gap-0">
                     <TokenAlertButton mint={t.mint} symbol={t.symbol} price={t.price} />
@@ -320,6 +330,11 @@ export function TokenSurface() {
                   <span className="font-mono text-xs tabular-nums">
                     <span style={{ color: "var(--text-1)" }}>{t.volume24h?.toLocaleString() ?? "—"}</span>
                     <span style={{ color: "var(--text-3)" }}> SOL</span>
+                    {t.volume24h != null && solPriceUsd > 0 && (
+                      <span className="font-mono text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
+                        (≈${(t.volume24h * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between items-center mb-3">

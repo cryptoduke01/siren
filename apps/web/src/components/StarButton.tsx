@@ -1,5 +1,6 @@
 "use client";
 
+import { Star } from "lucide-react";
 import { useWatchlistStore } from "@/store/useWatchlistStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -40,7 +41,7 @@ export function StarButton({
       title={isStarred ? "Remove from watchlist" : "Add to watchlist"}
       aria-label={isStarred ? "Remove from watchlist" : "Add to watchlist"}
     >
-      {isStarred ? "★" : "☆"}
+      <Star className="w-3.5 h-3.5" fill={isStarred ? "currentColor" : "none"} strokeWidth={2} />
     </button>
   );
 }

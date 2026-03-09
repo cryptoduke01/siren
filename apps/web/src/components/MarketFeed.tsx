@@ -7,8 +7,6 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { useMarkets } from "@/hooks/useMarkets";
 import { MarketDetailPanel } from "./MarketDetailPanel";
 import { MarketLeaderboard } from "./MarketLeaderboard";
-import { StarButton } from "./StarButton";
-import { MarketAlertButton } from "./AlertButton";
 import { MiniSparkline } from "./MiniSparkline";
 import { RefreshCw } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
@@ -117,7 +115,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden"
+      className="h-full flex flex-col overflow-hidden min-h-0"
       style={{
         background: "var(--bg-base)",
         borderRight: "1px solid var(--border-subtle)",
@@ -137,7 +135,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           placeholder="Search markets..."
           value={marketSearchQuery}
           onChange={(e) => setMarketSearchQuery(e.target.value)}
-          className="w-full font-mono text-[11px] h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
+          className="w-full font-body text-[11px] h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
           style={{
             background: "var(--bg-surface)",
             borderColor: "var(--border-subtle)",
@@ -213,12 +211,11 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           ))}
         </div>
       ) : (
-        <ul className="flex-1 overflow-y-auto scrollbar-hidden px-2 pb-4">
+        <ul className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hidden px-2 pb-4">
           <AnimatePresence mode="popLayout">
             {sortedMarkets.slice(0, shownCount).map((m, i) => {
               const isSelected = selectedMarket?.ticker === m.ticker;
               const yesPct = Math.min(100, Math.max(0, m.probability));
-              const noPct = 100 - yesPct;
               return (
                 <motion.li
                   key={m.ticker}
@@ -253,12 +250,8 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                     onAfterSelectMarket?.(m);
                   }}
                 >
-                  <div className="absolute top-2 right-2 flex items-center gap-0">
-                    <MarketAlertButton ticker={m.ticker} probability={m.probability} />
-                    <StarButton type="market" id={m.ticker} />
-                  </div>
                   <p
-                    className="font-heading font-semibold text-[13px] leading-[1.3] line-clamp-2 mb-2"
+                    className="font-heading font-semibold text-[13px] leading-[1.35] line-clamp-3 mb-2 break-words"
                     style={{ color: "var(--text-1)" }}
                   >
                     {m.title}
@@ -269,13 +262,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                         className="font-mono text-[22px] font-normal tabular-nums"
                         style={{ color: "var(--accent)" }}
                       >
-                        {m.probability.toFixed(0)}%
-                      </span>
-                      <span
-                        className="font-mono text-[13px] tabular-nums"
-                        style={{ color: "var(--text-3)" }}
-                      >
-                        {noPct.toFixed(0)}% NO
+                        {yesPct.toFixed(0)}% YES
                       </span>
                     </div>
                     <VelocityBadge v={m.velocity_1h} />

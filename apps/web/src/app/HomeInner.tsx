@@ -1,6 +1,6 @@
  "use client";
 
- import { useState, useEffect, useRef } from "react";
+ import { useState, useEffect, useRef, useCallback } from "react";
  import { useSearchParams } from "next/navigation";
  import { MarketFeed } from "@/components/MarketFeed";
 import { TokenSurface } from "@/components/TokenSurface";
@@ -33,15 +33,41 @@ import { MobileStickyMarket } from "@/components/MobileStickyMarket";
    return out;
  }
 
- export function HomeInner() {
-   const searchParams = useSearchParams();
-   const { data: markets = [], isLoading } = useMarkets();
-   const { setSelectedMarket, setSelectedToken, setBuyPanelOpen } = useSirenStore();
-   const [sheetOpen, setSheetOpen] = useState(false);
-   const [tokensSheetOpen, setTokensSheetOpen] = useState(false);
-   const [mobileCategory, setMobileCategory] = useState("All");
-   const appliedShareRef = useRef<{ market?: string; token?: string }>({});
-   const isMobileLg = useIsMobileLg();
+const SIDEBAR_MIN = 220;
+const SIDEBAR_MAX = 440;
+const SIDEBAR_DEFAULT = 300;
+
+export function HomeInner() {
+  const searchParams = useSearchParams();
+  const { data: markets = [], isLoading } = useMarkets();
+  const { setSelectedMarket, setSelectedToken, setBuyPanelOpen } = useSirenStore();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [tokensSheetOpen, setTokensSheetOpen] = useState(false);
+  const [mobileCategory, setMobileCategory] = useState("All");
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const isResizing = useRef(false);
+  const appliedShareRef = useRef<{ market?: string; token?: string }>({});
+  const isMobileLg = useIsMobileLg();
+
+  const handleResize = useCallback((e: MouseEvent) => {
+    if (!isResizing.current) return;
+    const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
+    setSidebarWidth(w);
+  }, []);
+  const stopResize = useCallback(() => {
+    isResizing.current = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    document.removeEventListener("mousemove", handleResize);
+    document.removeEventListener("mouseup", stopResize);
+  }, [handleResize]);
+  const startResize = useCallback(() => {
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleResize);
+    document.addEventListener("mouseup", stopResize);
+  }, [handleResize, stopResize]);
 
    useEffect(() => {
      const marketTicker = searchParams.get("market");
@@ -109,14 +135,28 @@ import { MobileStickyMarket } from "@/components/MobileStickyMarket";
      });
    };
 
-   return (
-     <div className="app-shell">
-       <aside className="left-panel">
-         <MarketFeed
-           onAfterSelectMarket={isMobileLg ? () => setTokensSheetOpen(true) : undefined}
-         />
-       </aside>
-      <main className="main-panel hidden lg:block">
+  return (
+    <div className="app-shell">
+      <aside
+        className="left-panel"
+        style={!isMobileLg ? { width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth } : undefined}
+      >
+        <MarketFeed
+          onAfterSelectMarket={isMobileLg ? () => setTokensSheetOpen(true) : undefined}
+        />
+      </aside>
+      {!isMobileLg && (
+        <div
+          role="separator"
+          aria-label="Resize sidebar"
+          onMouseDown={startResize}
+          className="w-1 flex-shrink-0 cursor-col-resize hover:bg-[var(--accent)]/20 transition-colors group"
+          style={{ minWidth: 4 }}
+        >
+          <div className="w-0.5 h-full mx-auto bg-[var(--border-subtle)] group-hover:bg-[var(--accent)]/50 transition-colors" />
+        </div>
+      )}
+      <main className="main-panel hidden lg:block min-w-0">
         <div className="lg:hidden">
           <MobileStickyMarket onOpenMarkets={() => setSheetOpen(true)} />
         </div>

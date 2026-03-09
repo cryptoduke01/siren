@@ -88,12 +88,12 @@ export function WaitlistHeader() {
                   Waitlist (current)
                 </span>
                 <Link
-                  href="/"
+                  href="/access"
                   onClick={() => { hapticLight(); setMenuOpen(false); }}
                   className="font-body font-medium text-sm py-3 px-3 rounded-[8px] transition-colors"
                   style={{ color: "var(--text-1)", background: "var(--bg-elevated)" }}
                 >
-                  Go to terminal
+                  Enter code
                 </Link>
                 <div className="flex items-center justify-between py-3 px-3 rounded-[8px]" style={{ background: "var(--bg-elevated)" }}>
                   <span className="font-body text-sm" style={{ color: "var(--text-2)" }}>Theme</span>
