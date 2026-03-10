@@ -40,7 +40,7 @@ In `apps/api/.env`:
 
 ```
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...   # from Settings → API → service_role (secret)
+SUPABASE_SERVICE_ROLE_KEY=   # from Settings → API → service_role (secret)
 ```
 
 Use the **service_role** key, not the anon/publishable key.
@@ -50,7 +50,7 @@ Use the **service_role** key, not the anon/publishable key.
 1. Run API + web.
 2. Visit `/waitlist`, submit the form.
 3. Check Supabase → Table Editor → `waitlist_signups`.
-4. Visit `/admin`, enter passcode `180476`, view signups.
+4. Visit `/admin`, enter your admin passcode (set `NEXT_PUBLIC_ADMIN_PASSCODE` in web env), view signups.
 
 ## 4. Access code (production)
 

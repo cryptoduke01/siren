@@ -1,55 +1,86 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
-import { isSolanaWallet } from "@dynamic-labs/solana";
+import { createContext, useContext } from "react";
+import { usePrivy } from "@privy-io/react-auth";
+import { useWallets, useSignTransaction } from "@privy-io/react-auth/solana";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import type { Transaction } from "@solana/web3.js";
+import type { Transaction, VersionedTransaction } from "@solana/web3.js";
 
-const SirenDynamicContext = createContext<ReturnType<typeof useDynamicContext> | null>(null);
+type SirenWalletState = {
+  connected: boolean;
+  publicKey: PublicKey | null;
+  signTransaction: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>;
+  disconnect: () => void | Promise<void>;
+  connecting: boolean;
+  wallet: unknown;
+  wallets: unknown[];
+  select: (name: string) => void;
+  connect: () => Promise<void>;
+};
 
-export function CaptureDynamicContext({ children }: { children: React.ReactNode }) {
-  const ctx = useDynamicContext();
-  const value = useMemo(() => ctx, [ctx]);
+const PrivyWalletContext = createContext<SirenWalletState | null>(null);
+
+export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
+  const { ready, authenticated, logout } = usePrivy();
+  const { wallets } = useWallets();
+  const { signTransaction: privySignTransaction } = useSignTransaction();
+
+  const solanaWallet = wallets.find(
+    (w) => w.walletClientType === "privy" || (w as { chainType?: string }).chainType === "solana"
+  );
+
+  const value: SirenWalletState | null =
+    ready && authenticated && solanaWallet
+      ? (() => {
+          const address = solanaWallet.address;
+          const publicKey = new PublicKey(address);
+          return {
+            connected: true,
+            publicKey,
+            signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
+              const isVersioned = "version" in tx;
+              const serialized = isVersioned
+                ? (tx as VersionedTransaction).serialize()
+                : (tx as Transaction).serialize({
+                    requireAllSignatures: false,
+                    verifySignatures: false,
+                  });
+
+              const { signedTransaction } = await privySignTransaction({
+                transaction: new Uint8Array(serialized),
+                wallet: solanaWallet,
+              });
+
+              if (isVersioned) {
+                return VersionedTransaction.deserialize(signedTransaction) as T;
+              }
+              return Transaction.from(Buffer.from(signedTransaction)) as T;
+            },
+            disconnect: logout,
+            connecting: false,
+            wallet: null,
+            wallets: [],
+            select: () => {},
+            connect: async () => {},
+          };
+        })()
+      : null;
+
   return (
-    <SirenDynamicContext.Provider value={value}>
+    <PrivyWalletContext.Provider value={value}>
       {children}
-    </SirenDynamicContext.Provider>
+    </PrivyWalletContext.Provider>
   );
 }
 
-export function useSirenWallet() {
-  const dynamicCtx = useContext(SirenDynamicContext);
+export function useSirenWallet(): SirenWalletState {
+  const privyState = useContext(PrivyWalletContext);
   const adapter = useWallet();
 
-  if (
-    dynamicCtx?.primaryWallet &&
-    isSolanaWallet(dynamicCtx.primaryWallet)
-  ) {
-    const pw = dynamicCtx.primaryWallet;
-    const publicKey = new PublicKey(pw.address);
-    return {
-      connected: true,
-      publicKey,
-      signTransaction: async (transaction: Transaction) => {
-        const signer = await pw.getSigner();
-        return (signer as { signTransaction: (tx: Transaction) => Promise<Transaction> }).signTransaction(transaction);
-      },
-      disconnect: async () => {
-        try {
-          (dynamicCtx as { handleLogOut?: () => void })?.handleLogOut?.();
-        } catch {
-          /* ignore */
-        }
-      },
-      connecting: false,
-      wallet: null,
-      wallets: [],
-      select: () => {},
-      connect: async () => {},
-    };
+  if (privyState) {
+    return privyState;
   }
 
-  return adapter;
+  return adapter as SirenWalletState;
 }

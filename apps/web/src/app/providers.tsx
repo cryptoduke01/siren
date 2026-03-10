@@ -4,47 +4,48 @@ import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react
 import { PhantomWalletAdapter, SolflareWalletAdapter, TorusWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { clusterApiUrl } from "@solana/web3.js";
 import { useMemo } from "react";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
-import { SolanaWalletConnectors } from "@dynamic-labs/solana";
-import { isDynamicConfigured } from "@/lib/dynamic";
-import { CaptureDynamicContext } from "@/contexts/SirenWalletContext";
+import { PrivyProvider } from "@privy-io/react-auth";
+import { PrivyWalletBridge } from "@/contexts/SirenWalletContext";
 
-const dynamicEnvId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID;
+const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const endpoint = useMemo(
-    () => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta"),
-    []
-  );
-
+  const endpoint = useMemo(() => rpcUrl, []);
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new TorusWalletAdapter()],
     []
   );
 
   const content = (
-    <AuthProvider>
-      <ConnectionProvider endpoint={endpoint}>
-        <WalletProvider wallets={wallets} autoConnect>
-          {children}
-        </WalletProvider>
-      </ConnectionProvider>
-    </AuthProvider>
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        {children}
+      </WalletProvider>
+    </ConnectionProvider>
   );
 
-  if (dynamicEnvId && isDynamicConfigured()) {
+  if (privyAppId) {
     return (
-      <DynamicContextProvider
-        settings={{
-          environmentId: dynamicEnvId,
-          walletConnectors: [SolanaWalletConnectors],
+      <PrivyProvider
+        appId={privyAppId}
+        config={{
+          loginMethods: ["wallet", "email", "google", "github", "twitter"],
+          appearance: {
+            walletChainType: "solana-only",
+            showWalletLoginFirst: true,
+          },
+          embeddedWallets: {
+            createOnLogin: "all-users",
+          },
+          legal: {
+            termsAndConditionsUrl: "https://onsiren.xyz",
+            privacyPolicyUrl: "https://onsiren.xyz",
+          },
         }}
       >
-        <CaptureDynamicContext>
-          {content}
-        </CaptureDynamicContext>
-      </DynamicContextProvider>
+        <PrivyWalletBridge>{content}</PrivyWalletBridge>
+      </PrivyProvider>
     );
   }
 

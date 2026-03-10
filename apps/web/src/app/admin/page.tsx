@@ -28,7 +28,7 @@ type AppUserRow = {
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-const ADMIN_PASSCODE = "180476";
+const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
 const STORAGE_KEY = "siren-admin-pass-ok";
 
 type Tab = "waitlist" | "app-users";
@@ -80,6 +80,10 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   const handlePassSubmit = () => {
+    if (!ADMIN_PASSCODE) {
+      setError("Admin passcode not configured. Set NEXT_PUBLIC_ADMIN_PASSCODE in env.");
+      return;
+    }
     if (input.trim() === ADMIN_PASSCODE) {
       setHasAccess(true);
       if (typeof window !== "undefined") {

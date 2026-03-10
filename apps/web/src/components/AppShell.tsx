@@ -8,8 +8,6 @@ import { IssueBadge } from "./IssueBadge";
 import { AlertChecker } from "./AlertChecker";
 import { RegisterSW } from "./RegisterSW";
 import { AccessGate } from "./AccessGate";
-import { DynamicWidget } from "@dynamic-labs/sdk-react-core";
-import { isDynamicConfigured } from "@/lib/dynamic";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -24,7 +22,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ToastContainer />
       <OnboardingModal />
       <IssueBadge />
-      {isDynamicConfigured() && <DynamicWidget />}
     </>
   );
 }

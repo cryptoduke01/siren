@@ -11,6 +11,7 @@
   "dependencies": {
     "@dynamic-labs/sdk-react-core": "^4.67.0",
     "@dynamic-labs/solana": "^4.67.0",
+    "@privy-io/react-auth": "^3.16.0",
     "@siren/shared": "workspace:*",
     "@solana/wallet-adapter-base": "^0.9.24",
     "@solana/wallet-adapter-react": "^0.15.35",
