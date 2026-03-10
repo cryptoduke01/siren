@@ -5,7 +5,9 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useWallets, useSignTransaction } from "@privy-io/react-auth/solana";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import type { Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Transaction, VersionedTransaction } from "@solana/web3.js";
+
+type WalletItem = { adapter: { name?: string } };
 
 type SirenWalletState = {
   connected: boolean;
@@ -14,7 +16,7 @@ type SirenWalletState = {
   disconnect: () => void | Promise<void>;
   connecting: boolean;
   wallet: unknown;
-  wallets: unknown[];
+  wallets: WalletItem[];
   select: (name: string) => void;
   connect: () => Promise<void>;
 };
@@ -26,9 +28,7 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
   const { wallets } = useWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
 
-  const solanaWallet = wallets.find(
-    (w) => w.walletClientType === "privy" || (w as { chainType?: string }).chainType === "solana"
-  );
+  const solanaWallet = wallets[0];
 
   const value: SirenWalletState | null =
     ready && authenticated && solanaWallet
@@ -82,5 +82,5 @@ export function useSirenWallet(): SirenWalletState {
     return privyState;
   }
 
-  return adapter as SirenWalletState;
+  return adapter as unknown as SirenWalletState;
 }

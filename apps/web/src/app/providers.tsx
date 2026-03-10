@@ -36,7 +36,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             showWalletLoginFirst: true,
           },
           embeddedWallets: {
-            createOnLogin: "all-users",
+            solana: {
+              createOnLogin: "all-users",
+            },
           },
           legal: {
             termsAndConditionsUrl: "https://onsiren.xyz",

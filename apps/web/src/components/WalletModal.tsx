@@ -24,9 +24,9 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
   const [step, setStep] = useState<"list" | "mobile-install">("list");
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
-  const phantomWallet = wallets.find((w) => w.adapter.name?.toLowerCase().includes("phantom"));
-  const solflareWallet = wallets.find((w) => w.adapter.name?.toLowerCase().includes("solflare"));
-  const torusWallet = wallets.find((w) => w.adapter.name?.toLowerCase().includes("torus"));
+  const phantomWallet = wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes("phantom"));
+  const solflareWallet = wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes("solflare"));
+  const torusWallet = wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes("torus"));
 
   useEffect(() => {
     if (connected) onClose();

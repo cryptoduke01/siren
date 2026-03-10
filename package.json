@@ -2,6 +2,11 @@
   "name": "siren",
   "private": true,
   "version": "0.1.0",
+  "pnpm": {
+    "overrides": {
+      "@solana/kit": "5.5.1"
+    }
+  },
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "dev:web": "pnpm --filter web dev",
