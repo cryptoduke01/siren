@@ -16,6 +16,7 @@ const NAV = [
   { href: "/watchlist", label: "Watchlist" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/waitlist", label: "Waitlist" },
+  { href: "https://docs.onsiren.xyz", label: "Docs", external: true },
 ];
 
 export function TopBar() {
@@ -54,25 +55,27 @@ export function TopBar() {
           />
         </Link>
         <nav className="hidden md:flex items-center gap-6">
-          {NAV.map(({ href, label }) => {
-            const isActive = pathname === href || (href === "/" && pathname === "/");
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => hapticLight()}
-                className="font-body font-medium text-xs uppercase"
-                style={{
-                  letterSpacing: "0.08em",
-                  color: isActive ? "var(--accent)" : "var(--text-3)",
-                  borderBottom: isActive ? "1px solid var(--accent)" : "1px solid transparent",
-                  marginBottom: "-1px",
-                  paddingBottom: "2px",
-                  transition: "color 120ms ease, border-color 120ms ease",
-                }}
-              >
+          {NAV.map(({ href, label, external }) => {
+            const isActive = !external && (pathname === href || (href === "/" && pathname === "/"));
+            const linkProps = {
+              href,
+              onClick: () => hapticLight(),
+              className: "font-body font-medium text-xs uppercase",
+              style: {
+                letterSpacing: "0.08em",
+                color: isActive ? "var(--accent)" : "var(--text-3)",
+                borderBottom: isActive ? "1px solid var(--accent)" : "1px solid transparent",
+                marginBottom: "-1px",
+                paddingBottom: "2px",
+                transition: "color 120ms ease, border-color 120ms ease",
+              } as React.CSSProperties,
+            };
+            return external ? (
+              <a key={href} {...linkProps} target="_blank" rel="noopener noreferrer">
                 {label}
-              </Link>
+              </a>
+            ) : (
+              <Link key={href} {...linkProps}>{label}</Link>
             );
           })}
         </nav>
@@ -137,18 +140,29 @@ export function TopBar() {
                 </button>
               </div>
               <nav className="flex-1 p-4 flex flex-col gap-1 overflow-y-auto">
-                {NAV.map(({ href, label }) => {
-                  const isActive = pathname === href || (href === "/" && pathname === "/");
-                  return (
+                {NAV.map(({ href, label, external }) => {
+                  const isActive = !external && (pathname === href || (href === "/" && pathname === "/"));
+                  const className = "font-body font-medium text-sm py-3 px-3 rounded-[8px]";
+                  const style = { color: isActive ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" };
+                  return external ? (
+                    <a
+                      key={href}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => { hapticLight(); setMenuOpen(false); }}
+                      className={className}
+                      style={style}
+                    >
+                      {label}
+                    </a>
+                  ) : (
                     <Link
                       key={href}
                       href={href}
                       onClick={() => { hapticLight(); setMenuOpen(false); }}
-                      className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
-                      style={{
-                        color: isActive ? "var(--accent)" : "var(--text-1)",
-                        background: "var(--bg-elevated)",
-                      }}
+                      className={className}
+                      style={style}
                     >
                       {label}
                     </Link>

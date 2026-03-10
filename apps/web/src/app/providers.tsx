@@ -39,11 +39,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
         settings={{
           environmentId: dynamicEnvId,
           walletConnectors: [SolanaWalletConnectors],
-          overrides: {
-            embeddedWallets: {
-              createOnLogin: "all-users",
-            },
-          },
         }}
       >
         <CaptureDynamicContext>

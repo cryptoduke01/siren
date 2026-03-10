@@ -35,3 +35,6 @@ Thumbs.db
 # Prisma
 apps/api/prisma/*.db
 apps/api/prisma/*.db-journal
+
+# Docs (separate repo: cryptoduke01/docs)
+siren-docs/

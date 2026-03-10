@@ -17,6 +17,16 @@ export function Footer() {
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="https://docs.onsiren.xyz"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => hapticLight()}
+            className="font-body text-xs underline"
+            style={{ color: "var(--text-2)" }}
+          >
+            Docs
+          </a>
+          <a
             href="https://x.com/sirentracker"
             target="_blank"
             rel="noopener noreferrer"
