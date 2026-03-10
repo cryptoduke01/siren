@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { hapticLight } from "@/lib/haptics";
@@ -18,7 +18,7 @@ interface WalletModalProps {
 }
 
 export function WalletModal({ isOpen, onClose }: WalletModalProps) {
-  const { select, connect, connecting, connected, wallets } = useWallet();
+  const { select, connect, connecting, connected, wallets } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const isMobile = useIsMobile();
   const [step, setStep] = useState<"list" | "mobile-install">("list");

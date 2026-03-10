@@ -19,6 +19,21 @@ create index if not exists idx_waitlist_signups_created_at
 
 If the table already exists without `unique`, add it: `alter table public.waitlist_signups add constraint waitlist_signups_email_key unique (email);`
 
+**Access codes for waitlist users:** Add the column and unique index:
+
+```sql
+alter table public.waitlist_signups add column if not exists access_code text;
+create unique index if not exists idx_waitlist_access_code
+  on public.waitlist_signups (access_code) where access_code is not null;
+```
+
+Admins can generate per-user 6-digit codes from the admin panel. Users enter their code on `/access` to unlock the terminal. The master `SIREN_ACCESS_CODE` (env) still works for all users.
+
+**Welcome emails:** When you generate a code, the API sends a welcome email (code + how to use Siren) if Resend is configured. In `apps/api/.env` add:
+- `RESEND_API_KEY` — from [resend.com](https://resend.com/api-keys)
+- `SIREN_EMAIL_FROM` — e.g. `Siren <hello@onsiren.xyz>` (verify the domain in Resend)
+- `SIREN_APP_URL` — e.g. `https://onsiren.xyz`
+
 ## 2. API env vars
 
 In `apps/api/.env`:

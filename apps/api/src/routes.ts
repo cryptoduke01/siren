@@ -7,6 +7,7 @@ import { getDflowOrder } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
+import { sendWelcomeWithAccessCode, canSendEmail } from "./services/email.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -59,14 +60,63 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  /** Access code validation — used by web app to gate terminal on production. Code lives in API env. */
+  /** Access code validation — master code (env) or per-waitlist codes. */
   app.post<{ Body: { code?: string } }>("/api/access/validate", async (req, reply) => {
     const { code } = req.body || {};
-    const secret = process.env.SIREN_ACCESS_CODE || "";
-    if (!secret || typeof code !== "string" || code.trim() !== secret) {
-      return reply.status(403).send({ ok: false, error: "Invalid code" });
+    const trimmed = typeof code === "string" ? code.trim() : "";
+    if (!trimmed) return reply.status(403).send({ ok: false, error: "Invalid code" });
+    const master = process.env.SIREN_ACCESS_CODE || "";
+    if (master && trimmed === master) return reply.send({ ok: true });
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from("waitlist_signups")
+        .select("id")
+        .eq("access_code", trimmed)
+        .limit(1)
+        .maybeSingle();
+      if (!error && data) return reply.send({ ok: true });
+    } catch {
+      /* ignore */
     }
-    return reply.send({ ok: true });
+    return reply.status(403).send({ ok: false, error: "Invalid code" });
+  });
+
+  /** Admin: generate access code for a waitlist signup and send welcome email. */
+  app.post<{ Params: { id: string } }>("/api/admin/waitlist/:id/generate-code", async (req, reply) => {
+    const id = req.params.id?.trim();
+    if (!id) return reply.status(400).send({ success: false, error: "id required" });
+    const code = Array.from({ length: 6 }, () => Math.floor(Math.random() * 10)).join("");
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data: row, error: selectError } = await supabase
+        .from("waitlist_signups")
+        .select("email, name")
+        .eq("id", id)
+        .single();
+      if (selectError || !row) return reply.status(404).send({ success: false, error: "Waitlist entry not found" });
+      const { data, error } = await supabase
+        .from("waitlist_signups")
+        .update({ access_code: code })
+        .eq("id", id)
+        .select("access_code")
+        .single();
+      if (error) return reply.status(503).send({ success: false, error: error.message || "Update failed" });
+      let emailSent = false;
+      if (canSendEmail() && row.email) {
+        const result = await sendWelcomeWithAccessCode({ to: row.email, name: row.name, code });
+        emailSent = result.ok;
+        if (!result.ok) app.log.warn({ email: row.email, err: result.error }, "Failed to send welcome email");
+      }
+      return reply.send({
+        success: true,
+        code: data?.access_code ?? code,
+        emailSent: canSendEmail() ? emailSent : null,
+      });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to generate code" });
+    }
   });
 
   /** Admin: list waitlist signups (passcode gate happens on web). */
@@ -77,7 +127,7 @@ export function registerRoutes(app: FastifyInstance) {
       const supabase = getSupabaseAdminClient();
       const { data, error } = await supabase
         .from("waitlist_signups")
-        .select("id,email,wallet,name,created_at")
+        .select("id,email,wallet,name,created_at,access_code")
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
       if (error) return reply.status(503).send({ success: false, error: error.message || "Query failed" });
@@ -209,6 +259,156 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch SOL price" });
+    }
+  });
+
+  // Track or upsert a user by wallet / auth id
+  app.post<{ Body: { wallet?: string; authUserId?: string; signupSource?: string } }>(
+    "/api/users/track",
+    async (req, reply) => {
+      const { wallet, authUserId, signupSource } = req.body || {};
+      if (!wallet && !authUserId) {
+        return reply.status(400).send({ success: false, error: "wallet or authUserId required" });
+      }
+
+      const normalizedWallet =
+        typeof wallet === "string" && wallet.trim().length > 0 ? wallet.trim().toLowerCase() : null;
+
+      // Auto-detect country from IP geo headers (no user permission needed)
+      const country =
+        (req.headers["cf-ipcountry"] as string) ||
+        (req.headers["x-vercel-ip-country"] as string) ||
+        (req.headers["x-country-code"] as string) ||
+        null;
+      const countryCode = country && country.length === 2 ? country.toUpperCase() : null;
+
+      try {
+        const supabase = getSupabaseAdminClient();
+
+        const filters: string[] = [];
+        if (normalizedWallet) filters.push(`wallet.eq.${normalizedWallet}`);
+        if (authUserId) filters.push(`auth_user_id.eq.${authUserId}`);
+
+        const { data: existing, error: selectError } = await supabase
+          .from("users")
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country")
+          .or(filters.join(","))
+          .limit(1)
+          .maybeSingle();
+
+        if (selectError && selectError.code !== "PGRST116") {
+          req.log.error({ err: selectError }, "users.track select failed");
+          return reply.status(503).send({ success: false, error: "User lookup failed" });
+        }
+
+        const now = new Date().toISOString();
+
+        if (!existing) {
+          const insertPayload: Record<string, unknown> = {
+            created_at: now,
+            last_seen_at: now,
+            signup_source: signupSource ?? (authUserId ? "auth" : "wallet"),
+          };
+          if (normalizedWallet) insertPayload.wallet = normalizedWallet;
+          if (authUserId) insertPayload.auth_user_id = authUserId;
+          if (countryCode) insertPayload.country = countryCode;
+
+          const { data: inserted, error: insertError } = await supabase
+            .from("users")
+            .insert(insertPayload)
+            .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country")
+            .single();
+
+          if (insertError) {
+            req.log.error({ err: insertError }, "users.track insert failed");
+            return reply.status(503).send({ success: false, error: "User insert failed" });
+          }
+
+          return reply.send({ success: true, data: inserted });
+        }
+
+        const updatePayload: Record<string, unknown> = {
+          last_seen_at: now,
+        };
+        if (!existing.wallet && normalizedWallet) updatePayload.wallet = normalizedWallet;
+        if (!existing.auth_user_id && authUserId) updatePayload.auth_user_id = authUserId;
+        if (!existing.signup_source && signupSource) updatePayload.signup_source = signupSource;
+        if (countryCode) updatePayload.country = countryCode;
+
+        const { data: updated, error: updateError } = await supabase
+          .from("users")
+          .update(updatePayload)
+          .eq("id", existing.id)
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country")
+          .single();
+
+        if (updateError) {
+          req.log.error({ err: updateError }, "users.track update failed");
+          return reply.status(503).send({ success: false, error: "User update failed" });
+        }
+
+        return reply.send({ success: true, data: updated });
+      } catch (e) {
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: "User tracking failed" });
+      }
+    }
+  );
+
+  /** Admin: aggregate user stats for dashboard. */
+  app.get("/api/admin/users/stats", async (_req, reply) => {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const now = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const since24 = new Date(now - dayMs).toISOString();
+      const since7d = new Date(now - 7 * dayMs).toISOString();
+
+      const [{ count: totalUsers, error: totalErr }, { count: new24h, error: new24Err }, { count: new7d, error: new7dErr }, { count: active24h, error: activeErr }] =
+        await Promise.all([
+          supabase.from("users").select("id", { count: "exact", head: true }),
+          supabase.from("users").select("id", { count: "exact", head: true }).gte("created_at", since24),
+          supabase.from("users").select("id", { count: "exact", head: true }).gte("created_at", since7d),
+          supabase.from("users").select("id", { count: "exact", head: true }).gte("last_seen_at", since24),
+        ]);
+
+      const firstError = totalErr || new24Err || new7dErr || activeErr;
+      if (firstError) {
+        app.log.error({ err: firstError }, "admin users stats failed");
+        return reply.status(503).send({ success: false, error: "Failed to fetch user stats" });
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          totalUsers: totalUsers ?? 0,
+          newUsers24h: new24h ?? 0,
+          newUsers7d: new7d ?? 0,
+          activeUsers24h: active24h ?? 0,
+        },
+      });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch user stats" });
+    }
+  });
+
+  /** Admin: list app users (wallet-connected users from users table). */
+  app.get<{ Querystring: { limit?: string; offset?: string } }>("/api/admin/users", async (req, reply) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "100", 10) || 100, 1), 500);
+    const offset = Math.max(parseInt(req.query.offset || "0", 10) || 0, 0);
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from("users")
+        .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,metadata")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (error) return reply.status(503).send({ success: false, error: error.message || "Query failed" });
+      return reply.send({ success: true, data: data ?? [] });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch app users" });
     }
   });
 

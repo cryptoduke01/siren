@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
 import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { ResultModal } from "@/components/ResultModal";
+import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
@@ -205,7 +207,7 @@ function SendSolModal({
   solPriceUsd: number;
   onClose: () => void;
 }) {
-  const { publicKey, signTransaction } = useWallet();
+  const { publicKey, signTransaction } = useSirenWallet();
   const [network, setNetwork] = useState<"mainnet" | "devnet">("mainnet");
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
@@ -308,7 +310,7 @@ function buildMintToMarket(
 }
 
 export default function PortfolioPage() {
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey } = useSirenWallet();
   const { connection } = useConnection();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
   const [balanceView, setBalanceView] = useState<"mainnet" | "devnet">("mainnet");
@@ -460,6 +462,36 @@ export default function PortfolioPage() {
     setBuyPanelOpen(true);
   };
 
+  const predictionMints = new Set(predictionPositions.map((p) => p.mint));
+  const pnlPositions = [
+    ...predictionPositions.map((p) => {
+      const priceUsd = tokenInfoByMint.get(p.mint)?.priceUsd ?? 0;
+      const valueUsd = p.balance * priceUsd;
+      return {
+        ticker: p.ticker,
+        title: p.title,
+        side: p.side as "yes" | "no",
+        kalshiMarket: `Kalshi: ${p.ticker}`,
+        valueUsd,
+        pnlUsd: null as number | null,
+        pnlPercent: null as number | null,
+      };
+    }),
+    ...tokenHoldings
+      .filter((t) => !predictionMints.has(t.mint))
+      .map((t) => {
+        const info = tokenInfoByMint.get(t.mint);
+        const valueUsd = (info?.priceUsd ?? 0) * t.balance;
+        return {
+          ticker: info?.symbol ?? t.symbol,
+          title: info?.name ?? t.name,
+          valueUsd,
+          pnlUsd: null as number | null,
+          pnlPercent: null as number | null,
+        };
+      }),
+  ].filter((p) => p.valueUsd > 0);
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
@@ -469,7 +501,7 @@ export default function PortfolioPage() {
             Portfolio
           </h1>
           <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-            Balances, prediction positions, token holdings & fee earnings in one place.
+            PnL, balances, prediction positions, token holdings & fee earnings in one place.
           </p>
         </div>
         {!connected ? (
@@ -650,6 +682,13 @@ export default function PortfolioPage() {
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            <PnlCard
+              totalPnlUsd={null}
+              totalPnlPercent={null}
+              positions={pnlPositions}
+              walletAddress={publicKey?.toBase58()}
+              isLoading={tokensLoading}
+            />
             <div
               className="rounded-2xl border overflow-hidden"
               style={{

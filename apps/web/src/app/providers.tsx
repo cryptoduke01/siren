@@ -4,6 +4,13 @@ import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react
 import { PhantomWalletAdapter, SolflareWalletAdapter, TorusWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { clusterApiUrl } from "@solana/web3.js";
 import { useMemo } from "react";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
+import { SolanaWalletConnectors } from "@dynamic-labs/solana";
+import { isDynamicConfigured } from "@/lib/dynamic";
+import { CaptureDynamicContext } from "@/contexts/SirenWalletContext";
+
+const dynamicEnvId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID;
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(
@@ -16,11 +23,35 @@ export function Providers({ children }: { children: React.ReactNode }) {
     []
   );
 
-  return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
-        {children}
-      </WalletProvider>
-    </ConnectionProvider>
+  const content = (
+    <AuthProvider>
+      <ConnectionProvider endpoint={endpoint}>
+        <WalletProvider wallets={wallets} autoConnect>
+          {children}
+        </WalletProvider>
+      </ConnectionProvider>
+    </AuthProvider>
   );
+
+  if (dynamicEnvId && isDynamicConfigured()) {
+    return (
+      <DynamicContextProvider
+        settings={{
+          environmentId: dynamicEnvId,
+          walletConnectors: [SolanaWalletConnectors],
+          overrides: {
+            embeddedWallets: {
+              createOnLogin: "all-users",
+            },
+          },
+        }}
+      >
+        <CaptureDynamicContext>
+          {content}
+        </CaptureDynamicContext>
+      </DynamicContextProvider>
+    );
+  }
+
+  return content;
 }

@@ -76,6 +76,7 @@ Edit `.env` and fill only what you have:
 - **For real trading:** Set `DFLOW_API_KEY` and `BAGS_API_KEY`.
 - **For DB/Redis later:** Set `DATABASE_URL` and `REDIS_URL` when you add Postgres/Redis.
 - **For waitlist:** Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (from Supabase → Settings → API). Create the `waitlist_signups` table in the SQL editor; see `docs/WAITLIST_SETUP.md`.
+- **For OAuth (Google, GitHub, X):** In Supabase Dashboard → Authentication → Providers, enable Google, GitHub, and Twitter. Add redirect URL `https://your-domain/auth/callback` (and `http://localhost:3000/auth/callback` for dev). Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the web app env.
 
 ### Frontend (`apps/web`)
 

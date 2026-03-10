@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { Loader2 } from "lucide-react";
@@ -32,7 +33,7 @@ function deserializeAndSend(
 }
 
 export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
-  const { connected, publicKey, signTransaction } = useWallet();
+  const { connected, publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
   const [step, setStep] = useState<Step>("form");
   const [error, setError] = useState<string | null>(null);

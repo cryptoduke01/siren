@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Body - same shape, slightly drooped -->
+  <path d="M32 56C44 56 52 48 52 36C52 24 44 16 32 16C20 16 12 24 12 36C12 48 20 56 32 56Z" fill="#00FF85" opacity="0.85"/>
+  <!-- Sad eyes (looking down) -->
+  <path d="M24 30C25 34 26 34 27 30" stroke="#060609" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <path d="M38 30C39 34 40 34 41 30" stroke="#060609" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- Frown -->
+  <path d="M26 44C30 38 34 38 38 44" stroke="#060609" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- Teardrop -->
+  <path d="M34 48C34 48 36 52 32 54C28 52 30 48 30 48" fill="#7878A0" opacity="0.8"/>
+</svg>

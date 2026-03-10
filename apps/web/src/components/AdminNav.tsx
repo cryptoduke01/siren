@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { hapticLight } from "@/lib/haptics";
 
 export function AdminNav() {
+  const pathname = usePathname();
   return (
     <header
       className="h-14 flex items-center justify-between px-4 flex-shrink-0"
@@ -26,14 +28,14 @@ export function AdminNav() {
           />
         </Link>
         <nav className="flex items-center gap-4">
-          <span className="font-heading font-semibold text-sm uppercase tracking-wider" style={{ color: "var(--text-1)" }}>
-            Waitlist Admin
+          <span className="font-heading font-semibold text-sm uppercase tracking-wider" style={{ color: "var(--text-2)" }}>
+            Admin
           </span>
           <Link
             href="/waitlist"
             onClick={() => hapticLight()}
             className="font-body text-xs uppercase tracking-wide transition-colors"
-            style={{ color: "var(--text-3)" }}
+            style={{ color: pathname === "/waitlist" ? "var(--accent)" : "var(--text-3)" }}
           >
             Waitlist
           </Link>
@@ -41,7 +43,7 @@ export function AdminNav() {
             href="/"
             onClick={() => hapticLight()}
             className="font-body text-xs uppercase tracking-wide transition-colors"
-            style={{ color: "var(--text-3)" }}
+            style={{ color: pathname === "/" ? "var(--accent)" : "var(--text-3)" }}
           >
             Terminal
           </Link>

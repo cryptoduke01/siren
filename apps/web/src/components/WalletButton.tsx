@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { WalletModal } from "./WalletModal";
 import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { hapticLight } from "@/lib/haptics";
 
 export function WalletButton() {
-  const { connected, publicKey, disconnect } = useWallet();
+  const { connected, publicKey, disconnect } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const [modalOpen, setModalOpen] = useState(false);
   const router = useRouter();
@@ -18,6 +18,16 @@ export function WalletButton() {
   const short = publicKey
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`
     : null;
+
+  useEffect(() => {
+    if (!connected || !publicKey) return;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    fetch(`${apiUrl}/api/users/track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet: publicKey.toBase58(), signupSource: "wallet" }),
+    }).catch(() => {});
+  }, [connected, publicKey]);
 
   const handleDisconnect = () => {
     hapticLight();

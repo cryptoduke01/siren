@@ -74,6 +74,14 @@ html.light .topbar-logo {
   filter: brightness(0.25);
 }
 
+/* PnL mascot: remove white/opaque background (use multiply to make white transparent on dark) */
+.pnl-mascot {
+  mix-blend-mode: multiply;
+}
+html.light .pnl-mascot {
+  mix-blend-mode: normal;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

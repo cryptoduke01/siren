@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Copy, Check } from "lucide-react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
@@ -63,7 +63,7 @@ function getTokenCardTopBorder(token: SurfacedToken): string {
 
 export function TokenSurface() {
   const { selectedMarket, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
-  const { publicKey } = useWallet();
+  const { publicKey } = useSirenWallet();
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);

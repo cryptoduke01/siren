@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import { Copy, Check, Loader2, ExternalLink } from "lucide-react";
@@ -50,7 +51,7 @@ function CopyCAButton({ mint }: { mint: string }) {
 export function UnifiedBuyPanel() {
   const { selectedMarket, selectedToken, buyPanelOpen, buyPanelMode, setBuyPanelOpen, setSelectedMarket, setSelectedToken, openForSell } =
     useSirenStore();
-  const { connected, publicKey, signTransaction } = useWallet();
+  const { connected, publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
   const addToast = useToastStore((s) => s.addToast);
   const queryClient = useQueryClient();
