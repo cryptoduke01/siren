@@ -32,7 +32,7 @@ export default function AccessPage() {
           setLoading(false);
           return;
         }
-        router.push("/");
+        router.replace("/onboarding");
         router.refresh();
       })
       .catch(() => {

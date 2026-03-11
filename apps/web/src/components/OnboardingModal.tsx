@@ -33,7 +33,7 @@ export function OnboardingModal() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (pathname === "/waitlist" || pathname === "/access") return;
+    if (pathname === "/waitlist" || pathname === "/access" || pathname === "/onboarding") return;
     const seen = localStorage.getItem(ONBOARDING_KEY);
     if (!seen) {
       const t = setTimeout(() => setIsOpen(true), 800);

@@ -60,7 +60,7 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  /** Access code validation — master code (env) or per-waitlist codes. */
+  /** Access code validation — master code (env) or per-waitlist codes (one-time use). */
   app.post<{ Body: { code?: string } }>("/api/access/validate", async (req, reply) => {
     const { code } = req.body || {};
     const trimmed = typeof code === "string" ? code.trim() : "";
@@ -71,15 +71,17 @@ export function registerRoutes(app: FastifyInstance) {
       const supabase = getSupabaseAdminClient();
       const { data, error } = await supabase
         .from("waitlist_signups")
-        .select("id")
+        .update({ access_code_used_at: new Date().toISOString() })
         .eq("access_code", trimmed)
+        .is("access_code_used_at", null)
+        .select("id")
         .limit(1)
         .maybeSingle();
       if (!error && data) return reply.send({ ok: true });
     } catch {
       /* ignore */
     }
-    return reply.status(403).send({ ok: false, error: "Invalid code" });
+    return reply.status(403).send({ ok: false, error: "Invalid or already used code" });
   });
 
   /** Admin: generate access code for a waitlist signup and send welcome email. */
@@ -97,7 +99,7 @@ export function registerRoutes(app: FastifyInstance) {
       if (selectError || !row) return reply.status(404).send({ success: false, error: "Waitlist entry not found" });
       const { data, error } = await supabase
         .from("waitlist_signups")
-        .update({ access_code: code })
+        .update({ access_code: code, access_code_used_at: null })
         .eq("id", id)
         .select("access_code")
         .single();
@@ -119,6 +121,57 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Admin: send access-code emails to all waitlist entries (generate codes for those without). */
+  app.post("/api/admin/waitlist/send-all-codes", async (req, reply) => {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase
+        .from("waitlist_signups")
+        .select("id,email,name,access_code")
+        .not("email", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(500);
+      if (listError) return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      const entries = rows ?? [];
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      for (const row of entries) {
+        if (!row.email?.trim()) {
+          skipped++;
+          continue;
+        }
+        let code = row.access_code;
+        if (!code) {
+          code = Array.from({ length: 6 }, () => Math.floor(Math.random() * 10)).join("");
+          const { error: updateErr } = await supabase
+            .from("waitlist_signups")
+            .update({ access_code: code, access_code_used_at: null })
+            .eq("id", row.id);
+          if (updateErr) {
+            failed++;
+            app.log.warn({ id: row.id, email: row.email }, "Failed to generate code");
+            continue;
+          }
+        }
+        if (!canSendEmail()) {
+          skipped++;
+          continue;
+        }
+        const result = await sendWelcomeWithAccessCode({ to: row.email, name: row.name, code });
+        if (result.ok) sent++;
+        else {
+          failed++;
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send email");
+        }
+      }
+      return reply.send({ success: true, sent, failed, skipped, total: entries.length });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send emails" });
+    }
+  });
+
   /** Admin: list waitlist signups (passcode gate happens on web). */
   app.get<{ Querystring: { limit?: string; offset?: string } }>("/api/admin/waitlist", async (req, reply) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit || "50", 10) || 50, 1), 500);
@@ -127,7 +180,7 @@ export function registerRoutes(app: FastifyInstance) {
       const supabase = getSupabaseAdminClient();
       const { data, error } = await supabase
         .from("waitlist_signups")
-        .select("id,email,wallet,name,created_at,access_code")
+        .select("id,email,wallet,name,created_at,access_code,access_code_used_at")
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
       if (error) return reply.status(503).send({ success: false, error: error.message || "Query failed" });

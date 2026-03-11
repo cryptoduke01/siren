@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { XCircle } from "lucide-react";
@@ -26,6 +26,7 @@ function isTerminalPath(pathname: string): boolean {
 
 export function AccessGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [status, setStatus] = useState<"checking" | "gated" | "allowed">("checking");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,9 +65,8 @@ export function AccessGate({ children }: { children: React.ReactNode }) {
           setLoading(false);
           return;
         }
-        setStatus("allowed");
         setCode("");
-        window.location.reload();
+        router.replace("/onboarding");
       })
       .catch(() => {
         setError("Something went wrong");

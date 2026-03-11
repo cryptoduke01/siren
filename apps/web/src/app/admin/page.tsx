@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { XCircle, Trash2, Users, ClipboardList, Copy, Check, KeyRound } from "lucide-react";
+import { XCircle, Trash2, Users, ClipboardList, Copy, Check, KeyRound, Mail } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { PasscodeDigits } from "@/components/PasscodeDigits";
 import { AdminNav } from "@/components/AdminNav";
@@ -14,6 +14,7 @@ type WaitlistRow = {
   email: string;
   wallet: string | null;
   access_code: string | null;
+  access_code_used_at: string | null;
 };
 
 type AppUserRow = {
@@ -78,6 +79,8 @@ export default function AdminPage() {
   const [appUsers, setAppUsers] = useState<AppUserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendAllLoading, setSendAllLoading] = useState(false);
+  const [sendAllResult, setSendAllResult] = useState<{ sent: number; failed: number; skipped: number; total: number } | null>(null);
 
   const handlePassSubmit = () => {
     if (!ADMIN_PASSCODE) {
@@ -158,6 +161,23 @@ export default function AdminPage() {
       await loadWaitlist();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
+    }
+  };
+
+  const handleSendAllCodes = async () => {
+    hapticLight();
+    setSendAllResult(null);
+    setSendAllLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-all-codes`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setSendAllResult({ sent: data.sent, failed: data.failed, skipped: data.skipped, total: data.total });
+      fetchWaitlist();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send emails");
+    } finally {
+      setSendAllLoading(false);
     }
   };
 
@@ -333,9 +353,30 @@ export default function AdminPage() {
 
           {tab === "waitlist" && (
             <section>
-              <h2 className="font-heading text-sm mb-3" style={{ color: "var(--text-2)" }}>
-                Waitlist signups — people who joined via the waitlist form
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <h2 className="font-heading text-sm" style={{ color: "var(--text-2)" }}>
+                  Waitlist signups — people who joined via the waitlist form
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleSendAllCodes}
+                  disabled={sendAllLoading || waitlistRows.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-opacity disabled:opacity-50"
+                  style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                >
+                  {sendAllLoading ? (
+                    <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4" />
+                  )}
+                  {sendAllLoading ? "Sending…" : "Send access codes to all"}
+                </button>
+              </div>
+              {sendAllResult && (
+                <p className="font-body text-xs mb-3" style={{ color: "var(--text-2)" }}>
+                  Sent {sendAllResult.sent}, failed {sendAllResult.failed}, skipped {sendAllResult.skipped} of {sendAllResult.total}.
+                </p>
+              )}
               <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
                 <table className="min-w-full text-left text-xs font-body">
                   <thead>
@@ -365,8 +406,23 @@ export default function AdminPage() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               {row.access_code ? (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-mono text-[11px]" style={{ color: "var(--text-2)" }}>{row.access_code}</span>
+                                  {row.access_code_used_at && (
+                                    <>
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--bg-elevated)", color: "var(--text-3)" }} title={new Date(row.access_code_used_at).toLocaleString()}>Used</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGenerateCode(row.id)}
+                                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium"
+                                        style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                                        title="Regenerate new code"
+                                      >
+                                        <KeyRound className="w-3.5 h-3.5" />
+                                        Regenerate
+                                      </button>
+                                    </>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => { hapticLight(); navigator.clipboard.writeText(row.access_code!).then(() => {}); }}

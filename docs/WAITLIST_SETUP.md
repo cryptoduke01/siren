@@ -27,7 +27,13 @@ create unique index if not exists idx_waitlist_access_code
   on public.waitlist_signups (access_code) where access_code is not null;
 ```
 
-Admins can generate per-user 6-digit codes from the admin panel. Users enter their code on `/access` to unlock the terminal. The master `SIREN_ACCESS_CODE` (env) still works for all users.
+**One-time use:** Codes are single-use. Add the tracking column:
+
+```sql
+alter table public.waitlist_signups add column if not exists access_code_used_at timestamptz;
+```
+
+Admins can generate per-user 6-digit codes from the admin panel. Users enter their code on `/access` to unlock the terminal. Each waitlist code can only be used once; after use, `access_code_used_at` is set. The master `SIREN_ACCESS_CODE` (env) still works for all users and is unlimited.
 
 **Welcome emails:** When you generate a code, the API sends a welcome email (code + how to use Siren) if Resend is configured. In `apps/api/.env` add:
 - `RESEND_API_KEY` — from [resend.com](https://resend.com/api-keys)

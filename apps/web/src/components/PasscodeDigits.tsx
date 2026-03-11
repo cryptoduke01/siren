@@ -113,10 +113,11 @@ export function PasscodeDigits({
           onSubmit();
         }}
         disabled={loading || normalized.length !== LENGTH || disabled}
-        className="w-full h-12 rounded-[10px] font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-transparent"
+        className="w-full h-12 rounded-[10px] font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-transparent flex items-center justify-center gap-2"
         style={{ background: "var(--accent)", color: "var(--accent-text)" }}
       >
-        {loading ? "…" : submitLabel}
+        {loading && <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden />}
+        {loading ? "Verifying…" : submitLabel}
       </button>
     </div>
   );
