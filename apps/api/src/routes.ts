@@ -136,9 +136,12 @@ export function registerRoutes(app: FastifyInstance) {
       let sent = 0;
       let failed = 0;
       let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
       for (const row of entries) {
         if (!row.email?.trim()) {
           skipped++;
+          skippedEmails.push(row.email || "");
           continue;
         }
         let code = row.access_code;
@@ -151,11 +154,13 @@ export function registerRoutes(app: FastifyInstance) {
           if (updateErr) {
             failed++;
             app.log.warn({ id: row.id, email: row.email }, "Failed to generate code");
+            failedEmails.push(row.email);
             continue;
           }
         }
         if (!canSendEmail()) {
           skipped++;
+          skippedEmails.push(row.email);
           continue;
         }
         const result = await sendWelcomeWithAccessCode({ to: row.email, name: row.name, code });
@@ -163,9 +168,99 @@ export function registerRoutes(app: FastifyInstance) {
         else {
           failed++;
           app.log.warn({ email: row.email, err: result.error }, "Failed to send email");
+          failedEmails.push(row.email);
         }
       }
-      return reply.send({ success: true, sent, failed, skipped, total: entries.length });
+      return reply.send({ success: true, sent, failed, skipped, total: entries.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send emails" });
+    }
+  });
+
+  /** Admin: send access-code emails to a specific list of emails (pasted manually). */
+  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-codes-by-email", async (req, reply) => {
+    try {
+      const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
+      const normalized = Array.from(
+        new Set(
+          raw
+            .map((e) => (typeof e === "string" ? e.trim().toLowerCase() : ""))
+            .filter((e) => e.length > 0)
+        )
+      );
+      if (normalized.length === 0) {
+        return reply.status(400).send({ success: false, error: "No valid emails provided" });
+      }
+
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase
+        .from("waitlist_signups")
+        .select("id,email,name,access_code")
+        .in("email", normalized);
+      if (listError) {
+        return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      }
+
+      const byEmail = new Map<string, (typeof rows)[number]>();
+      for (const row of rows ?? []) {
+        if (row.email) byEmail.set(row.email.toLowerCase(), row as any);
+      }
+
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+
+      for (const email of normalized) {
+        const row = byEmail.get(email);
+        if (!row) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+
+        let code = row.access_code as string | null;
+        if (!code) {
+          code = Array.from({ length: 6 }, () => Math.floor(Math.random() * 10)).join("");
+          const { error: updateErr } = await supabase
+            .from("waitlist_signups")
+            .update({ access_code: code, access_code_used_at: null })
+            .eq("id", row.id);
+          if (updateErr) {
+            failed++;
+            app.log.warn({ id: row.id, email: row.email }, "Failed to generate code (manual)");
+            failedEmails.push(email);
+            continue;
+          }
+        }
+
+        if (!canSendEmail()) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+
+        const result = await sendWelcomeWithAccessCode({ to: row.email as string, name: row.name as string | null, code });
+        if (result.ok) {
+          sent++;
+        } else {
+          failed++;
+          failedEmails.push(email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send email (manual)");
+        }
+      }
+
+      return reply.send({
+        success: true,
+        sent,
+        failed,
+        skipped,
+        total: normalized.length,
+        failedEmails,
+        skippedEmails,
+      });
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to send emails" });

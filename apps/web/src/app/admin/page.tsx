@@ -80,7 +80,14 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendAllLoading, setSendAllLoading] = useState(false);
-  const [sendAllResult, setSendAllResult] = useState<{ sent: number; failed: number; skipped: number; total: number } | null>(null);
+  const [sendAllResult, setSendAllResult] = useState<{
+    sent: number;
+    failed: number;
+    skipped: number;
+    total: number;
+    failedEmails?: string[];
+    skippedEmails?: string[];
+  } | null>(null);
 
   const handlePassSubmit = () => {
     if (!ADMIN_PASSCODE) {
@@ -172,7 +179,14 @@ export default function AdminPage() {
       const res = await fetch(`${API_URL}/api/admin/waitlist/send-all-codes`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      setSendAllResult({ sent: data.sent, failed: data.failed, skipped: data.skipped, total: data.total });
+      setSendAllResult({
+        sent: data.sent,
+        failed: data.failed,
+        skipped: data.skipped,
+        total: data.total,
+        failedEmails: data.failedEmails ?? [],
+        skippedEmails: data.skippedEmails ?? [],
+      });
       await loadWaitlist();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send emails");
@@ -373,9 +387,35 @@ export default function AdminPage() {
                 </button>
               </div>
               {sendAllResult && (
-                <p className="font-body text-xs mb-3" style={{ color: "var(--text-2)" }}>
-                  Sent {sendAllResult.sent}, failed {sendAllResult.failed}, skipped {sendAllResult.skipped} of {sendAllResult.total}.
-                </p>
+                <div className="mb-3 space-y-1">
+                  <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
+                    Sent {sendAllResult.sent}, failed {sendAllResult.failed}, skipped {sendAllResult.skipped} of {sendAllResult.total}.
+                  </p>
+                  {sendAllResult.failedEmails && sendAllResult.failedEmails.length > 0 && (
+                    <details className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      <summary className="cursor-pointer">View failed emails ({sendAllResult.failedEmails.length})</summary>
+                      <div className="mt-1 flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const list = sendAllResult.failedEmails!.join(", ");
+                            navigator.clipboard.writeText(list).then(() => {});
+                            hapticLight();
+                          }}
+                          className="self-start px-2 py-1 rounded border text-[10px]"
+                          style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+                        >
+                          Copy all
+                        </button>
+                        <ul className="list-disc pl-4">
+                          {sendAllResult.failedEmails.map((email) => (
+                            <li key={email}>{email}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </details>
+                  )}
+                </div>
               )}
               <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
                 <table className="min-w-full text-left text-xs font-body">
