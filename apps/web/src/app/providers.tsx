@@ -41,8 +41,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
             },
           },
           legal: {
-            termsAndConditionsUrl: "https://onsiren.xyz",
-            privacyPolicyUrl: "https://onsiren.xyz",
+            termsAndConditionsUrl: "https://onsiren.xyz/terms",
+            privacyPolicyUrl: "https://onsiren.xyz/privacy",
           },
         }}
       >

@@ -37,6 +37,22 @@ export function Footer() {
             X: @sirentracker
           </a>
           <Link
+            href="/terms"
+            onClick={() => hapticLight()}
+            className="font-body text-xs underline"
+            style={{ color: "var(--text-2)" }}
+          >
+            Terms
+          </Link>
+          <Link
+            href="/privacy"
+            onClick={() => hapticLight()}
+            className="font-body text-xs underline"
+            style={{ color: "var(--text-2)" }}
+          >
+            Privacy
+          </Link>
+          <Link
             href="/waitlist"
             onClick={() => hapticLight()}
             className="font-body text-xs underline"
