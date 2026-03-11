@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { toPng } from "html-to-image";
-import { ArrowUpRight, Eye, X, Share2, Download } from "lucide-react";
+import { ArrowUpRight, Share2, Download } from "lucide-react";
 import Link from "next/link";
 import { hapticLight } from "@/lib/haptics";
 
@@ -23,26 +23,6 @@ interface PnlCardProps {
   walletAddress?: string | null;
   isLoading?: boolean;
 }
-
-const SAMPLE_PROFIT: PnlPosition = {
-  ticker: "INX",
-  title: "Bitcoin $150K by 2025",
-  side: "yes",
-  kalshiMarket: "Kalshi: INX",
-  valueUsd: 847.5,
-  pnlUsd: 127.25,
-  pnlPercent: 17.7,
-};
-
-const SAMPLE_LOSS: PnlPosition = {
-  ticker: "ETHX",
-  title: "Ethereum $5K NO",
-  side: "no",
-  kalshiMarket: "Kalshi: ETHX",
-  valueUsd: 312,
-  pnlUsd: -84.2,
-  pnlPercent: -12.3,
-};
 
 export function formatPnl(value: number | null): string {
   if (value === null) return "—";
@@ -68,22 +48,18 @@ export function PnlCard({
   walletAddress,
   isLoading,
 }: PnlCardProps) {
-  const [sampleMode, setSampleMode] = useState<"profit" | "loss" | null>(null);
   const [exporting, setExporting] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const isSample = sampleMode !== null;
-  const displayPositions = isSample
-    ? [sampleMode === "profit" ? SAMPLE_PROFIT : SAMPLE_LOSS]
-    : positions;
+  const displayPositions = positions;
   const selected = displayPositions[selectedIndex] ?? displayPositions[0];
 
   const pnlUsd = selected?.pnlUsd ?? totalPnlUsd;
   const pnlPercent = selected?.pnlPercent ?? totalPnlPercent;
   const hasPnl = pnlUsd !== null && pnlUsd !== 0;
   const isPositive = pnlUsd != null && pnlUsd > 0;
-  const hasShareableContent = isSample || positions.length > 0;
+  const hasShareableContent = positions.length > 0;
 
   const handleExport = (asShare: boolean) => async () => {
     if (!cardRef.current || !hasShareableContent) return;
@@ -139,20 +115,6 @@ export function PnlCard({
           maxWidth: 380,
         }}
       >
-        {isSample && (
-          <div
-            className="absolute top-3 right-3 z-10 flex items-center gap-2 px-2.5 py-1 rounded"
-            style={{ background: "var(--accent-dim)", border: "1px solid var(--accent)" }}
-          >
-            <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--accent)" }}>
-              Sample
-            </span>
-            <button type="button" onClick={() => { hapticLight(); setSampleMode(null); }} className="p-0.5 rounded hover:bg-white/10" aria-label="Close">
-              <X className="w-3 h-3" style={{ color: "var(--accent)" }} />
-            </button>
-          </div>
-        )}
-
         {/* Top: P&L SUMMARY + wallet */}
         <div className="px-4 pt-4 pb-2">
           <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--kalshi)" }}>
@@ -236,60 +198,22 @@ export function PnlCard({
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap items-center gap-2">
-        {!hasShareableContent ? (
-          <>
-            <button
-              type="button"
-              onClick={() => { hapticLight(); setSampleMode("profit"); }}
-              className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border"
-              style={{ borderColor: "var(--border-default)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-            >
-              <Eye className="w-4 h-4" />
-              Sample profit
-            </button>
-            <button
-              type="button"
-              onClick={() => { hapticLight(); setSampleMode("loss"); }}
-              className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border"
-              style={{ borderColor: "var(--border-default)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-            >
-              <Eye className="w-4 h-4" />
-              Sample loss
-            </button>
-            <Link
-              href="/"
-              onClick={() => hapticLight()}
-              className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg"
-              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-            >
-              Go to Terminal
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </>
-        ) : (
-          positions.length === 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => { hapticLight(); setSampleMode("profit"); }}
-                className="text-xs py-2 px-3 rounded-lg"
-                style={{ color: "var(--text-3)", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
-              >
-                Sample profit
-              </button>
-              <button
-                type="button"
-                onClick={() => { hapticLight(); setSampleMode("loss"); }}
-                className="text-xs py-2 px-3 rounded-lg"
-                style={{ color: "var(--text-3)", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
-              >
-                Sample loss
-              </button>
-            </>
-          )
-        )}
-      </div>
+      {!hasShareableContent && (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+            Connect and trade to see P&L.
+          </p>
+          <Link
+            href="/"
+            onClick={() => hapticLight()}
+            className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg"
+            style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+          >
+            Go to Terminal
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

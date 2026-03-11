@@ -997,6 +997,9 @@ export default function PortfolioPage() {
                                   ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                                 </p>
                               )}
+                              <p className="font-mono text-[11px] mt-1" style={{ color: "var(--text-3)" }} title="PnL from cost basis (from tx history)">
+                                PnL: —
+                              </p>
                             </div>
                             <button
                               type="button"

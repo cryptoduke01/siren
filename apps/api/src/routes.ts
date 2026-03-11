@@ -121,6 +121,33 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Admin: resend access-code email to a single waitlist signup (uses existing code). */
+  app.post<{ Params: { id: string } }>("/api/admin/waitlist/:id/resend-email", async (req, reply) => {
+    const id = req.params.id?.trim();
+    if (!id) return reply.status(400).send({ success: false, error: "id required" });
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data: row, error: selectError } = await supabase
+        .from("waitlist_signups")
+        .select("email, name, access_code")
+        .eq("id", id)
+        .single();
+      if (selectError || !row) return reply.status(404).send({ success: false, error: "Waitlist entry not found" });
+      if (!row.access_code) return reply.status(400).send({ success: false, error: "No access code. Generate one first." });
+      if (!row.email?.trim()) return reply.status(400).send({ success: false, error: "No email for this signup." });
+      let emailSent = false;
+      if (canSendEmail()) {
+        const result = await sendWelcomeWithAccessCode({ to: row.email, name: row.name, code: row.access_code });
+        emailSent = result.ok;
+        if (!result.ok) app.log.warn({ email: row.email, err: result.error }, "Failed to resend welcome email");
+      }
+      return reply.send({ success: true, emailSent: canSendEmail() ? emailSent : null });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to resend email" });
+    }
+  });
+
   /** Admin: send access-code emails to all waitlist entries (generate codes for those without). */
   app.post("/api/admin/waitlist/send-all-codes", async (req, reply) => {
     try {

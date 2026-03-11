@@ -91,7 +91,7 @@ Defaults point to local API:
 
 Change API/WS URLs when you deploy.
 
-**Swaps (production):** The default Solana RPC (`api.mainnet-beta.solana.com`) often returns `403 Access forbidden` when sending transactions. Set **`NEXT_PUBLIC_SOLANA_RPC_URL`** on Vercel to a dedicated RPC, e.g. Helius: `https://mainnet.helius-rpc.com/?api-key=YOUR_HELIUS_API_KEY`. Get a key at [helius.dev](https://helius.dev).
+**Swaps & balance (production):** The default Solana RPC often returns `403 Access forbidden` or fails to fetch balances. Set **`NEXT_PUBLIC_SOLANA_RPC_URL`** on Vercel (e.g. `https://mainnet.helius-rpc.com/?api-key=YOUR_KEY`). Without this, swaps and portfolio balance will not work on the deployed site.
 
 **OAuth (Google, GitHub, X):** See `docs/PRIVY_OAUTH_SETUP.md`.
 
