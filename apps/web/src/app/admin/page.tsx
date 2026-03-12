@@ -296,10 +296,10 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)", color: "var(--text-1)" }}>
+    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: "var(--bg-void)", color: "var(--text-1)" }}>
       <AdminNav />
-      <div className="flex-1 px-4 py-8">
-        <div className="max-w-6xl mx-auto">
+      <div className="flex-1 px-4 py-8 overflow-x-hidden min-w-0">
+        <div className="max-w-6xl mx-auto min-w-0">
           <header className="flex items-center justify-between mb-6">
             <div>
               <h1 className="font-heading text-xl mb-1">Siren Admin</h1>
@@ -392,7 +392,7 @@ export default function AdminPage() {
           )}
 
           {tab === "waitlist" && (
-            <section>
+            <section className="min-w-0 overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <h2 className="font-heading text-sm" style={{ color: "var(--text-2)" }}>
                   Waitlist signups — people who joined via the waitlist form
@@ -456,8 +456,8 @@ export default function AdminPage() {
                   )}
                 </div>
               )}
-              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                <table className="min-w-full text-left text-xs font-body">
+              <div className="overflow-x-auto rounded-xl border min-w-0" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <table className="w-full min-w-[700px] text-left text-xs font-body">
                   <thead>
                     <tr style={{ background: "var(--bg-elevated)" }}>
                       <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Created</th>

@@ -30,10 +30,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <PrivyProvider
         appId={privyAppId}
         config={{
-          loginMethods: ["wallet", "email", "google", "github", "twitter"],
+          loginMethods: ["email", "google", "github", "twitter"],
           appearance: {
             walletChainType: "solana-only",
-            showWalletLoginFirst: true,
+            showWalletLoginFirst: false,
           },
           embeddedWallets: {
             solana: {

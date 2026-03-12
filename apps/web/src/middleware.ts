@@ -28,6 +28,8 @@ export function middleware(req: NextRequest) {
       pathname === "/admin" ||
       pathname === "/access" ||
       pathname === "/preview" ||
+      pathname === "/terms" ||
+      pathname === "/privacy" ||
       pathname.startsWith("/_next") ||
       pathname.startsWith("/api") ||
       pathname === "/icon.svg" ||

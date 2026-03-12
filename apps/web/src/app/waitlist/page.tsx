@@ -208,9 +208,6 @@ export default function WaitlistPage() {
                   "Join Waitlist"
                 )}
               </button>
-              <p className="font-body text-[12px] mt-3 text-center" style={{ color: "var(--text-2)" }}>
-                No spam. Ever.
-              </p>
             </form>
 
             <p className="font-body text-xs text-center mt-2" style={{ color: "var(--text-2)" }}>
