@@ -12,30 +12,44 @@ import { WalletModal } from "@/components/WalletModal";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
-function OnboardingWithPrivy() {
+function OnboardingWithBoth() {
   const { connected } = useSirenWallet();
   const { login, ready } = usePrivy();
   const router = useRouter();
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (connected) router.replace("/");
   }, [connected, router]);
 
   return (
-    <>
+    <div className="flex flex-col items-center gap-4 w-full max-w-xs">
+      <button
+        type="button"
+        onClick={() => { hapticLight(); setModalOpen(true); }}
+        className="w-full px-8 py-3 rounded-xl font-heading font-semibold text-sm uppercase tracking-[0.12em] transition-all duration-150"
+        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+      >
+        Connect Solana wallet
+      </button>
+      <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
+        Phantom, Backpack, Solflare, Coinbase, Torus
+      </p>
+      <span className="font-body text-xs" style={{ color: "var(--text-3)" }}>or</span>
       <button
         type="button"
         onClick={() => { hapticLight(); login(); }}
         disabled={!ready}
-        className="px-8 py-3 rounded-xl font-heading font-semibold text-sm uppercase tracking-[0.12em] transition-all duration-150 disabled:opacity-50"
-        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+        className="w-full px-8 py-3 rounded-xl font-heading font-semibold text-sm uppercase tracking-[0.12em] transition-all duration-150 border disabled:opacity-50"
+        style={{ borderColor: "var(--border)", color: "var(--text-1)" }}
       >
-        {ready ? "Log in" : "Loading..."}
+        {ready ? "Log in with email or social" : "Loading..."}
       </button>
       <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
-        Log in with wallet, email, Google, GitHub, or X.
+        Email, Google, GitHub, or X
       </p>
-    </>
+      <WalletModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+    </div>
   );
 }
 
@@ -90,7 +104,7 @@ export default function OnboardingPage() {
           </p>
         </div>
         <div className="flex flex-col items-center gap-4 mb-10">
-          {PRIVY_APP_ID ? <OnboardingWithPrivy /> : <OnboardingWithAdapter />}
+          {PRIVY_APP_ID ? <OnboardingWithBoth /> : <OnboardingWithAdapter />}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-3xl">
           <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>

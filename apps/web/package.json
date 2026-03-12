@@ -11,10 +11,11 @@
   "dependencies": {
     "@privy-io/react-auth": "^3.16.0",
     "@siren/shared": "workspace:*",
-    "@solana/kit": "5.5.1",
     "@solana-program/memo": "^0.8.0",
     "@solana-program/system": "^0.10.0",
     "@solana-program/token": "^0.9.0",
+    "@solana/kit": "5.5.1",
+    "@solana/wallet-adapter-backpack": "^0.1.14",
     "@solana/wallet-adapter-base": "^0.9.24",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",

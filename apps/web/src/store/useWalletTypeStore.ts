@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type WalletType = "phantom" | "solflare" | "torus" | null;
+export type WalletType = "phantom" | "solflare" | "torus" | "backpack" | "coinbase" | null;
 
 interface WalletTypeState {
   walletType: WalletType;

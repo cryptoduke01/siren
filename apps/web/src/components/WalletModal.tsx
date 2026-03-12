@@ -24,9 +24,13 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
   const [step, setStep] = useState<"list" | "mobile-install">("list");
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
-  const phantomWallet = wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes("phantom"));
-  const solflareWallet = wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes("solflare"));
-  const torusWallet = wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes("torus"));
+  const getWalletByKey = (key: string) =>
+    wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes(key));
+
+  const walletOrder = ["phantom", "backpack", "solflare", "coinbase", "torus"];
+  const sortedWallets = walletOrder
+    .map((key) => getWalletByKey(key))
+    .filter(Boolean) as (typeof wallets)[0][];
 
   useEffect(() => {
     if (connected) onClose();
@@ -40,7 +44,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
   }, [isOpen]);
 
   const handleConnect = useCallback(
-    async (wallet: (typeof wallets)[0] | undefined, type: "phantom" | "solflare" | "torus") => {
+    async (wallet: (typeof wallets)[0] | undefined, type: "phantom" | "solflare" | "torus" | "backpack" | "coinbase") => {
       if (!wallet) return;
       hapticLight();
       setWalletType(type);
@@ -104,30 +108,34 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
           <div className="flex-1 overflow-y-auto p-4 scrollbar-hidden">
             {step === "list" && (
               <div className="space-y-2">
-                {phantomWallet && (
-                  <WalletCard
-                    name="Phantom"
-                    description={isMobile ? "Tap to connect or get the app" : "Browser extension"}
-                    onClick={() => handleConnect(phantomWallet, "phantom")}
-                    disabled={connecting}
-                  />
-                )}
-                {solflareWallet && (
-                  <WalletCard
-                    name="Solflare"
-                    description={isMobile ? "Tap to connect or get the app" : "Browser extension"}
-                    onClick={() => handleConnect(solflareWallet, "solflare")}
-                    disabled={connecting}
-                  />
-                )}
-                {torusWallet && (
-                  <WalletCard
-                    name="Torus"
-                    description="Email or social login"
-                    onClick={() => handleConnect(torusWallet, "torus")}
-                    disabled={connecting}
-                  />
-                )}
+                {sortedWallets.map((wallet) => {
+                  const name = wallet.adapter?.name ?? "Wallet";
+                  const key = name.toLowerCase();
+                  const isPhantom = key.includes("phantom");
+                  const isSolflare = key.includes("solflare");
+                  const desc =
+                    isPhantom || isSolflare
+                      ? isMobile
+                        ? "Tap to connect or get the app"
+                        : "Browser extension"
+                      : key.includes("torus")
+                        ? "Email or social login"
+                        : "Browser extension";
+                  return (
+                    <WalletCard
+                      key={name}
+                      name={name}
+                      description={desc}
+                      onClick={() =>
+                        handleConnect(
+                          wallet,
+                          (isPhantom ? "phantom" : isSolflare ? "solflare" : key.includes("torus") ? "torus" : key.includes("backpack") ? "backpack" : "coinbase")
+                        )
+                      }
+                      disabled={connecting}
+                    />
+                  );
+                })}
               </div>
             )}
 
