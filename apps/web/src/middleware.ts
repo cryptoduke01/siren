@@ -24,6 +24,7 @@ export function middleware(req: NextRequest) {
 
   if (shouldGate) {
     const allowedWithoutCookie =
+      pathname === "/landing" ||
       pathname === "/waitlist" ||
       pathname === "/admin" ||
       pathname === "/access" ||

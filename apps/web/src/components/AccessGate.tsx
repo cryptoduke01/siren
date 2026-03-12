@@ -17,7 +17,7 @@ function hasAccessCookie(): boolean {
 }
 
 function isAllowedPath(pathname: string): boolean {
-  return pathname === "/waitlist" || pathname === "/admin" || pathname === "/access" || pathname === "/preview" || pathname.startsWith("/waitlist") || pathname.startsWith("/admin") || pathname.startsWith("/access") || pathname.startsWith("/preview");
+  return pathname === "/landing" || pathname === "/waitlist" || pathname === "/admin" || pathname === "/access" || pathname === "/preview" || pathname.startsWith("/landing") || pathname.startsWith("/waitlist") || pathname.startsWith("/admin") || pathname.startsWith("/access") || pathname.startsWith("/preview");
 }
 
 function isTerminalPath(pathname: string): boolean {
@@ -112,6 +112,15 @@ export function AccessGate({ children }: { children: React.ReactNode }) {
             Don’t have a code?{" "}
             <Link href="/waitlist" className="underline" style={{ color: "var(--accent)" }} onClick={() => hapticLight()}>
               Join the Waitlist
+            </Link>
+          </p>
+          <p className="font-body text-xs mt-4 text-center" style={{ color: "var(--text-3)" }}>
+            <Link href="/privacy" className="underline" style={{ color: "var(--text-2)" }} onClick={() => hapticLight()}>
+              Privacy Policy
+            </Link>
+            {" · "}
+            <Link href="/terms" className="underline" style={{ color: "var(--text-2)" }} onClick={() => hapticLight()}>
+              Terms
             </Link>
           </p>
         </div>
