@@ -462,6 +462,7 @@ function buildMintToMarket(
 export default function PortfolioPage() {
   const { connected, publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
+  const queryClient = useQueryClient();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
   const [balanceView, setBalanceView] = useState<"mainnet" | "devnet">("mainnet");
   const [receiveOpen, setReceiveOpen] = useState(false);
