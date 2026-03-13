@@ -32,7 +32,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
 const STORAGE_KEY = "siren-admin-pass-ok";
 
-type Tab = "waitlist" | "app-users";
+type Tab = "waitlist" | "app-users" | "volume";
+
+type VolumeData = { platform7d: number; byWallet: Array<{ wallet: string; volume7d: number }> };
 
 function CopyableCell({ value, mono = false }: { value: string | null; mono?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -89,6 +91,8 @@ export default function AdminPage() {
     skippedEmails?: string[];
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
+  const [volumeLoading, setVolumeLoading] = useState(false);
 
   const filteredWaitlist = searchQuery.trim()
     ? waitlistRows.filter(
@@ -139,6 +143,21 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadVolume = useCallback(async () => {
+    setVolumeLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/volume`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load volume");
+      setVolumeData(data.data ?? { platform7d: 0, byWallet: [] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load volume");
+    } finally {
+      setVolumeLoading(false);
+    }
+  }, []);
+
   const loadAppUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -164,9 +183,15 @@ export default function AdminPage() {
     void loadAppUsers();
   }, [hasAccess, tab, loadAppUsers]);
 
+  useEffect(() => {
+    if (!hasAccess || tab !== "volume") return;
+    void loadVolume();
+  }, [hasAccess, tab, loadVolume]);
+
   const refresh = () => {
     if (tab === "waitlist") void loadWaitlist();
-    else void loadAppUsers();
+    else if (tab === "app-users") void loadAppUsers();
+    else if (tab === "volume") void loadVolume();
   };
 
   const handleDelete = async (id: string) => {
@@ -343,6 +368,18 @@ export default function AdminPage() {
             >
               <Users className="w-4 h-4" />
               App Users ({appUsers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => { hapticLight(); setTab("volume"); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-heading transition-colors"
+              style={{
+                background: tab === "volume" ? "var(--bg-elevated)" : "transparent",
+                color: tab === "volume" ? "var(--text-1)" : "var(--text-3)",
+                border: tab === "volume" ? "1px solid var(--border-default)" : "1px solid transparent",
+              }}
+            >
+              Volume
             </button>
           </div>
 
@@ -577,6 +614,54 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
+            </section>
+          )}
+
+          {tab === "volume" && (
+            <section className="min-w-0 overflow-hidden">
+              <h2 className="font-heading text-sm mb-3" style={{ color: "var(--text-2)" }}>
+                Volume — 7d platform & per-wallet (from API logs; resets on API restart)
+              </h2>
+              {volumeLoading ? (
+                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
+              ) : volumeData ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                    <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Platform 7d volume</p>
+                    <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                      {volumeData.platform7d.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                    </p>
+                  </div>
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                    <table className="w-full text-left text-xs font-body">
+                      <thead>
+                        <tr style={{ background: "var(--bg-elevated)" }}>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>7d volume (SOL)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {volumeData.byWallet.length === 0 ? (
+                          <tr>
+                            <td className="px-4 py-6 text-center text-sm" colSpan={2} style={{ color: "var(--text-3)" }}>
+                              No volume logged yet. Volume is logged when users complete swaps.
+                            </td>
+                          </tr>
+                        ) : (
+                          volumeData.byWallet.map((row) => (
+                            <tr key={row.wallet} className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                              <CopyableCell value={row.wallet} mono />
+                              <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                {row.volume7d.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
             </section>
           )}
 

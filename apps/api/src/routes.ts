@@ -12,6 +12,26 @@ import { sendWelcomeWithAccessCode, canSendEmail } from "./services/email.js";
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
+// In-memory volume store (resets on restart). For persistence, add Supabase/DB.
+const volumeStore = new Map<string, Array<{ ts: number; volumeSol: number }>>();
+function getVolume7d(): { platform: number; byWallet: Array<{ wallet: string; volume7d: number }> } {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - 7 * dayMs;
+  let platform = 0;
+  const byWallet: Array<{ wallet: string; volume7d: number }> = [];
+  for (const [wallet, entries] of volumeStore) {
+    const v7d = entries
+      .filter((e) => e.ts >= cutoff && typeof e.volumeSol === "number" && Number.isFinite(e.volumeSol))
+      .reduce((s, e) => s + e.volumeSol, 0);
+    if (v7d > 0) {
+      platform += v7d;
+      byWallet.push({ wallet, volume7d: v7d });
+    }
+  }
+  byWallet.sort((a, b) => b.volume7d - a.volume7d);
+  return { platform, byWallet };
+}
+
 export function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true, ts: Date.now() }));
 
@@ -424,13 +444,31 @@ export function registerRoutes(app: FastifyInstance) {
 
   app.get("/api/sol-price", async (_req, reply) => {
     try {
-      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) throw new Error("CoinGecko error");
-      const json = (await res.json()) as { solana?: { usd?: number } };
-      const usd = json.solana?.usd ?? 0;
-      return reply.send({ success: true, usd });
+      let usd = 0;
+      try {
+        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
+          headers: { Accept: "application/json" },
+        });
+        if (res.ok) {
+          const json = (await res.json()) as { solana?: { usd?: number } };
+          usd = json.solana?.usd ?? 0;
+        }
+      } catch {
+        /* CoinGecko failed, try DexScreener */
+      }
+      if (!usd || !Number.isFinite(usd)) {
+        try {
+          const ds = await fetch("https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112");
+          if (ds.ok) {
+            const j = (await ds.json()) as { pairs?: Array<{ priceUsd?: string }> };
+            const p = j.pairs?.[0]?.priceUsd;
+            if (p) usd = parseFloat(p) || 0;
+          }
+        } catch {
+          /* fallback failed */
+        }
+      }
+      return reply.send({ success: true, usd: usd && Number.isFinite(usd) ? usd : 0 });
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch SOL price" });
@@ -529,6 +567,27 @@ export function registerRoutes(app: FastifyInstance) {
       }
     }
   );
+
+  /** Log volume (called by client after swaps). No auth for simplicity; can add later. */
+  app.post<{ Body: { wallet: string; volumeSol: number } }>("/api/volume/log", async (req, reply) => {
+    const { wallet, volumeSol } = req.body || {};
+    if (!wallet || typeof wallet !== "string" || typeof volumeSol !== "number" || !Number.isFinite(volumeSol) || volumeSol <= 0) {
+      return reply.status(400).send({ success: false, error: "wallet and volumeSol (positive number) required" });
+    }
+    const w = wallet.trim();
+    if (w.length < 32) return reply.status(400).send({ success: false, error: "Invalid wallet" });
+    const entries = volumeStore.get(w) ?? [];
+    entries.push({ ts: Date.now(), volumeSol });
+    if (entries.length > 500) entries.splice(0, entries.length - 500);
+    volumeStore.set(w, entries);
+    return reply.send({ success: true });
+  });
+
+  /** Admin: volume stats (platform total + per wallet 7d). */
+  app.get("/api/admin/volume", async (_req, reply) => {
+    const { platform, byWallet } = getVolume7d();
+    return reply.send({ success: true, data: { platform7d: platform, byWallet } });
+  });
 
   /** Admin: aggregate user stats for dashboard. */
   app.get("/api/admin/users/stats", async (_req, reply) => {

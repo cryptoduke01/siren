@@ -106,13 +106,11 @@ export function PnlCard({
     <div className="flex flex-col gap-3">
       <div
         ref={hasShareableContent ? cardRef : undefined}
-        className="rounded-lg overflow-visible relative font-body"
+        className="w-full min-w-0 max-w-[380px] rounded-lg overflow-visible relative font-body"
         style={{
           background: "var(--bg-surface)",
           border: "1px solid var(--border-subtle)",
           boxShadow: "0 1px 0 0 rgba(0,255,133,0.06)",
-          minWidth: 320,
-          maxWidth: 380,
         }}
       >
         {/* Top: P&L SUMMARY + wallet */}

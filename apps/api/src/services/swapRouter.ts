@@ -5,6 +5,8 @@
  * Jupiter: All SPL tokens, MEV-protected routing.
  */
 
+import { PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { getDflowOrder } from "./dflow.js";
 import { getMarketsWithVelocity } from "./markets.js";
 import { shouldBlockByCountry } from "../lib/geo-fence.js";
@@ -111,7 +113,10 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
     };
   }
 
+  const platformFeeBps = parseInt(process.env.JUPITER_PLATFORM_FEE_BPS || "0", 10) || 0;
+  const feeWallet = process.env.JUPITER_FEE_WALLET?.trim();
   const qs = new URLSearchParams({ inputMint, outputMint, amount, slippageBps: String(slippageBps) });
+  if (platformFeeBps > 0 && platformFeeBps <= 1000) qs.set("platformFeeBps", String(platformFeeBps));
   const quoteRes = await fetch(`${JUPITER_BASE}/swap/v1/quote?${qs}`, {
     headers: { "x-api-key": key, Accept: "application/json" },
   });
@@ -124,15 +129,26 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
     };
   }
 
+  let feeAccount: string | undefined;
+  if (platformFeeBps > 0 && feeWallet) {
+    try {
+      const feeWalletPk = new PublicKey(feeWallet);
+      feeAccount = getAssociatedTokenAddressSync(new PublicKey(outputMint), feeWalletPk).toBase58();
+    } catch {
+      /* skip feeAccount if derivation fails */
+    }
+  }
+  const swapBody: Record<string, unknown> = {
+    quoteResponse: quote,
+    userPublicKey,
+    dynamicComputeUnitLimit: true,
+    dynamicSlippage: true,
+  };
+  if (feeAccount) swapBody.feeAccount = feeAccount;
   const swapRes = await fetch(`${JUPITER_BASE}/swap/v1/swap`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": key, Accept: "application/json" },
-    body: JSON.stringify({
-      quoteResponse: quote,
-      userPublicKey,
-      dynamicComputeUnitLimit: true,
-      dynamicSlippage: true,
-    }),
+    body: JSON.stringify(swapBody),
   });
   const swapData = await swapRes.json();
   if (!swapRes.ok || swapData.error) {

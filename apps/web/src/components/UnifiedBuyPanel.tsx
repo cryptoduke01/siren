@@ -207,6 +207,13 @@ export function UnifiedBuyPanel() {
               entries = entries.slice(entries.length - 500);
             }
             window.localStorage.setItem(key, JSON.stringify(entries));
+            // Also log to API for admin volume stats
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+            fetch(`${apiUrl}/api/volume/log`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol }),
+            }).catch(() => {});
           }
 
           // Trade log for PnL / detailed stats

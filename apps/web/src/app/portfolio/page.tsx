@@ -658,9 +658,14 @@ export default function PortfolioPage() {
               </p>
               {isLoading ? (
                 <div className="h-10 w-32 rounded bg-[var(--border-subtle)] animate-pulse" />
-              ) : (
+              ) : solPriceUsd > 0 ? (
                 <p className="font-heading font-bold text-3xl md:text-4xl tabular-nums" style={{ color: "var(--accent)" }}>
                   ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              ) : (
+                <p className="font-heading font-bold text-2xl md:text-3xl tabular-nums" style={{ color: "var(--text-2)" }}>
+                  <span className="font-mono">{(balances?.mainnet ?? 0).toFixed(4)} SOL</span>
+                  <span className="font-body text-base ml-2 font-normal" style={{ color: "var(--text-3)" }}>+ tokens (USD loading…)</span>
                 </p>
               )}
               <p className="font-body text-xs mt-1" style={{ color: "var(--text-3)" }}>
@@ -821,7 +826,8 @@ export default function PortfolioPage() {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0">
+            <div className="min-w-0 w-full flex justify-center md:justify-start">
             <PnlCard
               totalPnlUsd={null}
               totalPnlPercent={null}
@@ -829,6 +835,7 @@ export default function PortfolioPage() {
               walletAddress={publicKey?.toBase58()}
               isLoading={tokensLoading}
             />
+            </div>
             <div
               className="rounded-2xl border overflow-hidden"
               style={{
@@ -921,7 +928,9 @@ export default function PortfolioPage() {
                         {balances.mainnet.toFixed(4)} SOL
                       </p>
                       <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
-                        ≈ ${(balances.mainnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                        {solPriceUsd > 0
+                          ? `≈ $${(balances.mainnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+                          : "— USD"}
                       </p>
                     </div>
                     <div
@@ -936,7 +945,9 @@ export default function PortfolioPage() {
                         {balances.devnet.toFixed(4)} SOL
                       </p>
                       <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
-                        ≈ ${(balances.devnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                        {solPriceUsd > 0
+                          ? `≈ $${(balances.devnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+                          : "— USD"}
                       </p>
                     </div>
                   </>
