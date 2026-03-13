@@ -319,6 +319,9 @@ export default function PortfolioPage() {
   const [sendOpen, setSendOpen] = useState(false);
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
+  const [walletVolumeSol, setWalletVolumeSol] = useState(0);
+  const [platformVolumeSol, setPlatformVolumeSol] = useState(0);
+  const [pnlByMint, setPnlByMint] = useState<Record<string, { pnlUsd: number; pnlPercent: number }>>({});
 
   const loadBagsLaunches = () => {
     if (!publicKey) return;
@@ -371,6 +374,114 @@ export default function PortfolioPage() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      const cutoffVolume = now - 7 * dayMs;
+
+      // Platform volume (7d, all siren-volume-* keys, device-local)
+      let platformVol = 0;
+      try {
+        const keys = Object.keys(window.localStorage).filter((k) => k.startsWith("siren-volume-"));
+        for (const k of keys) {
+          const raw = window.localStorage.getItem(k);
+          if (!raw) continue;
+          const entries: Array<{ ts?: number; volumeSol?: number }> = JSON.parse(raw);
+          if (!Array.isArray(entries)) continue;
+          platformVol += entries
+            .filter((e) => (e.ts ?? 0) >= cutoffVolume && typeof e.volumeSol === "number" && Number.isFinite(e.volumeSol))
+            .reduce((sum, e) => sum + (e.volumeSol || 0), 0);
+        }
+      } catch {
+        platformVol = 0;
+      }
+      setPlatformVolumeSol(platformVol);
+
+      if (!publicKey) {
+        setWalletVolumeSol(0);
+        setPnlByMint({});
+        return;
+      }
+
+      // Wallet volume (7d)
+      const volKey = `siren-volume-${publicKey.toBase58()}`;
+      const rawVol = window.localStorage.getItem(volKey);
+      let totalVol = 0;
+      if (rawVol) {
+        try {
+          const entries: Array<{ ts?: number; volumeSol?: number }> = JSON.parse(rawVol);
+          if (Array.isArray(entries)) {
+            totalVol = entries
+              .filter((e) => (e.ts ?? 0) >= cutoffVolume && typeof e.volumeSol === "number" && Number.isFinite(e.volumeSol))
+              .reduce((sum, e) => sum + (e.volumeSol || 0), 0);
+          }
+        } catch {
+          totalVol = 0;
+        }
+      }
+      setWalletVolumeSol(totalVol);
+
+      // PnL (approximate, cost basis from buys/sells)
+      const tradesKey = `siren-trades-${publicKey.toBase58()}`;
+      const rawTrades = window.localStorage.getItem(tradesKey);
+      const nextPnl: Record<string, { pnlUsd: number; pnlPercent: number }> = {};
+      if (rawTrades && tokenInfosList && tokenMints.length > 0) {
+        try {
+          const trades: Array<{
+            ts?: number;
+            mint?: string;
+            side?: "buy" | "sell";
+            tokenAmount?: number;
+            priceUsd?: number;
+          }> = JSON.parse(rawTrades);
+          if (Array.isArray(trades)) {
+            const sorted = [...trades].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+            const agg = new Map<string, { tokens: number; costUsd: number }>();
+            for (const t of sorted) {
+              if (!t?.mint || typeof t.tokenAmount !== "number" || typeof t.priceUsd !== "number") continue;
+              if (!Number.isFinite(t.tokenAmount) || t.tokenAmount <= 0 || !Number.isFinite(t.priceUsd) || t.priceUsd <= 0)
+                continue;
+              const cur = agg.get(t.mint) || { tokens: 0, costUsd: 0 };
+              if (t.side === "buy") {
+                cur.tokens += t.tokenAmount;
+                cur.costUsd += t.tokenAmount * t.priceUsd;
+              } else if (t.side === "sell") {
+                const sell = Math.min(t.tokenAmount, cur.tokens);
+                if (sell > 0 && cur.tokens > 0) {
+                  cur.costUsd *= 1 - sell / cur.tokens;
+                  cur.tokens -= sell;
+                }
+              }
+              agg.set(t.mint, cur);
+            }
+            for (const mint of tokenMints) {
+              const holding = tokenHoldings.find((h) => h.mint === mint);
+              const info = tokenInfoByMint.get(mint);
+              const priceUsd = info?.priceUsd;
+              const lot = agg.get(mint);
+              if (!holding || !priceUsd || !lot || lot.tokens <= 0) continue;
+              const balance = holding.balance;
+              const costBasis = (lot.costUsd / lot.tokens) * Math.min(balance, lot.tokens);
+              const pnlUsd = balance * priceUsd - costBasis;
+              const pnlPercent = costBasis > 0 ? ((balance * priceUsd) / costBasis - 1) * 100 : 0;
+              if (!Number.isFinite(pnlUsd) || !Number.isFinite(pnlPercent)) continue;
+              nextPnl[mint] = { pnlUsd, pnlPercent };
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setPnlByMint(nextPnl);
+    } catch {
+      setWalletVolumeSol(0);
+      setPlatformVolumeSol(0);
+      setPnlByMint({});
+    }
+  }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings.length]);
 
   const { data: tokenHoldings = [], isLoading: tokensLoading, refetch: refetchTokens } = useQuery({
     queryKey: ["wallet-tokens", publicKey?.toBase58()],
@@ -465,16 +576,18 @@ export default function PortfolioPage() {
   const predictionMints = new Set(predictionPositions.map((p) => p.mint));
   const pnlPositions = [
     ...predictionPositions.map((p) => {
-      const priceUsd = tokenInfoByMint.get(p.mint)?.priceUsd ?? 0;
+      const info = tokenInfoByMint.get(p.mint);
+      const priceUsd = info?.priceUsd ?? 0;
       const valueUsd = p.balance * priceUsd;
+      const mintPnl = pnlByMint[p.mint];
       return {
         ticker: p.ticker,
         title: p.title,
         side: p.side as "yes" | "no",
         kalshiMarket: `Kalshi: ${p.ticker}`,
         valueUsd,
-        pnlUsd: null as number | null,
-        pnlPercent: null as number | null,
+        pnlUsd: mintPnl ? mintPnl.pnlUsd : null,
+        pnlPercent: mintPnl ? mintPnl.pnlPercent : null,
       };
     }),
     ...tokenHoldings
@@ -482,12 +595,13 @@ export default function PortfolioPage() {
       .map((t) => {
         const info = tokenInfoByMint.get(t.mint);
         const valueUsd = (info?.priceUsd ?? 0) * t.balance;
+        const mintPnl = pnlByMint[t.mint];
         return {
           ticker: info?.symbol ?? t.symbol,
           title: info?.name ?? t.name,
           valueUsd,
-          pnlUsd: null as number | null,
-          pnlPercent: null as number | null,
+          pnlUsd: mintPnl ? mintPnl.pnlUsd : null,
+          pnlPercent: mintPnl ? mintPnl.pnlPercent : null,
         };
       }),
   ].filter((p) => p.valueUsd > 0);
@@ -552,6 +666,32 @@ export default function PortfolioPage() {
               <p className="font-body text-xs mt-1" style={{ color: "var(--text-3)" }}>
                 Mainnet SOL + token holdings (USD)
               </p>
+              {walletVolumeSol > 0 && (
+                <p className="font-body text-xs mt-2" style={{ color: "var(--text-2)" }}>
+                  Your 7d volume:{" "}
+                  <span className="font-mono">
+                    {walletVolumeSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                  </span>
+                  {solPriceUsd > 0 && (
+                    <>
+                      {" "}
+                      (≈$
+                      {(walletVolumeSol * solPriceUsd).toLocaleString(undefined, {
+                        maximumFractionDigits: 0,
+                      })}
+                      )
+                    </>
+                  )}
+                </p>
+              )}
+              {platformVolumeSol > 0 && (
+                <p className="font-body text-xs mt-0.5" style={{ color: "var(--text-3)" }}>
+                  Platform 7d volume:{" "}
+                  <span className="font-mono">
+                    {platformVolumeSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                  </span>
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 mt-4">
                 <button
                   type="button"
@@ -600,7 +740,7 @@ export default function PortfolioPage() {
                             return (
                               <li key={t.mint} className="flex items-center gap-3 rounded-xl border p-3 min-w-0" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>${sym}</p>
+                                  <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{sym}</p>
                                   <p className="font-mono text-xs tabular-nums truncate" style={{ color: "var(--text-3)" }}>{t.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
                                 </div>
                                 <button
@@ -958,6 +1098,7 @@ export default function PortfolioPage() {
                       const displayName = info?.name ?? t.name;
                       const displaySymbol = info?.symbol ?? (t.symbol !== "—" ? t.symbol : t.mint.slice(0, 8) + "…");
                       const valueUsd = info?.priceUsd != null ? t.balance * info.priceUsd : undefined;
+                      const mintPnl = pnlByMint[t.mint];
                       return (
                         <li
                           key={t.mint}
@@ -997,8 +1138,14 @@ export default function PortfolioPage() {
                                   ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                                 </p>
                               )}
-                              <p className="font-mono text-[11px] mt-1" style={{ color: "var(--text-3)" }} title="PnL from cost basis (from tx history)">
-                                PnL: —
+                              <p className="font-mono text-[11px] mt-1" style={{ color: mintPnl ? (mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)") : "var(--text-3)" }} title="Approximate PnL from Siren trades">
+                                PnL:{" "}
+                                {mintPnl
+                                  ? `${mintPnl.pnlUsd >= 0 ? "+" : "-"}$${Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })} (${mintPnl.pnlPercent.toFixed(1)}%)`
+                                  : "—"}
                               </p>
                             </div>
                             <button

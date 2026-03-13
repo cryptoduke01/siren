@@ -114,9 +114,11 @@ export function UnifiedBuyPanel() {
       let outputMint: string;
       let amount: string;
 
+      let amountNum: number;
+
       if (isSell) {
         const amountStr = sellAmount?.trim() || "0";
-        const amountNum = parseFloat(amountStr);
+        amountNum = parseFloat(amountStr);
         if (amountNum <= 0 || !Number.isFinite(amountNum)) {
           setError("Enter a valid token amount to sell.");
           setLoading(false);
@@ -128,7 +130,7 @@ export function UnifiedBuyPanel() {
         outputMint = NATIVE_SOL_MINT;
       } else {
         const amountStr = solAmount?.trim() || "";
-        const amountNum = parseFloat(amountStr);
+        amountNum = parseFloat(amountStr);
         if (!amountStr || amountNum <= 0 || !Number.isFinite(amountNum)) {
           setError("Enter a valid SOL amount (e.g. 0.01).");
           setLoading(false);
@@ -162,6 +164,89 @@ export function UnifiedBuyPanel() {
       const signed = await signTransaction(tx);
       const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
       await connection.confirmTransaction(sig, "confirmed");
+
+      // Track per-wallet volume and trades for Siren (local, in SOL terms)
+      try {
+        if (typeof window !== "undefined" && solPriceUsd > 0) {
+          let volumeSol: number | null = null;
+          let tokenAmountApprox: number | null = null;
+          const tokenPriceUsd = selectedToken.price ?? null;
+
+          if (isSell) {
+            if (tokenPriceUsd != null && tokenPriceUsd > 0) {
+              tokenAmountApprox = amountNum;
+              const approxSolPerToken = tokenPriceUsd / solPriceUsd;
+              volumeSol = amountNum * approxSolPerToken;
+            }
+          } else {
+            volumeSol = amountNum;
+            if (tokenPriceUsd != null && tokenPriceUsd > 0) {
+              tokenAmountApprox = (amountNum * solPriceUsd) / tokenPriceUsd;
+            }
+          }
+          if (volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0) {
+            const key = `siren-volume-${publicKey.toBase58()}`;
+            const raw = window.localStorage.getItem(key);
+            let entries: Array<{ ts: number; mint: string; side: "buy" | "sell"; volumeSol: number }> = [];
+            if (raw) {
+              try {
+                entries = JSON.parse(raw);
+                if (!Array.isArray(entries)) entries = [];
+              } catch {
+                entries = [];
+              }
+            }
+            entries.push({
+              ts: Date.now(),
+              mint: selectedToken.mint,
+              side: isSell ? "sell" : "buy",
+              volumeSol,
+            });
+            // Keep only the most recent 500 entries to bound storage
+            if (entries.length > 500) {
+              entries = entries.slice(entries.length - 500);
+            }
+            window.localStorage.setItem(key, JSON.stringify(entries));
+          }
+
+          // Trade log for PnL / detailed stats
+          if (tokenAmountApprox != null && tokenAmountApprox > 0 && tokenPriceUsd != null && tokenPriceUsd > 0) {
+            const tradesKey = `siren-trades-${publicKey.toBase58()}`;
+            const rawTrades = window.localStorage.getItem(tradesKey);
+            let trades: Array<{
+              ts: number;
+              mint: string;
+              side: "buy" | "sell";
+              solAmount: number;
+              tokenAmount: number;
+              priceUsd: number;
+            }> = [];
+            if (rawTrades) {
+              try {
+                trades = JSON.parse(rawTrades);
+                if (!Array.isArray(trades)) trades = [];
+              } catch {
+                trades = [];
+              }
+            }
+            trades.push({
+              ts: Date.now(),
+              mint: selectedToken.mint,
+              side: isSell ? "sell" : "buy",
+              solAmount: volumeSol ?? 0,
+              tokenAmount: tokenAmountApprox,
+              priceUsd: tokenPriceUsd,
+            });
+            if (trades.length > 1000) {
+              trades = trades.slice(trades.length - 1000);
+            }
+            window.localStorage.setItem(tradesKey, JSON.stringify(trades));
+          }
+        }
+      } catch {
+        // ignore volume tracking errors
+      }
+
       setSuccess(isSell ? `Sold! Tx: ${sig.slice(0, 8)}...` : `Swap successful! ${sig.slice(0, 8)}...`);
       if (isSell) setSellAmount("");
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });

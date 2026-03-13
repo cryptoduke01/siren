@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { toPng } from "html-to-image";
-import { ArrowUpRight, Share2, Download } from "lucide-react";
+import { ArrowUpRight, Share2, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { hapticLight } from "@/lib/haptics";
 
@@ -154,6 +154,37 @@ export function PnlCard({
         {/* Token from Kalshi market */}
         {selected && (
           <div className="px-4 pb-3">
+            {displayPositions.length > 1 && (
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticLight();
+                    setSelectedIndex((i) => (i - 1 + displayPositions.length) % displayPositions.length);
+                  }}
+                  className="p-1 rounded"
+                  style={{ color: "var(--text-3)" }}
+                  aria-label="Previous position"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="font-mono text-[10px]" style={{ color: "var(--text-3)" }}>
+                  {selectedIndex + 1} / {displayPositions.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticLight();
+                    setSelectedIndex((i) => (i + 1) % displayPositions.length);
+                  }}
+                  className="p-1 rounded"
+                  style={{ color: "var(--text-3)" }}
+                  aria-label="Next position"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{selected.title}</p>
             {selected.kalshiMarket && (
               <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>
