@@ -10,7 +10,12 @@ import { createWebSocketHandler } from "./ws.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 
-const fastify = Fastify({ logger: { level: "info", transport: { target: "pino-pretty", options: { colorize: true } } } });
+const isProd = process.env.NODE_ENV === "production";
+const fastify = Fastify({
+  logger: isProd
+    ? { level: "info" }
+    : { level: "info", transport: { target: "pino-pretty", options: { colorize: true } } },
+});
 
 async function main() {
   await fastify.register(fastifyCors, {
