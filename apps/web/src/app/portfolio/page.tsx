@@ -375,6 +375,27 @@ export default function PortfolioPage() {
     staleTime: 30_000,
   });
 
+  const { data: tokenHoldings = [], isLoading: tokensLoading, refetch: refetchTokens } = useQuery({
+    queryKey: ["wallet-tokens", publicKey?.toBase58()],
+    queryFn: () => fetchTokenHoldings(connection, publicKey!.toBase58()),
+    enabled: !!connected && !!publicKey,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    refetchOnMount: "always",
+  });
+
+  const tokenMints = tokenHoldings.map((t) => t.mint);
+  const { data: tokenInfosList } = useQuery({
+    queryKey: ["portfolio-token-infos", tokenMints],
+    queryFn: () => Promise.all(tokenMints.map((mint) => fetchTokenInfo(mint))),
+    enabled: tokenMints.length > 0,
+    staleTime: 60_000,
+  });
+  const tokenInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
+  tokenMints.forEach((mint, i) => {
+    tokenInfoByMint.set(mint, tokenInfosList?.[i] ?? null);
+  });
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -482,27 +503,6 @@ export default function PortfolioPage() {
       setPnlByMint({});
     }
   }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings.length]);
-
-  const { data: tokenHoldings = [], isLoading: tokensLoading, refetch: refetchTokens } = useQuery({
-    queryKey: ["wallet-tokens", publicKey?.toBase58()],
-    queryFn: () => fetchTokenHoldings(connection, publicKey!.toBase58()),
-    enabled: !!connected && !!publicKey,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-    refetchOnMount: "always",
-  });
-
-  const tokenMints = tokenHoldings.map((t) => t.mint);
-  const { data: tokenInfosList } = useQuery({
-    queryKey: ["portfolio-token-infos", tokenMints],
-    queryFn: () => Promise.all(tokenMints.map((mint) => fetchTokenInfo(mint))),
-    enabled: tokenMints.length > 0,
-    staleTime: 60_000,
-  });
-  const tokenInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
-  tokenMints.forEach((mint, i) => {
-    tokenInfoByMint.set(mint, tokenInfosList?.[i] ?? null);
-  });
 
   const { data: bagsLaunchInfos } = useQuery({
     queryKey: ["bags-launch-infos", bagsLaunches],
