@@ -7,7 +7,7 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
-import { Copy, Check, Loader2, ExternalLink } from "lucide-react";
+import { Copy, Check, Loader2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
 import { ResultModal } from "./ResultModal";
 import { useToastStore } from "@/store/useToastStore";
@@ -26,6 +26,68 @@ const MOCK_CHART_DATA = [
   { t: "20h", v: 0.00042 },
   { t: "24h", v: 0.00042 },
 ];
+
+function TokenTweetsSection({ mint }: { mint: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data: tweets = [], isLoading, isError, error } = useQuery({
+    queryKey: ["token-tweets", mint],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/api/token-tweets?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Failed to fetch tweets");
+      return j.data ?? [];
+    },
+    enabled: expanded && !!mint && mint.length >= 32,
+    staleTime: 60_000,
+    retry: false,
+  });
+  return (
+    <div className="rounded-xl border mt-3" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+      <button
+        type="button"
+        onClick={() => { hapticLight(); setExpanded(!expanded); }}
+        className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left"
+      >
+        <span className="text-[var(--text-secondary)] text-xs uppercase">CT mentions (X)</span>
+        {expanded ? <ChevronUp className="w-4 h-4" style={{ color: "var(--text-3)" }} /> : <ChevronDown className="w-4 h-4" style={{ color: "var(--text-3)" }} />}
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+          {isLoading ? (
+            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>Loading tweets…</p>
+          ) : isError ? (
+            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>
+              {String(error).includes("not configured") || String(error).includes("503")
+                ? "Set TWITTER_BEARER_TOKEN in API to see tweets."
+                : "Unable to load tweets."}
+            </p>
+          ) : tweets.length === 0 ? (
+            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>No recent tweets mention this CA.</p>
+          ) : (
+            <ul className="space-y-3 max-h-48 overflow-y-auto">
+              {tweets.map((t: { id: string; text: string; created_at?: string }) => (
+                <li key={t.id} className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  <p className="line-clamp-3">{t.text}</p>
+                  {t.created_at && (
+                    <a
+                      href={`https://x.com/i/status/${t.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] mt-1 inline-block"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      View on X
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CopyCAButton({ mint }: { mint: string }) {
   const [copied, setCopied] = useState(false);
@@ -489,6 +551,7 @@ export function UnifiedBuyPanel() {
                       Chart is illustrative. Execute swaps via Jupiter; confirm in your wallet.
                     </p>
                   </div>
+                  <TokenTweetsSection mint={selectedToken.mint} />
                   </>
                 )}
               </div>

@@ -374,12 +374,21 @@ export function TokenSurface() {
       )}
       {!isLoading && !isError && tokens.length === 0 && (
         <div
-          className="py-8 px-6 rounded-[6px] border border-dashed text-center"
+          className="py-10 px-6 rounded-[8px] border border-dashed text-center"
           style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
         >
-          <p className="font-body text-sm mb-3" style={{ color: "var(--text-2)" }}>
-            {searchQuery ? "No tokens found for this search." : selectedMarket ? "No tokens found for this market." : "Select a market or search above."}
+          <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
+            {searchQuery
+              ? "No tokens found for this search."
+              : selectedMarket
+                ? "No tokens found for this market."
+                : "No tokens fetched or found yet."}
           </p>
+          {!searchQuery && !selectedMarket && (
+            <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+              Click a market in the sidebar to see tokens related to it.
+            </p>
+          )}
           {selectedMarket && !searchQuery && (
             <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
               Use &quot;Launch token&quot; above to create one.

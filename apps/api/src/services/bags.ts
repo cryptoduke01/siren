@@ -187,6 +187,52 @@ export async function getBagsPoolByTokenMint(tokenMint: string): Promise<BagsPoo
   return r ?? null;
 }
 
+/** Get claimable fee positions for a wallet. */
+export async function getClaimablePositions(wallet: string): Promise<Array<{
+  baseMint: string;
+  isMigrated: boolean;
+  isCustomFeeVault: boolean;
+  totalClaimableLamportsUserShare: number;
+  claimableDisplayAmount?: number;
+  virtualPoolAddress?: string | null;
+  dammPoolAddress?: string | null;
+  dammPositionInfo?: {
+    position: string;
+    pool: string;
+    positionNftAccount: string;
+    tokenAMint: string;
+    tokenBMint: string;
+    tokenAVault: string;
+    tokenBVault: string;
+  } | null;
+  [k: string]: unknown;
+}>> {
+  const res = await fetch(
+    `${BAGS_BASE}/token-launch/claimable-positions?wallet=${encodeURIComponent(wallet)}`,
+    { headers: BAGS_GET_HEADERS() }
+  );
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags get claimable positions: ${res.status}`);
+  const r = json.response ?? json;
+  return Array.isArray(r) ? r : [];
+}
+
+/** Get claim transactions (v3). Returns array of { tx: base58, blockhash }. */
+export async function getClaimTransactionsV3(feeClaimer: string, tokenMint: string): Promise<Array<{
+  tx: string;
+  blockhash: { blockhash: string; lastValidBlockHeight: number };
+}>> {
+  const res = await fetch(`${BAGS_BASE}/token-launch/claim-txs/v3`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ feeClaimer, tokenMint }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `Bags get claim txs v3: ${res.status}`);
+  const r = json.response ?? json;
+  return Array.isArray(r) ? r : [];
+}
+
 /** Get token lifetime fees (lamports as string). */
 export async function getTokenLifetimeFees(tokenMint: string): Promise<string> {
   const res = await fetch(

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
 import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
@@ -14,6 +14,7 @@ import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
+import bs58 from "bs58";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const LAMPORTS_PER_SOL = 1e9;
@@ -181,6 +182,155 @@ function TransactionHistoryList({ address }: { address: string }) {
   );
 }
 
+function FeeEarningsSection({
+  publicKey,
+  signTransaction,
+  connection,
+  solPriceUsd,
+  tokenInfoByMint,
+  queryClient,
+}: {
+  publicKey: { toBase58: () => string } | null;
+  signTransaction: ((tx: Transaction | VersionedTransaction) => Promise<Transaction | VersionedTransaction>) | undefined;
+  connection: Connection;
+  solPriceUsd: number;
+  tokenInfoByMint: Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>;
+  queryClient: ReturnType<typeof import("@tanstack/react-query").useQueryClient>;
+}) {
+  const [claimingMint, setClaimingMint] = useState<string | null>(null);
+  const [claimResult, setClaimResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const { data: positions = [], isLoading, refetch } = useQuery({
+    queryKey: ["bags-claimable-positions", publicKey?.toBase58()],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/api/bags/claimable-positions?wallet=${encodeURIComponent(publicKey!.toBase58())}`, { credentials: "omit" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Failed to load");
+      return j.data ?? [];
+    },
+    enabled: !!publicKey,
+    staleTime: 30_000,
+  });
+  const claimable = positions.filter((p: { totalClaimableLamportsUserShare: number }) => (p.totalClaimableLamportsUserShare ?? 0) > 0);
+  const handleClaim = async (tokenMint: string) => {
+    if (!publicKey || !signTransaction) return;
+    hapticLight();
+    setClaimingMint(tokenMint);
+    setClaimResult(null);
+    try {
+      const res = await fetch(`${API_URL}/api/bags/claim-txs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feeClaimer: publicKey.toBase58(), tokenMint }),
+        credentials: "omit",
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Claim failed");
+      const txs = j.data ?? [];
+      if (txs.length === 0) throw new Error("No claim transactions returned");
+      for (const item of txs) {
+        const txBase58 = item.tx;
+        if (!txBase58) continue;
+        const buf = bs58.decode(txBase58);
+        let tx: Transaction | VersionedTransaction;
+        try {
+          tx = VersionedTransaction.deserialize(buf);
+        } catch {
+          tx = Transaction.from(buf);
+        }
+        const signed = await signTransaction(tx);
+        const raw = signed instanceof VersionedTransaction ? signed.serialize() : signed.serialize();
+        const sig = await connection.sendRawTransaction(raw, { skipPreflight: false });
+        await connection.confirmTransaction(sig, "confirmed");
+      }
+      setClaimResult({ type: "success", message: "Fees claimed!" });
+      queryClient.invalidateQueries({ queryKey: ["bags-claimable-positions", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["wallet-balance", publicKey.toBase58()] });
+      refetch();
+    } catch (e) {
+      setClaimResult({ type: "error", message: e instanceof Error ? e.message : "Claim failed" });
+    } finally {
+      setClaimingMint(null);
+    }
+  };
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden"
+      style={{
+        borderColor: "var(--border-subtle)",
+        background: "var(--bg-surface)",
+        boxShadow: "0 1px 0 0 var(--border-subtle)",
+      }}
+    >
+      <div className="px-5 py-4 flex items-center gap-3 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-dim)" }}>
+          <Receipt className="w-4 h-4" style={{ color: "var(--accent)" }} />
+        </div>
+        <div>
+          <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Fee earnings</h2>
+          <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Bags fee share. Claim SOL from tokens you launched or have fee rights on.
+          </p>
+        </div>
+      </div>
+      <div className="p-5">
+        {claimResult && (
+          <p className={`font-body text-xs mb-3 ${claimResult.type === "success" ? "text-[var(--up)]" : "text-[var(--down)]"}`}>
+            {claimResult.message}
+          </p>
+        )}
+        {isLoading ? (
+          <div className="py-6 text-center">
+            <Loader2 className="w-6 h-6 mx-auto animate-spin" style={{ color: "var(--text-3)" }} />
+          </div>
+        ) : claimable.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+            <Receipt className="w-8 h-8 mx-auto mb-2 opacity-50" style={{ color: "var(--text-3)" }} />
+            <p className="font-body text-sm mb-1" style={{ color: "var(--text-2)" }}>No claimable fees</p>
+            <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+              Launch tokens on Bags or earn fee share to see claimable amounts here.
+            </p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {claimable.map((p: { baseMint: string; totalClaimableLamportsUserShare: number }) => {
+              const sol = p.totalClaimableLamportsUserShare / LAMPORTS_PER_SOL;
+              const info = tokenInfoByMint.get(p.baseMint);
+              const sym = info?.symbol ?? p.baseMint.slice(0, 6);
+              const isClaiming = claimingMint === p.baseMint;
+              return (
+                <li
+                  key={p.baseMint}
+                  className="flex items-center justify-between gap-3 rounded-xl border p-3"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                >
+                  <div className="min-w-0">
+                    <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{sym}</p>
+                    <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--accent)" }}>
+                      {sol.toFixed(6)} SOL
+                      {solPriceUsd > 0 && (
+                        <span className="text-[var(--text-3)] ml-1">(≈${(sol * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleClaim(p.baseMint)}
+                    disabled={isClaiming || !signTransaction}
+                    className="font-heading font-semibold text-xs px-4 py-2 rounded-lg transition-all disabled:opacity-50 shrink-0"
+                    style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                  >
+                    {isClaiming ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : "Claim"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AddressCopyButton({ address }: { address: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -310,7 +460,7 @@ function buildMintToMarket(
 }
 
 export default function PortfolioPage() {
-  const { connected, publicKey } = useSirenWallet();
+  const { connected, publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
   const [balanceView, setBalanceView] = useState<"mainnet" | "devnet">("mainnet");
@@ -1176,45 +1326,14 @@ export default function PortfolioPage() {
               </div>
             </div>
 
-            <div
-              className="rounded-2xl border overflow-hidden"
-              style={{
-                borderColor: "var(--border-subtle)",
-                background: "var(--bg-surface)",
-                boxShadow: "0 1px 0 0 var(--border-subtle)",
-              }}
-            >
-              <div
-                className="px-5 py-4 flex items-center gap-3 border-b"
-                style={{ borderColor: "var(--border-subtle)" }}
-              >
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-dim)" }}>
-                  <Receipt className="w-4 h-4" style={{ color: "var(--accent)" }} />
-                </div>
-                <div>
-                  <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                    Fee earnings
-                  </h2>
-                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    Fees from Kalshi referrals, partner programs, and Bags fee share will appear here.
-                  </p>
-                </div>
-              </div>
-              <div className="p-5">
-                <div
-                  className="rounded-xl border border-dashed p-6 text-center"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
-                >
-                  <Receipt className="w-8 h-8 mx-auto mb-2 opacity-50" style={{ color: "var(--text-3)" }} />
-                  <p className="font-body text-sm mb-1" style={{ color: "var(--text-2)" }}>
-                    No fees earned yet
-                  </p>
-                  <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-                    Fees from Kalshi referrals, partner programs, and Bags fee share will appear here.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <FeeEarningsSection
+              publicKey={publicKey}
+              signTransaction={signTransaction}
+              connection={connection}
+              solPriceUsd={solPriceUsd}
+              tokenInfoByMint={tokenInfoByMint}
+              queryClient={queryClient}
+            />
           </div>
 
           {/* Transaction history */}

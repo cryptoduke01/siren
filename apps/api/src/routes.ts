@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import bs58 from "bs58";
 import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
-import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats, getBagsPools, getBagsPoolByTokenMint, getTokenLifetimeFees, getBagsTradeQuote, createBagsSwapTransaction } from "./services/bags.js";
+import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats, getBagsPools, getBagsPoolByTokenMint, getTokenLifetimeFees, getClaimablePositions, getClaimTransactionsV3, getBagsTradeQuote, createBagsSwapTransaction } from "./services/bags.js";
 import { getDflowOrder } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
@@ -439,6 +439,37 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch token info" });
+    }
+  });
+
+  /** Tweets mentioning a token CA (X API v2). Requires TWITTER_BEARER_TOKEN. */
+  app.get<{ Querystring: { mint: string } }>("/api/token-tweets", async (req, reply) => {
+    const { mint } = req.query;
+    if (!mint?.trim() || mint.length < 32) {
+      return reply.status(400).send({ success: false, error: "Valid mint (CA) required" });
+    }
+    const bearer = process.env.TWITTER_BEARER_TOKEN?.trim();
+    if (!bearer) {
+      return reply.status(503).send({ success: false, error: "X API not configured. Set TWITTER_BEARER_TOKEN." });
+    }
+    try {
+      const q = encodeURIComponent(`"${mint.trim()}"`);
+      const url = `https://api.twitter.com/2/tweets/search/recent?query=${q}&max_results=10&tweet.fields=created_at,author_id,text,public_metrics`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${bearer}`, Accept: "application/json" },
+      });
+      const data = (await res.json()) as { data?: Array<{ id: string; text: string; created_at?: string; author_id?: string }>; error?: { message?: string } };
+      if (!res.ok) {
+        return reply.status(res.status >= 500 ? 503 : res.status).send({
+          success: false,
+          error: data.error?.message ?? "X API error",
+        });
+      }
+      const tweets = data.data ?? [];
+      return reply.send({ success: true, data: tweets });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch tweets" });
     }
   });
 
@@ -936,6 +967,40 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: (e as Error).message || "Bags lifetime-fees failed" });
+    }
+  });
+
+  /** Bags: claimable fee positions for a wallet. */
+  app.get<{ Querystring: { wallet: string } }>("/api/bags/claimable-positions", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { wallet } = req.query;
+    if (!wallet?.trim()) return reply.status(400).send({ success: false, error: "wallet required" });
+    try {
+      const positions = await getClaimablePositions(wallet.trim());
+      return reply.send({ success: true, data: positions });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags claimable-positions failed" });
+    }
+  });
+
+  /** Bags: claim transactions for a token. Returns txs for user to sign/send. */
+  app.post<{ Body: { feeClaimer: string; tokenMint: string } }>("/api/bags/claim-txs", async (req, reply) => {
+    if (!process.env.BAGS_API_KEY) {
+      return reply.status(503).send({ success: false, error: "Bags API key not configured." });
+    }
+    const { feeClaimer, tokenMint } = req.body || {};
+    if (!feeClaimer?.trim() || !tokenMint?.trim()) {
+      return reply.status(400).send({ success: false, error: "feeClaimer and tokenMint required" });
+    }
+    try {
+      const txs = await getClaimTransactionsV3(feeClaimer.trim(), tokenMint.trim());
+      return reply.send({ success: true, data: txs });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Bags claim-txs failed" });
     }
   });
 

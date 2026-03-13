@@ -31,6 +31,7 @@ API keys, setup, and run instructions.
   3. Create an API key in the dashboard
 - **Where to set:** `BAGS_API_KEY` in `apps/api/.env`.
 - **Note:** Without this key, token **surfacing** uses mock data; **trading** and **launch** need the key.
+- **Fee claiming:** Portfolio shows claimable Bags fee share and lets users claim. See `docs/BAGS_FEE_CLAIMING.md`.
 
 **Docs:** https://docs.bags.fm
 
@@ -58,6 +59,7 @@ API keys, setup, and run instructions.
   3. Generate **Bearer Token**
 - **Where to set:** `TWITTER_BEARER_TOKEN` in `apps/api/.env`.
 - **Optional:** Leave blank; CT layer can be mocked or skipped.
+- **Details:** See `docs/X_API_TOKEN_TWEETS.md` for token CT mentions.
 
 ---
 
