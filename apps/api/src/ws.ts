@@ -1,11 +1,16 @@
 import type { FastifyRequest } from "fastify";
-import type { WebSocket } from "ws";
 import { getMarketsWithVelocity } from "./services/markets.js";
 
-const clients = new Set<WebSocket>();
+interface SocketLike {
+  readyState: number;
+  send(data: string): void;
+  on(event: string, fn: () => void): void;
+}
+
+const clients = new Set<SocketLike>();
 
 export function createWebSocketHandler() {
-  return (socket: WebSocket, _req: FastifyRequest) => {
+  return (socket: SocketLike, _req: FastifyRequest) => {
     clients.add(socket);
     socket.on("close", () => clients.delete(socket));
 

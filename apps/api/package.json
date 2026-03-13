@@ -11,7 +11,6 @@
     "exec": "tsx"
   },
   "dependencies": {
-    "ws": "^8.18.0",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.95.8",
     "@fastify/cors": "^10.0.0",
