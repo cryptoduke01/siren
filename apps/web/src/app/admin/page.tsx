@@ -34,7 +34,12 @@ const STORAGE_KEY = "siren-admin-pass-ok";
 
 type Tab = "waitlist" | "app-users" | "volume";
 
-type VolumeData = { platform7d: number; byWallet: Array<{ wallet: string; volume7d: number }> };
+type VolumeData = {
+  platform7d: number;
+  platform30d: number;
+  platformAllTime: number;
+  byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }>;
+};
 
 function CopyableCell({ value, mono = false }: { value: string | null; mono?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -91,6 +96,8 @@ export default function AdminPage() {
     skippedEmails?: string[];
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [volumeEmailLoading, setVolumeEmailLoading] = useState(false);
+  const [solPriceUsd, setSolPriceUsd] = useState(0);
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
   const [volumeLoading, setVolumeLoading] = useState(false);
 
@@ -126,6 +133,19 @@ export default function AdminPage() {
     if (stored === "true") {
       setHasAccess(true);
     }
+  }, []);
+
+  useEffect(() => {
+    const loadSolPrice = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/sol-price`, { credentials: "omit" });
+        const j = await res.json();
+        setSolPriceUsd(typeof j.usd === "number" ? j.usd : 0);
+      } catch {
+        setSolPriceUsd(0);
+      }
+    };
+    void loadSolPrice();
   }, []);
 
   const loadWaitlist = useCallback(async () => {
@@ -227,6 +247,28 @@ export default function AdminPage() {
       setError(e instanceof Error ? e.message : "Failed to send emails");
     } finally {
       setSendAllLoading(false);
+    }
+  };
+
+  const handleSendVolumeEmail = async () => {
+    hapticLight();
+    setVolumeEmailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-volume-email`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send volume emails");
+      setSendAllResult({
+        sent: data.sent,
+        failed: data.failed,
+        skipped: data.skipped,
+        total: data.total,
+        failedEmails: data.failedEmails ?? [],
+        skippedEmails: data.skippedEmails ?? [],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send volume emails");
+    } finally {
+      setVolumeEmailLoading(false);
     }
   };
 
@@ -460,6 +502,20 @@ export default function AdminPage() {
                   )}
                   {sendAllLoading ? "Sending…" : "Send access codes to all"}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleSendVolumeEmail}
+                  disabled={volumeEmailLoading || waitlistRows.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-opacity disabled:opacity-50"
+                  style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
+                >
+                  {volumeEmailLoading ? (
+                    <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4" />
+                  )}
+                  {volumeEmailLoading ? "Emailing…" : "Email volume sprint"}
+                </button>
                 </div>
               </div>
               {sendAllResult && (
@@ -620,16 +676,27 @@ export default function AdminPage() {
           {tab === "volume" && (
             <section className="min-w-0 overflow-hidden">
               <h2 className="font-heading text-sm mb-3" style={{ color: "var(--text-2)" }}>
-                Volume — 7d platform & per-wallet (from API logs; resets on API restart)
+                Volume — 7d / 30d / all-time (from API logs; resets on API restart)
               </h2>
               {volumeLoading ? (
                 <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
               ) : volumeData ? (
                 <div className="space-y-4">
                   <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                    <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Platform 7d volume</p>
+                    <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Platform volume</p>
                     <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
-                      {volumeData.platform7d.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                      7d: {volumeData.platform7d.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                    </p>
+                    <p className="font-mono text-sm tabular-nums mt-1" style={{ color: "var(--text-2)" }}>
+                      30d: {volumeData.platform30d.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                    </p>
+                    <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-2)" }}>
+                      All-time: {volumeData.platformAllTime.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                      {solPriceUsd > 0 && (
+                        <span className="text-[11px] ml-1" style={{ color: "var(--text-3)" }}>
+                          (≈${(volumeData.platformAllTime * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
@@ -637,13 +704,15 @@ export default function AdminPage() {
                       <thead>
                         <tr style={{ background: "var(--bg-elevated)" }}>
                           <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
-                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>7d volume (SOL)</th>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>7d (SOL)</th>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>30d (SOL)</th>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>All-time (SOL)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {volumeData.byWallet.length === 0 ? (
                           <tr>
-                            <td className="px-4 py-6 text-center text-sm" colSpan={2} style={{ color: "var(--text-3)" }}>
+                            <td className="px-4 py-6 text-center text-sm" colSpan={4} style={{ color: "var(--text-3)" }}>
                               No volume logged yet. Volume is logged when users complete swaps.
                             </td>
                           </tr>
@@ -653,6 +722,17 @@ export default function AdminPage() {
                               <CopyableCell value={row.wallet} mono />
                               <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
                                 {row.volume7d.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                              </td>
+                              <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                {row.volume30d.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                              </td>
+                              <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                {row.volumeAllTime.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                                {solPriceUsd > 0 && (
+                                  <span className="text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
+                                    (≈${(row.volumeAllTime * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                                  </span>
+                                )}
                               </td>
                             </tr>
                           ))

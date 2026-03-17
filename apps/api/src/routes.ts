@@ -7,29 +7,48 @@ import { getDflowOrder } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
-import { sendWelcomeWithAccessCode, canSendEmail } from "./services/email.js";
+import { sendWelcomeWithAccessCode, sendVolumeCompetitionEmail, canSendEmail } from "./services/email.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 // In-memory volume store (resets on restart). For persistence, add Supabase/DB.
 const volumeStore = new Map<string, Array<{ ts: number; volumeSol: number }>>();
-function getVolume7d(): { platform: number; byWallet: Array<{ wallet: string; volume7d: number }> } {
+function getVolumeStats(): {
+  platform7d: number;
+  platform30d: number;
+  platformAllTime: number;
+  byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }>;
+} {
   const dayMs = 24 * 60 * 60 * 1000;
-  const cutoff = Date.now() - 7 * dayMs;
-  let platform = 0;
-  const byWallet: Array<{ wallet: string; volume7d: number }> = [];
+  const now = Date.now();
+  const cutoff7 = now - 7 * dayMs;
+  const cutoff30 = now - 30 * dayMs;
+  let platform7d = 0;
+  let platform30d = 0;
+  let platformAllTime = 0;
+  const byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }> = [];
+
   for (const [wallet, entries] of volumeStore) {
-    const v7d = entries
-      .filter((e) => e.ts >= cutoff && typeof e.volumeSol === "number" && Number.isFinite(e.volumeSol))
-      .reduce((s, e) => s + e.volumeSol, 0);
-    if (v7d > 0) {
-      platform += v7d;
-      byWallet.push({ wallet, volume7d: v7d });
+    let vAll = 0;
+    let v7 = 0;
+    let v30 = 0;
+    for (const e of entries) {
+      const v = typeof e.volumeSol === "number" && Number.isFinite(e.volumeSol) ? e.volumeSol : 0;
+      if (v <= 0) continue;
+      vAll += v;
+      if (e.ts >= cutoff30) v30 += v;
+      if (e.ts >= cutoff7) v7 += v;
+    }
+    if (vAll > 0) {
+      platformAllTime += vAll;
+      platform30d += v30;
+      platform7d += v7;
+      byWallet.push({ wallet, volume7d: v7, volume30d: v30, volumeAllTime: vAll });
     }
   }
   byWallet.sort((a, b) => b.volume7d - a.volume7d);
-  return { platform, byWallet };
+  return { platform7d, platform30d, platformAllTime, byWallet };
 }
 
 export function registerRoutes(app: FastifyInstance) {
@@ -222,6 +241,49 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to send emails" });
+    }
+  });
+
+  /** Admin: send volume competition email to all waitlist signups with email. */
+  app.post("/api/admin/waitlist/send-volume-email", async (_req, reply) => {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase
+        .from("waitlist_signups")
+        .select("email,name")
+        .not("email", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(1000);
+      if (listError) return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      const entries = rows ?? [];
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+      for (const row of entries) {
+        if (!row.email?.trim()) {
+          skipped++;
+          skippedEmails.push(row.email || "");
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped++;
+          skippedEmails.push(row.email);
+          continue;
+        }
+        const result = await sendVolumeCompetitionEmail({ to: row.email, name: row.name });
+        if (result.ok) sent++;
+        else {
+          failed++;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send volume email");
+        }
+      }
+      return reply.send({ success: true, sent, failed, skipped, total: entries.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send volume emails" });
     }
   });
 
@@ -614,10 +676,10 @@ export function registerRoutes(app: FastifyInstance) {
     return reply.send({ success: true });
   });
 
-  /** Admin: volume stats (platform total + per wallet 7d). */
+  /** Admin: volume stats (platform + per wallet, 7d / 30d / all-time). */
   app.get("/api/admin/volume", async (_req, reply) => {
-    const { platform, byWallet } = getVolume7d();
-    return reply.send({ success: true, data: { platform7d: platform, byWallet } });
+    const stats = getVolumeStats();
+    return reply.send({ success: true, data: stats });
   });
 
   /** Admin: aggregate user stats for dashboard. */
