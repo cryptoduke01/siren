@@ -682,25 +682,19 @@ export default function AdminPage() {
                 <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
               ) : volumeData ? (
                 <div className="space-y-4">
-                  {(() => {
-                    const p7 = typeof volumeData.platform7d === "number" ? volumeData.platform7d : 0;
-                    const p30 = typeof volumeData.platform30d === "number" ? volumeData.platform30d : 0;
-                    const pAll = typeof volumeData.platformAllTime === "number" ? volumeData.platformAllTime : 0;
-                    const rows = Array.isArray(volumeData.byWallet) ? volumeData.byWallet : [];
-                    return (
                   <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                     <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Platform volume</p>
                     <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
-                      7d: {p7.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                      7d: {(volumeData.platform7d ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
                     </p>
                     <p className="font-mono text-sm tabular-nums mt-1" style={{ color: "var(--text-2)" }}>
-                      30d: {p30.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                      30d: {(volumeData.platform30d ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
                     </p>
                     <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-2)" }}>
-                      All-time: {pAll.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                      All-time: {(volumeData.platformAllTime ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
                       {solPriceUsd > 0 && (
                         <span className="text-[11px] ml-1" style={{ color: "var(--text-3)" }}>
-                          (≈${(pAll * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                          (≈${(((volumeData.platformAllTime ?? 0) * solPriceUsd) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })})
                         </span>
                       )}
                     </p>
@@ -716,43 +710,41 @@ export default function AdminPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.length === 0 ? (
+                        {(!volumeData.byWallet || volumeData.byWallet.length === 0) ? (
                           <tr>
                             <td className="px-4 py-6 text-center text-sm" colSpan={4} style={{ color: "var(--text-3)" }}>
                               No volume logged yet. Volume is logged when users complete swaps.
                             </td>
                           </tr>
                         ) : (
-                          rows.map((row) => {
-                            const v7 = typeof row.volume7d === "number" ? row.volume7d : 0;
-                            const v30 = typeof row.volume30d === "number" ? row.volume30d : 0;
-                            const vAll = typeof row.volumeAllTime === "number" ? row.volumeAllTime : v7;
+                          volumeData.byWallet.map((row) => {
+                            const v7 = row.volume7d ?? 0;
+                            const v30 = row.volume30d ?? 0;
+                            const vAll = row.volumeAllTime ?? v7;
                             return (
-                            <tr key={row.wallet} className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
-                              <CopyableCell value={row.wallet} mono />
-                              <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
-                                {v7.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
-                              </td>
-                              <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
-                                {v30.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
-                              </td>
-                              <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
-                                {vAll.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
-                                {solPriceUsd > 0 && (
-                                  <span className="text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
-                                    (≈${(vAll * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
+                              <tr key={row.wallet} className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                                <CopyableCell value={row.wallet} mono />
+                                <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                  {v7.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                                </td>
+                                <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                  {v30.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                                </td>
+                                <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                  {vAll.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                                  {solPriceUsd > 0 && (
+                                    <span className="text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
+                                      (≈${((vAll * solPriceUsd) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
                           })
                         )}
                       </tbody>
                     </table>
                   </div>
-                    );
-                  })()}
                 </div>
               ) : null}
             </section>
