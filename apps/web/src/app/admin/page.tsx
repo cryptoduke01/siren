@@ -100,6 +100,7 @@ export default function AdminPage() {
   const [solPriceUsd, setSolPriceUsd] = useState(0);
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
   const [volumeLoading, setVolumeLoading] = useState(false);
+  const [volumeEmailInput, setVolumeEmailInput] = useState("");
 
   const filteredWaitlist = searchQuery.trim()
     ? waitlistRows.filter(
@@ -255,6 +256,40 @@ export default function AdminPage() {
     setVolumeEmailLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/admin/waitlist/send-volume-email`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send volume emails");
+      setSendAllResult({
+        sent: data.sent,
+        failed: data.failed,
+        skipped: data.skipped,
+        total: data.total,
+        failedEmails: data.failedEmails ?? [],
+        skippedEmails: data.skippedEmails ?? [],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send volume emails");
+    } finally {
+      setVolumeEmailLoading(false);
+    }
+  };
+
+  const handleSendVolumeEmailManual = async () => {
+    hapticLight();
+    const raw = volumeEmailInput
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (raw.length === 0) {
+      setError("Paste one or more emails first.");
+      return;
+    }
+    setVolumeEmailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-volume-email-by-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: raw }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send volume emails");
       setSendAllResult({
@@ -476,7 +511,7 @@ export default function AdminPage() {
                 <h2 className="font-heading text-sm" style={{ color: "var(--text-2)" }}>
                   Waitlist signups — people who joined via the waitlist form
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <div className="relative">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
                     <input
@@ -516,6 +551,29 @@ export default function AdminPage() {
                   )}
                   {volumeEmailLoading ? "Emailing…" : "Email volume sprint"}
                 </button>
+                </div>
+              </div>
+              <div className="mb-3">
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Paste specific emails (e.g. failed ones) to resend the volume sprint update only to them.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <textarea
+                    value={volumeEmailInput}
+                    onChange={(e) => setVolumeEmailInput(e.target.value)}
+                    className="flex-1 min-h-[60px] px-3 py-2 rounded-lg font-mono text-[11px] border"
+                    style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                    placeholder="lawrencekelvin001@gmail.com&#10;odewumiprecious@gmail.com&#10;kloop058@gmail.com&#10;eokorie1911@gmail.com"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendVolumeEmailManual}
+                    disabled={volumeEmailLoading}
+                    className="px-4 py-2 rounded-lg font-body text-xs font-medium shrink-0 disabled:opacity-50"
+                    style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                  >
+                    Send to pasted emails
+                  </button>
                 </div>
               </div>
               {sendAllResult && (

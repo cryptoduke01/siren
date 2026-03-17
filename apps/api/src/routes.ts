@@ -287,6 +287,69 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Admin: send volume competition email to a specific list of emails (pasted manually). */
+  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-volume-email-by-email", async (req, reply) => {
+    try {
+      const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
+      const normalized = Array.from(
+        new Set(
+          raw
+            .map((e) => (typeof e === "string" ? e.trim().toLowerCase() : ""))
+            .filter((e) => e.length > 0)
+        )
+      );
+      if (normalized.length === 0) {
+        return reply.status(400).send({ success: false, error: "No valid emails provided" });
+      }
+
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase
+        .from("waitlist_signups")
+        .select("email,name")
+        .in("email", normalized);
+      if (listError) {
+        return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      }
+
+      const byEmail = new Map<string, (typeof rows)[number]>();
+      for (const row of rows ?? []) {
+        if (row.email) byEmail.set(row.email.toLowerCase(), row as any);
+      }
+
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+
+      for (const email of normalized) {
+        const row = byEmail.get(email);
+        if (!row || !row.email?.trim()) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+        const result = await sendVolumeCompetitionEmail({ to: row.email, name: row.name });
+        if (result.ok) sent++;
+        else {
+          failed++;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send volume email (manual)");
+        }
+      }
+
+      return reply.send({ success: true, sent, failed, skipped, total: normalized.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send volume emails (manual)" });
+    }
+  });
+
   /** Admin: send access-code emails to a specific list of emails (pasted manually). */
   app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-codes-by-email", async (req, reply) => {
     try {
