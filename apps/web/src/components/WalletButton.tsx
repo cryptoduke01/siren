@@ -8,7 +8,7 @@ import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { hapticLight } from "@/lib/haptics";
 import { ChevronDown, Copy, LogOut } from "lucide-react";
 
-export function WalletButton() {
+export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
   const { connected, publicKey, disconnect } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const [modalOpen, setModalOpen] = useState(false);
@@ -55,11 +55,11 @@ export function WalletButton() {
 
   if (connected && publicKey) {
     return (
-      <div className="relative" ref={dropdownRef}>
+      <div className={`relative ${fullWidth ? "w-full" : ""}`} ref={dropdownRef}>
         <button
           type="button"
           onClick={() => { hapticLight(); setDropdownOpen((o) => !o); }}
-          className="font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] flex items-center gap-1.5"
+          className={`font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] flex items-center gap-1.5 ${fullWidth ? "w-full justify-between" : ""}`}
           style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)", color: "var(--text-2)" }}
         >
           <span>{short}</span>
@@ -67,7 +67,7 @@ export function WalletButton() {
         </button>
         {dropdownOpen && (
           <div
-            className="absolute top-full right-0 mt-1 py-1 rounded-lg border min-w-[160px] z-50"
+            className={`absolute top-full mt-1 py-1 rounded-lg border min-w-[160px] z-50 ${fullWidth ? "left-0 right-0 w-full" : "right-0"}`}
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}
           >
             <button type="button" onClick={handleCopyAddress} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-1)" }}>
@@ -90,7 +90,7 @@ export function WalletButton() {
           hapticLight();
           router.push("/onboarding");
         }}
-        className="font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
+        className={`font-mono text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] ${fullWidth ? "w-full" : ""}`}
         style={{
           background: "var(--bg-elevated)",
           border: "1px solid var(--border-default)",

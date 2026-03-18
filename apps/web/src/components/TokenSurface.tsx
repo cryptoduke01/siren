@@ -54,6 +54,8 @@ function CopyCAButton({ mint }: { mint: string }) {
 }
 
 function getTokenCardTopBorder(token: SurfacedToken): string {
+  if (token.riskBlocked || (token.riskScore ?? 0) >= 80) return "var(--down)";
+  if ((token.riskScore ?? 0) >= 60) return "var(--bags)";
   const ct = token.ctMentions ?? 0;
   const vol = token.volume24h ?? 0;
   if (ct > 10) return "var(--bags)";
@@ -114,6 +116,7 @@ export function TokenSurface() {
         (t.mint && t.mint.toLowerCase().includes(q))
     );
   }, [tokens, searchQuery]);
+  const riskyTokens = useMemo(() => filteredTokens.filter((t) => (t.riskScore ?? 0) >= 60), [filteredTokens]);
 
   const { setSelectedToken } = useSirenStore();
 
@@ -180,6 +183,22 @@ export function TokenSurface() {
           ? "Tokens matched by keywords from the market title (DexScreener search). View on Kalshi to trade the market."
           : "New uprising tokens (DexScreener latest boosted)."}
       </p>
+      <div
+        className="rounded-[8px] border px-3 py-2 mb-4"
+        style={{
+          background: "color-mix(in srgb, var(--down) 8%, var(--bg-surface))",
+          borderColor: "color-mix(in srgb, var(--down) 26%, var(--border-subtle))",
+        }}
+      >
+        <p className="font-body text-[11px]" style={{ color: "var(--text-2)" }}>
+          Risk trade analysed. Suspicious honeypot or fake tokens are filtered out automatically.
+        </p>
+        {riskyTokens.length > 0 && (
+          <p className="font-body text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
+            A few results still carry elevated risk flags, so double-check the token details before trading.
+          </p>
+        )}
+      </div>
       <div className="mb-4">
         <input
           type="text"
@@ -268,6 +287,18 @@ export function TokenSurface() {
                       ${t.symbol}
                     </p>
                     <LaunchpadBadge launchpad={t.launchpad} />
+                    {(t.riskScore ?? 0) >= 60 && (
+                      <span
+                        className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-[9px] uppercase tracking-wide"
+                        style={{
+                          background: "color-mix(in srgb, var(--down) 14%, var(--bg-elevated))",
+                          color: "var(--down)",
+                          border: "1px solid color-mix(in srgb, var(--down) 24%, var(--border-subtle))",
+                        }}
+                      >
+                        Risk trade analysed
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-0">
                     <TokenAlertButton mint={t.mint} symbol={t.symbol} price={t.price} />
@@ -284,6 +315,11 @@ export function TokenSurface() {
                 {isUserLaunch && (
                   <p className="font-body text-[10px] mb-1" style={{ color: "var(--bags)" }}>
                     Launched on Bags (you)
+                  </p>
+                )}
+                {(t.riskScore ?? 0) >= 60 && (
+                  <p className="font-body text-[10px] mb-2" style={{ color: "var(--down)" }}>
+                    {t.riskReasons?.[0] ?? "Risk trade analysed before display."}
                   </p>
                 )}
                 {selectedMarket && (
@@ -379,14 +415,14 @@ export function TokenSurface() {
         >
           <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
             {searchQuery
-              ? "No tokens found for this search."
+              ? "No safe tokens found for this search."
               : selectedMarket
-                ? "No tokens found for this market."
-                : "No tokens fetched or found yet."}
+                ? "No safe tokens found for this market."
+                : "No safe tokens fetched or found yet."}
           </p>
           {!searchQuery && !selectedMarket && (
             <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-              Click a market in the sidebar to see tokens related to it.
+              Click a market in the sidebar to see tokens related to it. Risky tokens are hidden automatically.
             </p>
           )}
           {selectedMarket && !searchQuery && (
@@ -402,7 +438,7 @@ export function TokenSurface() {
           style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
         >
           <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-            No tokens match your search. Try name, symbol, or contract address.
+            No safe tokens match your search. Try name, symbol, or contract address.
           </p>
         </div>
       )}

@@ -35,6 +35,10 @@ export interface BagsToken {
   ctMentions?: number;
   score?: number;
   launchedAt?: number;
+  riskScore?: number;
+  riskLabel?: "low" | "moderate" | "high" | "critical";
+  riskReasons?: string[];
+  riskBlocked?: boolean;
 }
 
 /** Launchpad identifier (mint suffix). */

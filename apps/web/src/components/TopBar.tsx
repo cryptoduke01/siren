@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { WalletButton } from "./WalletButton";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 import { WaitlistHeader } from "./WaitlistHeader";
@@ -22,7 +23,9 @@ const NAV = [
 export function TopBar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useThemeStore();
+  const { connected } = useSirenWallet();
   const [menuOpen, setMenuOpen] = useState(false);
+  const navItems = connected ? NAV.filter((item) => item.href !== "/waitlist") : NAV;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -55,7 +58,7 @@ export function TopBar() {
           />
         </Link>
         <nav className="hidden md:flex items-center gap-6">
-          {NAV.map(({ href, label, external }) => {
+          {navItems.map(({ href, label, external }) => {
             const isActive = !external && (pathname === href || (href === "/" && pathname === "/"));
             const linkProps = {
               href,
@@ -140,7 +143,7 @@ export function TopBar() {
                 </button>
               </div>
               <nav className="flex-1 p-4 flex flex-col gap-1 overflow-y-auto">
-                {NAV.map(({ href, label, external }) => {
+                {navItems.map(({ href, label, external }) => {
                   const isActive = !external && (pathname === href || (href === "/" && pathname === "/"));
                   const className = "font-body font-medium text-sm py-3 px-3 rounded-[8px]";
                   const style = { color: isActive ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" };
@@ -180,7 +183,7 @@ export function TopBar() {
                   </button>
                 </div>
                 <div className="pt-2">
-                  <WalletButton />
+                  <WalletButton fullWidth />
                 </div>
               </nav>
             </motion.aside>

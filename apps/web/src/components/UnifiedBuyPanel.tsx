@@ -160,11 +160,23 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
     setResultModal(null);
   };
+  const buyBlocked = !!selectedToken?.riskBlocked && !sellMode;
+  const riskScore = selectedToken?.riskScore ?? 0;
+  const riskReasons = selectedToken?.riskReasons ?? [];
+  const riskLabel = selectedToken?.riskLabel ?? "low";
 
   const executeSwap = async () => {
     hapticLight();
     if (!connected || !publicKey || !selectedToken || !signTransaction) {
       setError("Connect your wallet to execute trades.");
+      return;
+    }
+    if (!sellMode && selectedToken.riskBlocked) {
+      const reason = riskReasons[0] ?? "This token looks too risky to trade.";
+      const msg = `Risk trade analysed. ${reason}.`;
+      setError(msg);
+      setResultModal({ type: "error", title: "Trade blocked", message: msg });
+      addToast(msg, "error");
       return;
     }
     setError(null);
@@ -410,9 +422,9 @@ export function UnifiedBuyPanel() {
                       </button>
                     </div>
                     <p className="font-heading font-bold text-[var(--text-primary)]">${selectedToken.symbol}</p>
-                    {selectedToken.price != null && (
-                      <p className="font-mono text-[var(--accent-primary)] text-sm mt-1 tabular-nums">~${selectedToken.price.toFixed(4)} USD</p>
-                    )}
+                    <p className="font-mono text-[var(--accent-primary)] text-sm mt-1 tabular-nums">
+                      {selectedToken.price != null ? `~$${selectedToken.price.toFixed(4)} USD` : "Price unavailable"}
+                    </p>
                     <p className="font-mono text-[var(--text-1)] mt-2 text-sm tabular-nums">
                       Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} SOL
                       {selectedToken.volume24h != null && solPriceUsd > 0 && (
@@ -421,6 +433,33 @@ export function UnifiedBuyPanel() {
                         </span>
                       )}
                     </p>
+                    {riskScore > 0 && (
+                      <div
+                        className="mt-3 rounded-lg border px-3 py-2"
+                        style={{
+                          background: riskScore >= 80
+                            ? "color-mix(in srgb, var(--down) 12%, var(--bg-surface))"
+                            : "color-mix(in srgb, var(--bags) 12%, var(--bg-surface))",
+                          borderColor: riskScore >= 80
+                            ? "color-mix(in srgb, var(--down) 30%, var(--border-subtle))"
+                            : "color-mix(in srgb, var(--bags) 24%, var(--border-subtle))",
+                        }}
+                      >
+                        <p className="font-body text-[10px] uppercase tracking-wide mb-1" style={{ color: riskScore >= 80 ? "var(--down)" : "var(--bags)" }}>
+                          Risk trade analysed
+                        </p>
+                        <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
+                          {riskLabel === "critical"
+                            ? "This token is blocked because it looks like a honeypot or fake pair."
+                            : "This token looks tradable, but it still carries elevated risk."}
+                        </p>
+                        {riskReasons.length > 0 && (
+                          <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
+                            {riskReasons.join(" · ")}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
                         MEV protected
@@ -454,11 +493,19 @@ export function UnifiedBuyPanel() {
                         </div>
                         <button
                           onClick={executeSwap}
-                          disabled={loading}
+                          disabled={loading || buyBlocked}
                           className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
                           style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
                         >
-                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Swapping…</> : `Buy ${selectedToken.symbol}`}
+                          {loading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" /> Swapping…
+                            </>
+                          ) : buyBlocked ? (
+                            "Blocked by risk analysis"
+                          ) : (
+                            `Buy ${selectedToken.symbol}`
+                          )}
                         </button>
                       </>
                     ) : (

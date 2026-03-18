@@ -23,6 +23,10 @@ export interface SelectedToken {
   price?: number;
   volume24h?: number;
   ctMentions?: number;
+  riskScore?: number;
+  riskLabel?: "low" | "moderate" | "high" | "critical";
+  riskReasons?: string[];
+  riskBlocked?: boolean;
 }
 
 type BuyPanelMode = "market" | "token";

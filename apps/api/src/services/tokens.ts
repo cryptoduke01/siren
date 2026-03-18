@@ -6,6 +6,14 @@ import type { DexPair } from "./dexscreener.js";
 import { getBagsPools } from "./bags.js";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+type RiskLabel = "low" | "moderate" | "high" | "critical";
+
+interface RiskAnalysis {
+  score: number;
+  label: RiskLabel;
+  reasons: string[];
+  blocked: boolean;
+}
 
 /** Detect launchpad from mint suffix (Bags: BAGS, Pump.fun: pump, Bonk.fun: bonk, Moonshot: shot). */
 export function getLaunchpadFromMint(mint: string): LaunchpadId | undefined {
@@ -25,6 +33,64 @@ function tokenMintFromPair(p: DexPair): string {
   return base;
 }
 
+function analyzeTokenRisk(params: {
+  pair?: DexPair;
+  mint: string;
+  name: string;
+  symbol: string;
+  priceUsd?: number;
+  volume24h?: number;
+  imageUrl?: string;
+}): RiskAnalysis {
+  let score = 0;
+  const reasons: string[] = [];
+  const pair = params.pair;
+  const liquidity = pair?.liquidity?.usd ?? 0;
+  const volume24h = params.volume24h ?? 0;
+  const symbol = params.symbol || "";
+  const name = params.name || "";
+
+  if (!pair) {
+    score += 65;
+    reasons.push("No live market pair");
+  }
+  if (!params.priceUsd || !Number.isFinite(params.priceUsd)) {
+    score += 20;
+    reasons.push("No reliable price data");
+  }
+  if (liquidity > 0 && liquidity < 500) {
+    score += 35;
+    reasons.push("Very low liquidity");
+  } else if (liquidity > 0 && liquidity < 2_000) {
+    score += 18;
+    reasons.push("Thin liquidity");
+  }
+  if (volume24h > 0 && volume24h < 1_000) {
+    score += 18;
+    reasons.push("Low trading volume");
+  } else if (volume24h > 0 && volume24h < 5_000) {
+    score += 8;
+    reasons.push("Limited trading volume");
+  }
+  if (!params.imageUrl) {
+    score += 5;
+    reasons.push("No token artwork");
+  }
+  if (symbol.length > 12 || /[^a-z0-9]/i.test(symbol) || name.length > 40) {
+    score += 8;
+    reasons.push("Unusual token metadata");
+  }
+
+  score = Math.max(0, Math.min(100, score));
+  const label: RiskLabel = score >= 80 ? "critical" : score >= 60 ? "high" : score >= 35 ? "moderate" : "low";
+  return {
+    score,
+    label,
+    reasons: reasons.slice(0, 3),
+    blocked: score >= 80,
+  };
+}
+
 function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedToken[] {
   const byMint = new Map<string, DexPair>();
   for (const p of pairs) {
@@ -41,6 +107,12 @@ function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedTo
     const symbol = token.symbol || "???";
     const priceUsd = p.priceUsd ? parseFloat(p.priceUsd) : undefined;
     const vol24h = p.volume?.h24;
+    const imageUrl = p.info?.imageUrl?.startsWith("http")
+      ? p.info.imageUrl
+      : p.info?.imageUrl
+        ? `https://cdn.dexscreener.com/cms/images/${p.info.imageUrl}?width=800&height=800&quality=90`
+        : undefined;
+    const risk = analyzeTokenRisk({ pair: p, mint, name, symbol, priceUsd, volume24h: vol24h, imageUrl });
     const nameMatch = keywords.length ? matchTokenToKeywords(name, symbol, keywords) : true;
     const volumeWeight = vol24h ? Math.min(vol24h / 100_000, 1) * 0.5 : 0;
     const relevanceScore = (nameMatch ? 0.5 : 0) + volumeWeight;
@@ -51,16 +123,16 @@ function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedTo
       symbol,
       price: priceUsd,
       volume24h: vol24h ? Math.round(vol24h) : undefined,
-      imageUrl: p.info?.imageUrl?.startsWith("http")
-        ? p.info.imageUrl
-        : p.info?.imageUrl
-          ? `https://cdn.dexscreener.com/cms/images/${p.info.imageUrl}?width=800&height=800&quality=90`
-          : undefined,
+      imageUrl,
       relevanceScore,
       matchType: nameMatch ? "name" : "volume",
       launchpad: getLaunchpadFromMint(mint),
+      riskScore: risk.score,
+      riskLabel: risk.label,
+      riskReasons: risk.reasons,
+      riskBlocked: risk.blocked,
     };
-  });
+  }).filter((t) => !t.riskBlocked);
 }
 
 const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
@@ -176,6 +248,10 @@ export interface TokenInfo {
   imageUrl?: string;
   priceUsd?: number;
   volume24h?: number;
+  riskScore?: number;
+  riskLabel?: RiskLabel;
+  riskReasons?: string[];
+  riskBlocked?: boolean;
 }
 
 const JUPITER_TOKEN_LIST_URL = "https://tokens.jup.ag/tokens?tags=verified";
@@ -222,6 +298,15 @@ export async function getTokenInfoByMint(mint: string): Promise<TokenInfo | null
         : best.info?.imageUrl
           ? `https://cdn.dexscreener.com/cms/images/${best.info.imageUrl}?width=800&height=800&quality=90`
           : undefined;
+      const risk = analyzeTokenRisk({
+        pair: best,
+        mint,
+        name: base.name || base.symbol || "Unknown",
+        symbol: base.symbol || "???",
+        priceUsd,
+        volume24h: best.volume?.h24,
+        imageUrl,
+      });
       return {
         mint,
         name: base.name || base.symbol || "Unknown",
@@ -229,11 +314,33 @@ export async function getTokenInfoByMint(mint: string): Promise<TokenInfo | null
         imageUrl,
         priceUsd,
         volume24h: best.volume?.h24 ? Math.round(best.volume.h24) : undefined,
+        riskScore: risk.score,
+        riskLabel: risk.label,
+        riskReasons: risk.reasons,
+        riskBlocked: risk.blocked,
       };
     }
     const jup = await getJupiterTokenByMint(mint);
     if (jup) {
-      return { mint, name: jup.name, symbol: jup.symbol, imageUrl: jup.imageUrl, priceUsd: undefined };
+      const risk = analyzeTokenRisk({
+        mint,
+        name: jup.name,
+        symbol: jup.symbol,
+        priceUsd: undefined,
+        volume24h: undefined,
+        imageUrl: jup.imageUrl,
+      });
+      return {
+        mint,
+        name: jup.name,
+        symbol: jup.symbol,
+        imageUrl: jup.imageUrl,
+        priceUsd: undefined,
+        riskScore: risk.score,
+        riskLabel: risk.label,
+        riskReasons: risk.reasons,
+        riskBlocked: risk.blocked,
+      };
     }
     return null;
   } catch {

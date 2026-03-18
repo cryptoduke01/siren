@@ -110,6 +110,10 @@ export function HomeInner() {
              price: d.priceUsd,
              volume24h: undefined,
              ctMentions: undefined,
+            riskScore: d.riskScore,
+            riskLabel: d.riskLabel,
+            riskReasons: d.riskReasons,
+            riskBlocked: d.riskBlocked,
            });
            setBuyPanelOpen(true);
          }
