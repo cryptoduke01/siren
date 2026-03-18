@@ -116,6 +116,7 @@ function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedTo
     const nameMatch = keywords.length ? matchTokenToKeywords(name, symbol, keywords) : true;
     const volumeWeight = vol24h ? Math.min(vol24h / 100_000, 1) * 0.5 : 0;
     const relevanceScore = (nameMatch ? 0.5 : 0) + volumeWeight;
+    const matchType: "name" | "volume" | "ct" = nameMatch ? "name" : "volume";
 
     return {
       mint,
@@ -125,7 +126,7 @@ function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedTo
       volume24h: vol24h ? Math.round(vol24h) : undefined,
       imageUrl,
       relevanceScore,
-      matchType: nameMatch ? "name" : "volume",
+      matchType,
       launchpad: getLaunchpadFromMint(mint),
       riskScore: risk.score,
       riskLabel: risk.label,
