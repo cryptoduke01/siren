@@ -759,7 +759,7 @@ export default function PortfolioPage() {
       }),
   ].filter((p) => p.valueUsd > 0);
 
-  const handlePnlSell = (position: (typeof pnlPositions)[0]) => {
+  const handlePnlSell = (position: PnlPosition) => {
     if (!position.mint) return;
     setSelectedToken(
       { mint: position.mint, name: position.title, symbol: position.ticker },
