@@ -23,7 +23,7 @@ export function WaitlistHeader() {
   return (
     <>
       <header
-        className="h-14 flex items-center justify-between px-4 flex-shrink-0"
+        className="sticky top-0 z-50 h-14 flex items-center justify-between px-4 flex-shrink-0"
         style={{
           background: "var(--bg-base)",
           borderBottom: "1px solid var(--border-subtle)",

@@ -8,6 +8,7 @@ import { IssueBadge } from "./IssueBadge";
 import { AlertChecker } from "./AlertChecker";
 import { RegisterSW } from "./RegisterSW";
 import { AccessGate } from "./AccessGate";
+import { Footer } from "./Footer";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AccessGate>
         {children}
       </AccessGate>
+      <Footer />
       <UnifiedBuyPanel />
       <ToastContainer />
       <OnboardingModal />

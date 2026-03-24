@@ -46,7 +46,7 @@ function TokenSignalSection({
       <div className="flex flex-wrap gap-2">
         {tier && (
           <span
-            className="inline-flex items-center px-2.5 py-1 rounded-md font-mono text-[11px]"
+            className="inline-flex items-center px-2.5 py-1 rounded-md font-body text-[11px]"
             style={{
               background: tier === "High" ? "color-mix(in srgb, var(--up) 14%, var(--bg-surface))" : "var(--bg-surface)",
               color: tier === "High" ? "var(--up)" : "var(--text-2)",
@@ -147,7 +147,7 @@ function CopyCAButton({ mint }: { mint: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="mt-2 flex items-center gap-2 text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors duration-100"
+      className="mt-2 flex items-center gap-2 text-xs font-body text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors duration-100"
     >
       {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-bags)]" /> : <Copy className="w-3.5 h-3.5" />}
       {copied ? "Copied!" : "Copy CA"}
@@ -380,7 +380,15 @@ export function UnifiedBuyPanel() {
       setResultModal({ type: "success", title: "Swap complete", message: isSell ? `Sold ${selectedToken.symbol}.` : `Swap successful.`, txSignature: sig });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
-      const friendly = msg.includes("0x1771") || msg.toLowerCase().includes("slippage") ? "Price moved. Try a smaller amount." : msg;
+      const lower = msg.toLowerCase();
+      let friendly = "Swap failed. Please try again.";
+      if (msg.includes("0x1771") || lower.includes("slippage")) {
+        friendly = "Price moved. Try a smaller amount.";
+      } else if (lower.includes("simulation failed") || lower.includes("custom program error")) {
+        friendly = "Transaction simulation failed. Try a smaller amount or higher slippage.";
+      } else if (lower.includes("insufficient")) {
+        friendly = "Insufficient balance for this trade.";
+      }
       setError(friendly);
       setResultModal({ type: "error", title: "Swap failed", message: friendly });
       addToast(friendly, "error");
@@ -434,7 +442,7 @@ export function UnifiedBuyPanel() {
                   <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction market</p>
                     <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-2">{selectedMarket.title}</p>
-                    <p className="font-mono text-[var(--accent-kalshi)] mt-2">{selectedMarket.probability.toFixed(0)}% YES</p>
+                    <p className="font-body text-[var(--accent-kalshi)] mt-2">{selectedMarket.probability.toFixed(0)}% YES</p>
                     <p className="text-[var(--text-secondary)] text-xs mt-2 mb-3">Market trading is on Kalshi. Use the link below to trade.</p>
                     <a
                       href={selectedMarket.kalshi_url || "https://kalshi.com"}
@@ -471,16 +479,11 @@ export function UnifiedBuyPanel() {
                       </button>
                     </div>
                     <p className="font-heading font-bold text-[var(--text-primary)]">${selectedToken.symbol}</p>
-                    <p className="font-mono text-[var(--accent-primary)] text-sm mt-1 tabular-nums">
+                    <p className="font-body text-[var(--accent-primary)] text-sm mt-1 tabular-nums">
                       {selectedToken.price != null ? `~$${selectedToken.price.toFixed(4)} USD` : "Price unavailable"}
                     </p>
-                    <p className="font-mono text-[var(--text-1)] mt-2 text-sm tabular-nums">
-                      Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} SOL
-                      {selectedToken.volume24h != null && solPriceUsd > 0 && (
-                        <span className="text-[var(--text-3)] ml-1">
-                          (≈${(selectedToken.volume24h * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
-                        </span>
-                      )}
+                    <p className="font-body text-[var(--text-1)] mt-2 text-sm tabular-nums">
+                      Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} USD
                     </p>
                     {riskScore > 0 && (
                       <div
@@ -519,7 +522,7 @@ export function UnifiedBuyPanel() {
                           key={bps}
                           type="button"
                           onClick={() => { hapticLight(); setSlippageBps(bps); }}
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${slippageBps === bps ? "bg-[var(--accent)] text-[var(--accent-text)]" : "bg-[var(--bg-surface)] text-[var(--text-2)] hover:text-[var(--text-1)]"}`}
+                          className={`text-[10px] font-body px-2 py-0.5 rounded transition-colors ${slippageBps === bps ? "bg-[var(--accent)] text-[var(--accent-text)]" : "bg-[var(--bg-surface)] text-[var(--text-2)] hover:text-[var(--text-1)]"}`}
                         >
                           {(bps / 100).toFixed(1)}%
                         </button>
@@ -536,7 +539,7 @@ export function UnifiedBuyPanel() {
                             placeholder="0.01"
                             value={solAmount}
                             onChange={(e) => setSolAmount(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                            className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
                             style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                           />
                         </div>
@@ -589,7 +592,7 @@ export function UnifiedBuyPanel() {
                             placeholder={tokenBalance > 0 ? tokenBalance.toLocaleString() : "0"}
                             value={sellAmount}
                             onChange={(e) => setSellAmount(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg font-mono text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                            className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
                             style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                           />
                         </div>
@@ -628,14 +631,14 @@ export function UnifiedBuyPanel() {
                     <div className="space-y-2 text-sm">
                       <p className="flex justify-between">
                         <span className="text-[var(--text-3)]">Price (est.)</span>
-                        <span className="font-mono text-[var(--accent-primary)] tabular-nums">
+                        <span className="font-body text-[var(--accent-primary)] tabular-nums">
                           {selectedToken.price != null ? `$${selectedToken.price.toFixed(6)}` : "—"}
                         </span>
                       </p>
                       <p className="flex justify-between">
                         <span className="text-[var(--text-3)]">24h volume</span>
-                        <span className="font-mono text-[var(--accent-bags)] tabular-nums">
-                          {selectedToken.volume24h != null ? `${selectedToken.volume24h.toLocaleString()} SOL` : "—"}
+                        <span className="font-body text-[var(--accent-bags)] tabular-nums">
+                          {selectedToken.volume24h != null ? `${selectedToken.volume24h.toLocaleString()} USD` : "—"}
                         </span>
                       </p>
                       <p className="flex justify-between">

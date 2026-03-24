@@ -106,10 +106,15 @@ async function fetchMarkets(): Promise<MarketWithVelocity[]> {
 }
 
 function TransactionHistoryList({ address }: { address: string }) {
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  useEffect(() => {
+    setPage(1);
+  }, [address]);
   const { data: txs = [], isLoading, isError } = useQuery({
     queryKey: ["transactions", address],
     queryFn: () =>
-      fetch(`${API_URL}/api/transactions?address=${encodeURIComponent(address)}&limit=15`, { credentials: "omit" })
+      fetch(`${API_URL}/api/transactions?address=${encodeURIComponent(address)}&limit=50`, { credentials: "omit" })
         .then((r) => r.json())
         .then((j) => (j.success && Array.isArray(j.data) ? j.data : [])),
     enabled: !!address && address.length >= 32,
@@ -140,9 +145,14 @@ function TransactionHistoryList({ address }: { address: string }) {
       </p>
     );
   }
+  const pageCount = Math.max(1, Math.ceil(txs.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageItems = txs.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
-    <ul className="space-y-2">
-      {txs.slice(0, 15).map((tx: { signature?: string; timestamp?: number; type?: string; description?: string; source?: string }) => {
+    <div className="space-y-3">
+      <ul className="space-y-2">
+      {pageItems.map((tx: { signature?: string; timestamp?: number; type?: string; description?: string; source?: string }) => {
         const sig = tx.signature ?? "";
         const ts = tx.timestamp ? new Date(tx.timestamp * 1000) : null;
         const type = tx.type ?? tx.source ?? "Transaction";
@@ -178,7 +188,31 @@ function TransactionHistoryList({ address }: { address: string }) {
           </li>
         );
       })}
-    </ul>
+      </ul>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={safePage === 1}
+          className="px-3 py-1.5 rounded-lg border text-[11px] font-body disabled:opacity-50"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+        >
+          Previous
+        </button>
+        <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+          Page {safePage} / {pageCount}
+        </p>
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+          disabled={safePage >= pageCount}
+          className="px-3 py-1.5 rounded-lg border text-[11px] font-body disabled:opacity-50"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+        >
+          Next
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -21,11 +21,6 @@ function fetchTrendingTokens(): Promise<SurfacedToken[]> {
 
 export default function TrendingPage() {
   const { setSelectedToken } = useSirenStore();
-  const { data: solPriceUsd = 0 } = useQuery({
-    queryKey: ["sol-price"],
-    queryFn: () => fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
-    staleTime: 60_000,
-  });
   const { data: tokens = [], isLoading, isError } = useQuery({
     queryKey: ["trending-tokens"],
     queryFn: fetchTrendingTokens,
@@ -104,21 +99,16 @@ export default function TrendingPage() {
                   <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
                     24h Vol
                   </span>
-                  <span className="font-mono text-xs tabular-nums">
+                  <span className="font-body text-xs tabular-nums">
                     <span style={{ color: "var(--text-1)" }}>{t.volume24h?.toLocaleString() ?? "-"}</span>
-                    <span style={{ color: "var(--text-3)" }}> SOL</span>
-                    {t.volume24h != null && solPriceUsd > 0 && (
-                      <span className="font-mono text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
-                        (≈${(t.volume24h * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
-                      </span>
-                    )}
+                    <span style={{ color: "var(--text-3)" }}> USD</span>
                   </span>
                 </div>
                 <div className="flex justify-between items-center mb-3">
                   <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
                     CT mentions
                   </span>
-                  <span className="font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                  <span className="font-body text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
                     {t.ctMentions ?? "-"}
                   </span>
                 </div>

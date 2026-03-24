@@ -4,29 +4,28 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Star, Briefcase } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 import { WaitlistHeader } from "./WaitlistHeader";
 import { usePrivy } from "@privy-io/react-auth";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 
 const NAV = [
   { href: "/", label: "Terminal" },
   { href: "/trending", label: "Trending" },
-  { href: "/watchlist", label: "Watchlist" },
-  { href: "/portfolio", label: "Portfolio" },
   { href: "/waitlist", label: "Waitlist" },
-  { href: "https://docs.onsiren.xyz", label: "Docs", external: true },
 ];
 
 export function TopBar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useThemeStore();
   const { authenticated } = usePrivy();
+  const { connected } = useSirenWallet();
   const [menuOpen, setMenuOpen] = useState(false);
-  const navItems = authenticated ? NAV.filter((item) => item.href !== "/waitlist") : NAV;
+  const navItems = authenticated || connected ? NAV.filter((item) => item.href !== "/waitlist") : NAV;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -44,7 +43,7 @@ export function TopBar() {
   return (
     <>
       <header
-        className="h-12 flex items-center justify-between px-3 md:px-4 flex-shrink-0"
+        className="sticky top-0 z-50 h-12 flex items-center justify-between px-3 md:px-4 flex-shrink-0"
         style={{
           background: "var(--bg-base)",
           borderBottom: "1px solid var(--border-subtle)",
@@ -64,7 +63,7 @@ export function TopBar() {
             const linkProps = {
               href,
               onClick: () => hapticLight(),
-              className: "font-body font-medium text-xs uppercase",
+              className: "font-body font-medium text-xs uppercase hover:text-[var(--text-1)] active:scale-95 transition-all",
               style: {
                 letterSpacing: "0.08em",
                 color: isActive ? "var(--accent)" : "var(--text-3)",
@@ -85,6 +84,24 @@ export function TopBar() {
         </nav>
         <div className="hidden md:flex items-center gap-2">
           <NavbarBalance />
+          <Link
+            href="/watchlist"
+            onClick={() => hapticLight()}
+            className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-all hover:bg-[var(--bg-hover)] active:scale-95"
+            style={{ color: pathname === "/watchlist" ? "var(--accent)" : "var(--text-2)" }}
+            aria-label="Watchlist"
+          >
+            <Star className="w-4 h-4" />
+          </Link>
+          <Link
+            href="/portfolio"
+            onClick={() => hapticLight()}
+            className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-all hover:bg-[var(--bg-hover)] active:scale-95"
+            style={{ color: pathname === "/portfolio" ? "var(--accent)" : "var(--text-2)" }}
+            aria-label="Portfolio"
+          >
+            <Briefcase className="w-4 h-4" />
+          </Link>
           <button
             type="button"
             onClick={() => { hapticLight(); toggleTheme(); }}
@@ -173,6 +190,22 @@ export function TopBar() {
                     </Link>
                   );
                 })}
+                <Link
+                  href="/watchlist"
+                  onClick={() => { hapticLight(); setMenuOpen(false); }}
+                  className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
+                  style={{ color: pathname === "/watchlist" ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
+                >
+                  Watchlist
+                </Link>
+                <Link
+                  href="/portfolio"
+                  onClick={() => { hapticLight(); setMenuOpen(false); }}
+                  className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
+                  style={{ color: pathname === "/portfolio" ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
+                >
+                  Portfolio
+                </Link>
                 <div className="flex items-center justify-between py-3 px-3 rounded-[8px] mt-2" style={{ background: "var(--bg-elevated)" }}>
                   <span className="font-body text-sm" style={{ color: "var(--text-2)" }}>Theme</span>
                   <button

@@ -69,16 +69,12 @@ export function TokenSurface() {
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
+  const [launchpadFilter, setLaunchpadFilter] = useState<"all" | "bags" | "pump" | "bonk" | "moonshot">("all");
 
   const searchQuery = searchInput.trim();
   const keywordsForApi = useMemo(() => (searchQuery ? [searchQuery] : selectedMarket?.keywords ?? []), [searchQuery, selectedMarket?.keywords]);
 
   const addToast = useToastStore((s) => s.addToast);
-  const { data: solPriceUsd = 0 } = useQuery({
-    queryKey: ["sol-price"],
-    queryFn: () => fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
-    staleTime: 60_000,
-  });
   const { data: tokens = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["tokens", selectedMarket?.ticker, keywordsForApi.join(",")],
     queryFn: () => fetchTokens(selectedMarket?.ticker, undefined, keywordsForApi.length ? keywordsForApi : undefined),
@@ -107,15 +103,16 @@ export function TokenSurface() {
   }, [publicKey]);
 
   const filteredTokens = useMemo(() => {
-    if (!searchQuery) return tokens;
+    const launchpadScoped = launchpadFilter === "all" ? tokens : tokens.filter((t) => t.launchpad === launchpadFilter);
+    if (!searchQuery) return launchpadScoped;
     const q = searchQuery.toLowerCase();
-    return tokens.filter(
+    return launchpadScoped.filter(
       (t) =>
         (t.name && t.name.toLowerCase().includes(q)) ||
         (t.symbol && t.symbol.toLowerCase().includes(q)) ||
         (t.mint && t.mint.toLowerCase().includes(q))
     );
-  }, [tokens, searchQuery]);
+  }, [tokens, searchQuery, launchpadFilter]);
   const riskyTokens = useMemo(() => filteredTokens.filter((t) => (t.riskScore ?? 0) >= 60), [filteredTokens]);
 
   const { setSelectedToken } = useSirenStore();
@@ -125,7 +122,66 @@ export function TokenSurface() {
       className="flex flex-col min-h-0 min-w-0 p-4 md:p-6 overflow-hidden"
       style={{ background: "var(--bg-void)" }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="mb-3">
+        <input
+          type="text"
+          placeholder="Search by name, symbol, or contract address"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="w-full font-body text-xs h-[36px] px-4 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
+          style={{
+            background: "var(--bg-surface)",
+            borderColor: "var(--border-subtle)",
+            color: "var(--text-1)",
+          }}
+        />
+        <p className="font-body font-normal text-[11px] mt-1.5" style={{ color: "var(--text-3)" }}>
+          DexScreener (Solana). Results appear as you type.
+        </p>
+      </div>
+      <div className="mb-3 rounded-[10px] border px-3 py-2 flex items-center justify-between gap-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hidden">
+          {[
+            { id: "all", label: "All", logoUrl: "", fallback: "A" },
+            { id: "bags", label: "Bags", logoUrl: "/brand/mark.svg", fallback: "B" },
+            { id: "pump", label: "Pump", logoUrl: "https://pump.fun/favicon.ico", fallback: "P" },
+            { id: "bonk", label: "Bonk", logoUrl: "https://bonkbot.io/favicon.ico", fallback: "B" },
+            { id: "moonshot", label: "Moonshot", logoUrl: "https://moonshot.money/favicon.ico", fallback: "M" },
+          ].map((item) => {
+            const isActive = launchpadFilter === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setLaunchpadFilter(item.id as "all" | "bags" | "pump" | "bonk" | "moonshot")}
+                className="h-7 px-2.5 rounded-full border text-[11px] font-body whitespace-nowrap inline-flex items-center gap-1.5"
+                style={{
+                  background: isActive ? "var(--bg-elevated)" : "transparent",
+                  color: isActive ? "var(--text-1)" : "var(--text-3)",
+                  borderColor: isActive ? "var(--border-active)" : "var(--border-subtle)",
+                }}
+              >
+                <span className="w-4 h-4 rounded-full border inline-flex items-center justify-center overflow-hidden" style={{ borderColor: isActive ? "var(--accent)" : "var(--border-subtle)", background: "var(--bg-base)" }}>
+                  {item.logoUrl ? (
+                    <img src={item.logoUrl} alt={item.label} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[9px]">{item.fallback}</span>
+                  )}
+                </span>
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          className="h-7 px-3 rounded-[7px] border text-[11px] font-body"
+          style={{ background: "var(--bg-elevated)", color: "var(--text-2)", borderColor: "var(--border-subtle)" }}
+        >
+          Token filters
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2
           className="font-heading font-semibold text-sm truncate max-w-[200px] md:max-w-none"
           style={{ color: "var(--text-2)" }}
@@ -178,44 +234,25 @@ export function TokenSurface() {
         </div>
       </div>
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
-      <p className="font-body font-normal text-[11px] mb-3" style={{ color: "var(--text-3)" }}>
+      <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
           ? "Tokens matched by keywords from the market title (DexScreener search). View on Kalshi to trade the market."
           : "New uprising tokens (DexScreener latest boosted)."}
       </p>
-      <div
-        className="rounded-[8px] border px-3 py-2 mb-4"
-        style={{
-          background: "color-mix(in srgb, var(--down) 8%, var(--bg-surface))",
-          borderColor: "color-mix(in srgb, var(--down) 26%, var(--border-subtle))",
-        }}
-      >
-        <p className="font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-          Risk trade analysed. Suspicious honeypot or fake tokens are filtered out automatically.
-        </p>
-        {riskyTokens.length > 0 && (
-          <p className="font-body text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
-            A few results still carry elevated risk flags, so double-check the token details before trading.
-          </p>
-        )}
-      </div>
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search by name, symbol, or contract address"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="w-full font-body text-xs h-[36px] px-4 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
+      {riskyTokens.length > 0 && (
+        <div
+          className="rounded-[8px] border px-3 py-2 mb-3"
           style={{
-            background: "var(--bg-surface)",
-            borderColor: "var(--border-subtle)",
-            color: "var(--text-1)",
+            background: "color-mix(in srgb, var(--down) 8%, var(--bg-surface))",
+            borderColor: "color-mix(in srgb, var(--down) 26%, var(--border-subtle))",
           }}
-        />
-        <p className="font-body font-normal text-[11px] mt-1.5" style={{ color: "var(--text-3)" }}>
-          DexScreener (Solana). Results appear as you type.
-        </p>
-      </div>
+        >
+          <p className="font-body text-[11px]" style={{ color: "var(--text-2)" }}>
+            Elevated risk found in some tokens. Trade carefully.
+          </p>
+        </div>
+      )}
+      <div className="mb-1" />
       {isError ? (
         <div
           className="rounded-[6px] border p-6 text-center flex flex-col items-center gap-3"
@@ -250,7 +287,7 @@ export function TokenSurface() {
                 initial={{ opacity: 0, transform: "translateY(6px)" }}
                 animate={{ opacity: 1, transform: "translateY(0)" }}
                 transition={{ duration: 0.18, delay: i * 0.05, ease: "easeOut" }}
-                className="rounded-[10px] p-3 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden"
+                className="rounded-[14px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden min-h-[152px]"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border-subtle)",
@@ -279,13 +316,15 @@ export function TokenSurface() {
               >
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                    {t.imageUrl && (
-                      <img
-                        src={t.imageUrl}
-                        alt=""
-                        className="w-6 h-6 rounded-full object-cover shrink-0"
-                      />
-                    )}
+                    <img
+                      src={t.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.symbol || t.name)}&background=0F172A&color=E2E8F0&size=64`}
+                      alt=""
+                      className="w-6 h-6 rounded-full object-cover shrink-0"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.symbol || t.name)}&background=0F172A&color=E2E8F0&size=64`;
+                      }}
+                    />
                     <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
                       ${t.symbol}
                     </p>
@@ -344,7 +383,7 @@ export function TokenSurface() {
                       <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
                         ~$
                       </span>
-                      <span className="font-mono text-[13px] tabular-nums" style={{ color: "var(--text-1)" }}>
+                      <span className="font-body text-[13px] tabular-nums" style={{ color: "var(--text-1)" }}>
                         {t.price.toFixed(4)}
                       </span>
                       <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -358,14 +397,9 @@ export function TokenSurface() {
                   <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
                     24h Vol
                   </span>
-                  <span className="font-mono text-xs tabular-nums">
+                  <span className="font-body text-xs tabular-nums">
                     <span style={{ color: "var(--text-1)" }}>{t.volume24h?.toLocaleString() ?? "—"}</span>
-                    <span style={{ color: "var(--text-3)" }}> SOL</span>
-                    {t.volume24h != null && solPriceUsd > 0 && (
-                      <span className="font-mono text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
-                        (≈${(t.volume24h * solPriceUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})
-                      </span>
-                    )}
+                    <span style={{ color: "var(--text-3)" }}> USD</span>
                   </span>
                 </div>
                 <button

@@ -4,13 +4,14 @@
  import { useSearchParams } from "next/navigation";
  import { MarketFeed } from "@/components/MarketFeed";
 import { TokenSurface } from "@/components/TokenSurface";
-import { ActivityFeed } from "@/components/ActivityFeed";
 import { MobileStickyMarket } from "@/components/MobileStickyMarket";
  import { MarketBottomSheet } from "@/components/MarketBottomSheet";
  import { TokensForMarketSheet } from "@/components/TokensForMarketSheet";
  import { useMarkets } from "@/hooks/useMarkets";
  import { useIsMobileLg } from "@/hooks/useIsMobile";
  import { useSirenStore } from "@/store/useSirenStore";
+ import { useSirenWallet } from "@/contexts/SirenWalletContext";
+ import { useRouter } from "next/navigation";
  import type { MarketWithVelocity } from "@siren/shared";
 
  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -33,11 +34,13 @@ import { MobileStickyMarket } from "@/components/MobileStickyMarket";
    return out;
  }
 
-const SIDEBAR_MIN = 220;
-const SIDEBAR_MAX = 440;
-const SIDEBAR_DEFAULT = 300;
+const SIDEBAR_MIN = 300;
+const SIDEBAR_MAX = 520;
+const SIDEBAR_DEFAULT = 360;
 
 export function HomeInner() {
+  const router = useRouter();
+  const { connected } = useSirenWallet();
   const searchParams = useSearchParams();
   const { data: markets = [], isLoading } = useMarkets();
   const { setSelectedMarket, setSelectedToken, setBuyPanelOpen } = useSirenStore();
@@ -48,6 +51,11 @@ export function HomeInner() {
   const isResizing = useRef(false);
   const appliedShareRef = useRef<{ market?: string; token?: string }>({});
   const isMobileLg = useIsMobileLg();
+
+  useEffect(() => {
+    // Ungated app, but require onboarding before terminal usage.
+    if (!connected) router.replace("/onboarding");
+  }, [connected, router]);
 
   const handleResize = useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;
@@ -143,11 +151,13 @@ export function HomeInner() {
     <div className="app-shell">
       <aside
         className="left-panel"
-        style={!isMobileLg ? { width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth } : undefined}
+        style={!isMobileLg ? { width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth, padding: 8 } : undefined}
       >
-        <MarketFeed
-          onAfterSelectMarket={isMobileLg ? () => setTokensSheetOpen(true) : undefined}
-        />
+        <div className="h-full rounded-[16px] border overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+          <MarketFeed
+            onAfterSelectMarket={isMobileLg ? () => setTokensSheetOpen(true) : undefined}
+          />
+        </div>
       </aside>
       {!isMobileLg && (
         <div
@@ -164,8 +174,9 @@ export function HomeInner() {
         <div className="lg:hidden">
           <MobileStickyMarket onOpenMarkets={() => setSheetOpen(true)} />
         </div>
-        <ActivityFeed />
-        <TokenSurface />
+        <div className="h-full rounded-[16px] border overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+          <TokenSurface />
+        </div>
        </main>
        <TokensForMarketSheet isOpen={tokensSheetOpen} onClose={() => setTokensSheetOpen(false)} />
        <MarketBottomSheet

@@ -64,7 +64,9 @@ export function PnlCard({
   const pnlPercent = selected?.pnlPercent ?? totalPnlPercent;
   const hasPnl = pnlUsd !== null && pnlUsd !== 0;
   const isPositive = pnlUsd != null && pnlUsd > 0;
-  const hasShareableContent = positions.length > 0;
+  const hasShareableContent = positions.some(
+    (p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null
+  );
 
   const handleExport = (asShare: boolean) => async () => {
     if (!cardRef.current || !hasShareableContent) return;

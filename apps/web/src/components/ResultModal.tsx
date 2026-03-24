@@ -25,7 +25,7 @@ export function ResultModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[340px] rounded-2xl border p-6 text-center shadow-xl"
+        className="w-full max-w-[380px] rounded-2xl border p-6 text-center shadow-xl max-h-[82vh] overflow-hidden"
         style={{
           background: "var(--bg-surface)",
           borderColor: "var(--border-default)",
@@ -37,9 +37,11 @@ export function ResultModal({
         <p className="font-heading font-semibold text-base mb-1.5" style={{ color: "var(--text-1)" }}>
           {title}
         </p>
-        <p className="font-body text-[13px] mb-5 leading-relaxed" style={{ color: "var(--text-2)" }}>
-          {message}
-        </p>
+        <div className="mb-5 max-h-[40vh] overflow-y-auto pr-1">
+          <p className="font-body text-[13px] leading-relaxed break-words whitespace-pre-wrap text-left" style={{ color: "var(--text-2)" }}>
+            {message}
+          </p>
+        </div>
         {txSignature && (
           <a
             href={`https://solscan.io/tx/${txSignature}`}

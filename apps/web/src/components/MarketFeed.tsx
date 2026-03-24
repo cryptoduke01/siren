@@ -6,13 +6,11 @@ import { useToastStore } from "@/store/useToastStore";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useMarkets } from "@/hooks/useMarkets";
 import { MarketDetailPanel } from "./MarketDetailPanel";
-import { MarketLeaderboard } from "./MarketLeaderboard";
-import { MiniSparkline } from "./MiniSparkline";
-import { RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
 
-const INITIAL_SHOWN = 12;
+const INITIAL_SHOWN = 16;
 const CATEGORIES = ["All", "Politics", "Crypto", "Sports", "Business", "Entertainment"];
 
 type SortMode = "default" | "volume" | "open_interest" | "ending_soon" | "hot";
@@ -32,10 +30,15 @@ function VelocityBadge({ v }: { v: number }) {
   const color = v > 0 ? "var(--up)" : "var(--down)";
   const arrow = v > 0 ? "▲" : "▼";
   return (
-    <span className="font-mono text-[11px] tabular-nums" style={{ color }}>
+    <span className="font-body text-[11px] tabular-nums" style={{ color }}>
       {arrow} {dir}{abs.toFixed(1)}%/hr
     </span>
   );
+}
+
+function marketAvatar(title: string): string {
+  const letter = (title?.trim()?.[0] || "M").toUpperCase();
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(letter)}&background=0b1220&color=e5e7eb&size=64`;
 }
 
 const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election", "world", "cup", "georgia", "purdue", "uae", "icc", "t20", "sol", "eth", "jpow", "pepe", "bonk"];
@@ -83,11 +86,14 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
   const filteredMarkets = useMemo(() => {
     if (!marketSearchQuery.trim()) return categoryFiltered;
     const q = marketSearchQuery.trim().toLowerCase();
+    const normalized = q.replace(/^https?:\/\//, "");
     return categoryFiltered.filter(
       (m) =>
         (m.title && m.title.toLowerCase().includes(q)) ||
         (m.ticker && m.ticker.toLowerCase().includes(q)) ||
-        (m.subtitle && m.subtitle.toLowerCase().includes(q))
+        (m.subtitle && m.subtitle.toLowerCase().includes(q)) ||
+        (m.event_ticker && m.event_ticker.toLowerCase().includes(q)) ||
+        (m.kalshi_url && (m.kalshi_url.toLowerCase().includes(q) || m.kalshi_url.toLowerCase().includes(normalized)))
     );
   }, [categoryFiltered, marketSearchQuery]);
 
@@ -121,13 +127,15 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         borderRight: "1px solid var(--border-subtle)",
       }}
     >
-      <div className="flex-shrink-0 px-4 pt-4 pb-2">
-        <h2
-          className="font-heading font-semibold text-[10px]"
-          style={{ letterSpacing: "0.15em", color: "var(--text-3)" }}
+      <div className="flex-shrink-0 px-4 pt-3 pb-2">
+        <button
+          type="button"
+          className="w-full h-8 rounded-[8px] border px-3 text-[11px] font-body flex items-center justify-between"
+          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
         >
-          MARKETS
-        </h2>
+          Market Filters
+          <ChevronDown className="w-3.5 h-3.5" />
+        </button>
       </div>
       <div className="flex-shrink-0 px-4 pb-2">
         <input
@@ -143,46 +151,20 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           }}
         />
       </div>
-      <div className="flex gap-2 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-2">
-        {CATEGORIES.map((cat) => (
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-2">
+        {["All", "Politics", "Crypto", "Sports"].map((cat) => (
           <button
             key={cat}
             type="button"
             onClick={() => { hapticLight(); setActiveCategory(cat); }}
-            className="font-body font-medium text-[11px] uppercase whitespace-nowrap rounded-[4px] px-2.5 py-1.5 transition-all duration-[120ms] ease"
+            className="font-body text-[10px] uppercase whitespace-nowrap rounded-[6px] px-2 py-1 border"
             style={{
               color: activeCategory === cat ? "var(--text-1)" : "var(--text-3)",
               background: activeCategory === cat ? "var(--bg-elevated)" : "transparent",
-              border: activeCategory === cat ? "1px solid var(--border-active)" : "1px solid transparent",
+              borderColor: activeCategory === cat ? "var(--border-active)" : "var(--border-subtle)",
             }}
           >
             {cat}
-          </button>
-        ))}
-      </div>
-      <div className="flex gap-2 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-3">
-        {[
-          { id: "default", label: "Top" },
-          { id: "volume", label: "High volume" },
-          { id: "open_interest", label: "High OI" },
-          { id: "ending_soon", label: "Ending soon" },
-          { id: "hot", label: "Moving fast" },
-        ].map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => {
-              hapticLight();
-              setSortMode(s.id as SortMode);
-            }}
-            className="font-body text-[11px] whitespace-nowrap rounded-[4px] px-2.5 py-1.5 transition-all duration-[120ms] ease border"
-            style={{
-              background: sortMode === (s.id as SortMode) ? "var(--bg-elevated)" : "transparent",
-              borderColor: sortMode === (s.id as SortMode) ? "var(--border-active)" : "var(--border-subtle)",
-              color: sortMode === (s.id as SortMode) ? "var(--text-1)" : "var(--text-3)",
-            }}
-          >
-            {s.label}
           </button>
         ))}
       </div>
@@ -231,7 +213,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.18, delay: Math.min(i * 0.03, 0.2), ease: "easeOut" }}
-                  className={`cursor-pointer rounded-[8px] p-3 mb-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative overflow-hidden ${isHot ? "pulse-hot" : ""}`}
+                  className={`cursor-pointer rounded-[14px] p-3 mb-2 transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative overflow-hidden ${isHot ? "pulse-hot" : ""}`}
                   style={{
                     background: isSelected ? "var(--bg-elevated)" : "var(--bg-surface)",
                     border: "1px solid var(--border-subtle)",
@@ -257,15 +239,18 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                     onAfterSelectMarket?.(m);
                   }}
                 >
-                  <p
-                    className="font-heading font-bold text-[13px] leading-tight line-clamp-1 mb-2"
-                    style={{ color: "var(--text-1)" }}
-                  >
-                    {m.title}
-                  </p>
+                  <div className="flex items-center gap-2 mb-2 min-w-0">
+                    <img src={marketAvatar(m.title)} alt="" className="w-6 h-6 rounded-md object-cover shrink-0" />
+                    <p
+                      className="font-heading font-bold text-[13px] leading-tight line-clamp-1 min-w-0"
+                      style={{ color: "var(--text-1)" }}
+                    >
+                      {m.title}
+                    </p>
+                  </div>
                   <div className="flex items-baseline justify-between gap-2 mb-1.5">
                     <span
-                      className="font-mono text-[20px] font-semibold tabular-nums"
+                      className="font-body text-[20px] font-semibold tabular-nums"
                       style={{ color: "var(--accent)" }}
                     >
                       {yesPct.toFixed(0)}%
@@ -313,7 +298,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                       className="font-body text-[10px] font-medium hover:underline"
                       style={{ color: "var(--accent)" }}
                     >
-                      View tokens →
+                      Matched tokens: {Math.max(1, extractKeywords(m.title).length)}
                     </button>
                   </div>
                 </motion.li>
@@ -332,7 +317,6 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           )}
         </ul>
       )}
-      <MarketLeaderboard />
       <MarketDetailPanel />
     </div>
   );

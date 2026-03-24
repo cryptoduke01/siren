@@ -91,7 +91,7 @@ function analyzeTokenRisk(params: {
   };
 }
 
-function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedToken[] {
+async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Promise<SurfacedToken[]> {
   const byMint = new Map<string, DexPair>();
   for (const p of pairs) {
     const mint = tokenMintFromPair(p);
@@ -101,17 +101,19 @@ function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedTo
     if (!existing || vol > existingVol) byMint.set(mint, p);
   }
 
-  return Array.from(byMint.entries()).map(([mint, p]) => {
+  const tokens = await Promise.all(Array.from(byMint.entries()).map(async ([mint, p]) => {
     const token = (p.baseToken.address === mint ? p.baseToken : p.quoteToken) as { address: string; symbol: string; name: string };
     const name = token.name || token.symbol || "Unknown";
     const symbol = token.symbol || "???";
     const priceUsd = p.priceUsd ? parseFloat(p.priceUsd) : undefined;
     const vol24h = p.volume?.h24;
-    const imageUrl = p.info?.imageUrl?.startsWith("http")
+    const dexImageUrl = p.info?.imageUrl?.startsWith("http")
       ? p.info.imageUrl
       : p.info?.imageUrl
         ? `https://cdn.dexscreener.com/cms/images/${p.info.imageUrl}?width=800&height=800&quality=90`
         : undefined;
+    const jup = !dexImageUrl ? await getJupiterTokenByMint(mint) : null;
+    const imageUrl = dexImageUrl ?? jup?.imageUrl;
     const risk = analyzeTokenRisk({ pair: p, mint, name, symbol, priceUsd, volume24h: vol24h, imageUrl });
     const nameMatch = keywords.length ? matchTokenToKeywords(name, symbol, keywords) : true;
     const volumeWeight = vol24h ? Math.min(vol24h / 100_000, 1) * 0.5 : 0;
@@ -133,7 +135,8 @@ function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): SurfacedTo
       riskReasons: risk.reasons,
       riskBlocked: risk.blocked,
     };
-  }).filter((t) => !t.riskBlocked);
+  }));
+  return tokens.filter((t) => !t.riskBlocked);
 }
 
 const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
@@ -206,7 +209,7 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
           }
         }
       }
-      const surfaced = pairsToSurfacedTokens(allPairs, []);
+      const surfaced = await pairsToSurfacedTokens(allPairs, []);
       if (surfaced.length > 0) {
         return surfaced
           .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
@@ -220,12 +223,9 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
   if (keywords.length > 0) {
     try {
       const searchTerms = keywords.slice(0, 5);
-      const keywordPairs: DexPair[] = [];
-      for (const term of searchTerms) {
-        const pairs = await searchPairs(term);
-        keywordPairs.push(...pairs);
-      }
-      const surfaced = pairsToSurfacedTokens(keywordPairs, keywords);
+      const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
+      const keywordPairs: DexPair[] = searchResults.flat();
+      const surfaced = await pairsToSurfacedTokens(keywordPairs, keywords);
       if (surfaced.length > 0) {
         return surfaced
           .sort((a, b) => b.relevanceScore - a.relevanceScore)
@@ -236,7 +236,7 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
     }
   }
 
-  const surfaced = pairsToSurfacedTokens(allPairs, keywords);
+  const surfaced = await pairsToSurfacedTokens(allPairs, keywords);
   return surfaced
     .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
     .slice(0, 24);

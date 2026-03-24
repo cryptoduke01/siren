@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { hapticLight } from "@/lib/haptics";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 
 export function Footer() {
+  const { connected } = useSirenWallet();
   return (
     <footer className="w-full border-t" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
       <div className="max-w-5xl mx-auto px-5 py-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
@@ -52,14 +54,16 @@ export function Footer() {
           >
             Privacy
           </Link>
-          <Link
-            href="/waitlist"
-            onClick={() => hapticLight()}
-            className="font-body text-xs underline"
-            style={{ color: "var(--text-2)" }}
-          >
-            Waitlist
-          </Link>
+          {!connected && (
+            <Link
+              href="/waitlist"
+              onClick={() => hapticLight()}
+              className="font-body text-xs underline"
+              style={{ color: "var(--text-2)" }}
+            >
+              Waitlist
+            </Link>
+          )}
         </div>
       </div>
     </footer>
