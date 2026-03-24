@@ -6,13 +6,15 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { WalletModal } from "./WalletModal";
 import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { hapticLight } from "@/lib/haptics";
-import { ChevronDown, Copy, LogOut } from "lucide-react";
+import { ChevronDown, Copy, LogOut, KeyRound, EyeOff } from "lucide-react";
 
 export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
-  const { connected, publicKey, disconnect } = useSirenWallet();
+  const { connected, publicKey, disconnect, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const [modalOpen, setModalOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [privateKey, setPrivateKey] = useState<string | null>(null);
+  const [pkError, setPkError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -53,6 +55,18 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
     setDropdownOpen(false);
   };
 
+  const handleExportPrivateKey = async () => {
+    hapticLight();
+    setDropdownOpen(false);
+    setPkError(null);
+    try {
+      const key = await exportPrivateKey();
+      setPrivateKey(key);
+    } catch (e) {
+      setPkError(e instanceof Error ? e.message : "Private key export is unavailable.");
+    }
+  };
+
   if (connected && publicKey) {
     return (
       <div className={`relative ${fullWidth ? "w-full" : ""}`} ref={dropdownRef}>
@@ -73,6 +87,11 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
             <button type="button" onClick={handleCopyAddress} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-1)" }}>
               <Copy className="w-3.5 h-3.5" /> Copy address
             </button>
+            {canExportPrivateKey && (
+              <button type="button" onClick={handleExportPrivateKey} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-1)" }}>
+                <KeyRound className="w-3.5 h-3.5" /> Export private key
+              </button>
+            )}
             <button type="button" onClick={handleDisconnect} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--down)" }}>
               <LogOut className="w-3.5 h-3.5" /> Log out
             </button>
@@ -100,6 +119,47 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
         Sign up
       </button>
       <WalletModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+      {(privateKey || pkError) && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }}>
+          <div className="w-full max-w-md rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+            <p className="font-heading font-semibold text-sm mb-2" style={{ color: "var(--text-1)" }}>
+              Private key export
+            </p>
+            {pkError ? (
+              <p className="font-body text-xs mb-3" style={{ color: "var(--down)" }}>{pkError}</p>
+            ) : (
+              <>
+                <p className="font-body text-xs mb-2" style={{ color: "var(--down)" }}>
+                  Keep this secret. Anyone with this key can control your wallet.
+                </p>
+                <textarea
+                  readOnly
+                  value={privateKey ?? ""}
+                  className="w-full h-24 rounded-lg border p-2 font-body text-xs"
+                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => { if (privateKey) navigator.clipboard.writeText(privateKey); }}
+                  className="mt-2 px-3 py-1.5 rounded-lg font-body text-xs"
+                  style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                >
+                  Copy private key
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => { setPrivateKey(null); setPkError(null); }}
+              className="mt-3 w-full py-2 rounded-lg font-body text-xs inline-flex items-center justify-center gap-1.5"
+              style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              Hide
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

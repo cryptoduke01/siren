@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { hapticLight } from "@/lib/haptics";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 
 const ONBOARDING_KEY = "siren-onboarding-seen";
 
@@ -30,16 +31,26 @@ export function OnboardingModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState(0);
   const pathname = usePathname();
+  const { connected, isReady } = useSirenWallet();
+  const [lastConnected, setLastConnected] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (pathname === "/waitlist" || pathname === "/access" || pathname === "/onboarding") return;
+    if (!isReady) return;
+    if (pathname !== "/") return;
+    if (!connected) return;
     const seen = localStorage.getItem(ONBOARDING_KEY);
-    if (!seen) {
+    const justConnected = connected && !lastConnected;
+    if (!seen && justConnected) {
       const t = setTimeout(() => setIsOpen(true), 800);
       return () => clearTimeout(t);
     }
-  }, [pathname]);
+    setLastConnected(connected);
+  }, [pathname, connected, isReady, lastConnected]);
+
+  useEffect(() => {
+    setLastConnected(connected);
+  }, [connected]);
 
   const handleClose = () => {
     hapticLight();

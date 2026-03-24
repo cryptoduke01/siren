@@ -17,6 +17,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const LAMPORTS_PER_SOL = 1e9;
 
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 const MOCK_CHART_DATA = [
   { t: "0h", v: 0.0003 },
   { t: "4h", v: 0.00035 },
@@ -278,7 +285,7 @@ export function UnifiedBuyPanel() {
       }
       const txB64 = data.transaction;
       if (!txB64) throw new Error("No transaction returned");
-      const txBuf = Buffer.from(txB64, "base64");
+      const txBuf = base64ToUint8Array(txB64);
       const tx = VersionedTransaction.deserialize(txBuf);
       const signed = await signTransaction(tx);
       const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });

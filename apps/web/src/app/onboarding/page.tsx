@@ -12,8 +12,8 @@ import {
   Zap,
   Shield,
   ArrowRight,
-  Sparkles,
   ChevronDown,
+  CheckCircle2,
 } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { hapticLight } from "@/lib/haptics";
@@ -166,16 +166,7 @@ export default function OnboardingPage() {
           transition={{ duration: 0.4 }}
           className="w-full max-w-2xl text-center mb-12"
         >
-          <div
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-6"
-            style={{
-              background: "var(--accent-dim)",
-              border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
-              boxShadow: "0 0 32px color-mix(in srgb, var(--accent) 12%, transparent)",
-            }}
-          >
-            <Sparkles className="w-8 h-8" style={{ color: "var(--accent)" }} />
-          </div>
+          <img src="/brand/logo.svg" alt="Siren" className="h-10 md:h-12 w-auto mx-auto mb-6" />
           <h1
             className="font-heading font-bold text-3xl md:text-4xl md:text-5xl mb-4 tracking-tight"
             style={{ color: "var(--text-1)", lineHeight: 1.15 }}
@@ -188,12 +179,12 @@ export default function OnboardingPage() {
           >
             Watch Kalshi prediction markets in real time. Surface Bags tokens tied to those events. Trade both from one terminal.
           </p>
-          <p
-            className="font-body text-sm"
-            style={{ color: "var(--text-3)" }}
-          >
-            Solana · DFlow · Jupiter · Bags
-          </p>
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+            <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+            <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+              Solana · DFlow · Jupiter · Bags
+            </p>
+          </div>
         </motion.section>
 
         {/* CTA */}
@@ -300,13 +291,27 @@ export default function OnboardingPage() {
           )}
         </motion.section>
 
-        {/* Docs link */}
+        {/* Details + docs */}
         <motion.section
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4, delay: 0.4 }}
-          className="mt-14 text-center"
+          className="mt-14 text-center max-w-3xl"
         >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 text-left">
+            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>Execution</p>
+              <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>Token swaps route through Jupiter with MEV-aware paths and explicit slippage controls.</p>
+            </div>
+            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>Market intelligence</p>
+              <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>Track Kalshi probabilities and velocity while seeing the token surface react in real time.</p>
+            </div>
+            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>Launch + portfolio</p>
+              <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>Launch through Bags and monitor balances, positions, and fee earnings from one account view.</p>
+            </div>
+          </div>
           <a
             href="https://docs.onsiren.xyz"
             target="_blank"

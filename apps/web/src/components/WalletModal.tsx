@@ -7,11 +7,6 @@ import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { hapticLight } from "@/lib/haptics";
 
-const PHANTOM_APP_STORE = "https://apps.apple.com/app/phantom-solana-wallet/id1598432977";
-const PHANTOM_PLAY_STORE = "https://play.google.com/store/apps/details?id=app.phantom";
-const SOLFLARE_APP_STORE = "https://apps.apple.com/app/solflare-wallet/id1580902717";
-const SOLFLARE_PLAY_STORE = "https://play.google.com/store/apps/details?id=com.solflare.mobile";
-
 interface WalletModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,8 +16,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
   const { select, connect, connecting, connected, wallets } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const isMobile = useIsMobile();
-  const [step, setStep] = useState<"list" | "mobile-install">("list");
-  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const getWalletByKey = (key: string) =>
     wallets.find((w: { adapter?: { name?: string } }) => w.adapter?.name?.toLowerCase().includes(key));
@@ -40,8 +34,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
 
   useEffect(() => {
     if (!isOpen) {
-      setStep("list");
-      setSelectedWalletId(null);
+      setErrorMessage(null);
     }
   }, [isOpen]);
 
@@ -50,46 +43,22 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
       if (!wallet) return;
       hapticLight();
       setWalletType(type);
-
-      if (type === "phantom" && isMobile) {
-        const isPhantom =
-          typeof window !== "undefined" &&
-          !!(
-            (window as unknown as { phantom?: { solana?: unknown } }).phantom?.solana ||
-            (window as unknown as { solana?: { isPhantom?: boolean } }).solana?.isPhantom
-          );
-        if (!isPhantom) {
-          setStep("mobile-install");
-          setSelectedWalletId("phantom");
-          return;
-        }
+      setErrorMessage(null);
+      try {
+        if (wallet.adapter.name) select(wallet.adapter.name);
+        await connect();
+        onClose();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Unable to connect wallet.";
+        setErrorMessage(
+          isMobile
+            ? "Could not connect in this browser. Open Siren from your wallet browser and try again."
+            : msg
+        );
       }
-
-      if (type === "solflare" && isMobile) {
-        const isSolflare =
-          typeof window !== "undefined" &&
-          !!(
-            (window as unknown as { solflare?: { isSolflare?: boolean } }).solflare?.isSolflare ||
-            (window as unknown as { solana?: { isSolflare?: boolean } }).solana?.isSolflare
-          );
-        if (!isSolflare) {
-          setStep("mobile-install");
-          setSelectedWalletId("solflare");
-          return;
-        }
-      }
-
-      if (wallet.adapter.name) select(wallet.adapter.name);
-      connect().catch(console.error);
-      onClose();
     },
     [select, connect, isMobile, setWalletType, onClose]
   );
-
-  const handleBack = () => {
-    setStep("list");
-    setSelectedWalletId(null);
-  };
 
   if (!isOpen) return null;
 
@@ -104,13 +73,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
       >
         <div className="w-full max-w-md flex flex-col sm:rounded-lg sm:border sm:mb-0 sm:max-h-[90vh] overflow-hidden" style={{ borderColor: "var(--border)", minHeight: isMobile ? "70vh" : "auto" }}>
           <div className="flex items-center justify-between p-4 border-b flex-shrink-0" style={{ borderColor: "var(--border)" }}>
-            {step !== "list" ? (
-              <button type="button" onClick={handleBack} className="text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors font-heading font-semibold text-sm">
-                Back
-              </button>
-            ) : (
-              <span />
-            )}
+            <span />
             <h2 className="font-heading font-bold text-[var(--text-primary)]">Connect wallet</h2>
             <button type="button" onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors p-1" aria-label="Close">
               Close
@@ -118,65 +81,35 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 scrollbar-hidden">
-            {step === "list" && (
-              <div className="space-y-2">
-                {sortedWallets.map((wallet) => {
-                  const name = wallet.adapter?.name ?? "Wallet";
-                  const key = name.toLowerCase();
-                  const isPhantom = key.includes("phantom");
-                  const isSolflare = key.includes("solflare");
-                  const desc =
-                    isPhantom || isSolflare
-                      ? isMobile
-                        ? "Tap to connect or get the app"
-                        : "Browser extension"
-                      : key.includes("torus")
-                        ? "Email or social login"
-                        : "Browser extension";
-                  return (
-                    <WalletCard
-                      key={name}
-                      name={name}
-                      description={desc}
-                      icon={(wallet as unknown as { adapter?: { icon?: string } })?.adapter?.icon}
-                      onClick={() =>
-                        handleConnect(
-                          wallet,
-                          (isPhantom ? "phantom" : isSolflare ? "solflare" : key.includes("torus") ? "torus" : key.includes("backpack") ? "backpack" : "coinbase")
-                        )
-                      }
-                      disabled={connecting}
-                    />
-                  );
-                })}
-              </div>
-            )}
-
-            {step === "mobile-install" && selectedWalletId === "phantom" && (
-              <div className="space-y-4">
-                <p className="text-[var(--text-secondary)] text-sm">Get Phantom to connect on mobile:</p>
-                <a href={PHANTOM_APP_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
-                  Download Phantom from App Store
-                </a>
-                <a href={PHANTOM_PLAY_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
-                  Download Phantom from Play Store
-                </a>
-                <p className="text-[var(--text-tertiary)] text-xs">After installing, return here and connect.</p>
-              </div>
-            )}
-
-            {step === "mobile-install" && selectedWalletId === "solflare" && (
-              <div className="space-y-4">
-                <p className="text-[var(--text-secondary)] text-sm">Get Solflare to connect on mobile:</p>
-                <a href={SOLFLARE_APP_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
-                  Download Solflare from App Store
-                </a>
-                <a href={SOLFLARE_PLAY_STORE} target="_blank" rel="noopener noreferrer" className="block w-full p-4 rounded-lg border text-center font-heading font-semibold transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", color: "var(--accent-primary)" }}>
-                  Download Solflare from Play Store
-                </a>
-                <p className="text-[var(--text-tertiary)] text-xs">After installing, return here and connect.</p>
-              </div>
-            )}
+            <div className="space-y-2">
+              {sortedWallets.map((wallet) => {
+                const name = wallet.adapter?.name ?? "Wallet";
+                const key = name.toLowerCase();
+                const isPhantom = key.includes("phantom");
+                const isSolflare = key.includes("solflare");
+                const desc = key.includes("torus") ? "Email or social login" : "Secure connect";
+                return (
+                  <WalletCard
+                    key={name}
+                    name={name}
+                    description={desc}
+                    icon={(wallet as unknown as { adapter?: { icon?: string } })?.adapter?.icon}
+                    onClick={() =>
+                      handleConnect(
+                        wallet,
+                        (isPhantom ? "phantom" : isSolflare ? "solflare" : key.includes("torus") ? "torus" : key.includes("backpack") ? "backpack" : "coinbase")
+                      )
+                    }
+                    disabled={connecting}
+                  />
+                );
+              })}
+              {errorMessage && (
+                <p className="font-body text-xs mt-3" style={{ color: "var(--down)" }}>
+                  {errorMessage}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </motion.div>

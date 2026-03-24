@@ -14,6 +14,9 @@ type SirenWalletState = {
   publicKey: PublicKey | null;
   signTransaction: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>;
   disconnect: () => void | Promise<void>;
+  isReady: boolean;
+  canExportPrivateKey: boolean;
+  exportPrivateKey: () => Promise<string>;
   connecting: boolean;
   wallet: unknown;
   wallets: WalletItem[];
@@ -55,9 +58,24 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
               if (isVersioned) {
                 return VersionedTransaction.deserialize(signedTransaction) as T;
               }
-              return Transaction.from(Buffer.from(signedTransaction)) as T;
+              return Transaction.from(new Uint8Array(signedTransaction)) as T;
             },
             disconnect: logout,
+            isReady: true,
+            canExportPrivateKey:
+              typeof (solanaWallet as unknown as { exportPrivateKey?: unknown; export?: unknown }).exportPrivateKey === "function" ||
+              typeof (solanaWallet as unknown as { exportPrivateKey?: unknown; export?: unknown }).export === "function",
+            exportPrivateKey: async () => {
+              const exportFn =
+                (solanaWallet as unknown as { exportPrivateKey?: () => Promise<unknown>; export?: () => Promise<unknown> }).exportPrivateKey ||
+                (solanaWallet as unknown as { exportPrivateKey?: () => Promise<unknown>; export?: () => Promise<unknown> }).export;
+              if (!exportFn) throw new Error("Private key export is not available for this wallet.");
+              const result = await exportFn.call(solanaWallet);
+              if (typeof result === "string") return result;
+              const key = (result as { privateKey?: string } | null | undefined)?.privateKey;
+              if (typeof key === "string" && key.length > 0) return key;
+              throw new Error("Private key export is not available for this wallet.");
+            },
             connecting: false,
             wallet: null,
             wallets: [],
@@ -82,5 +100,13 @@ export function useSirenWallet(): SirenWalletState {
     return privyState;
   }
 
-  return adapter as unknown as SirenWalletState;
+  const adapterState = adapter as unknown as SirenWalletState;
+  return {
+    ...adapterState,
+    isReady: true,
+    canExportPrivateKey: false,
+    exportPrivateKey: async () => {
+      throw new Error("Private key export is only available for supported embedded wallets.");
+    },
+  };
 }

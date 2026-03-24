@@ -40,7 +40,7 @@ const SIDEBAR_DEFAULT = 400;
 
 export function HomeInner() {
   const router = useRouter();
-  const { connected } = useSirenWallet();
+  const { connected, isReady } = useSirenWallet();
   const searchParams = useSearchParams();
   const { data: markets = [], isLoading } = useMarkets();
   const { setSelectedMarket, setSelectedToken, setBuyPanelOpen } = useSirenStore();
@@ -54,8 +54,8 @@ export function HomeInner() {
 
   useEffect(() => {
     // Ungated app, but require onboarding before terminal usage.
-    if (!connected) router.replace("/onboarding");
-  }, [connected, router]);
+    if (isReady && !connected) router.replace("/onboarding");
+  }, [connected, isReady, router]);
 
   const handleResize = useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;
@@ -146,6 +146,10 @@ export function HomeInner() {
        kalshi_url: m.kalshi_url,
      });
    };
+
+  if (!isReady || !connected) {
+    return null;
+  }
 
   return (
     <div className="app-shell">

@@ -10,7 +10,6 @@ import Link from "next/link";
 import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { ResultModal } from "@/components/ResultModal";
-import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
@@ -793,15 +792,6 @@ export default function PortfolioPage() {
       }),
   ].filter((p) => p.valueUsd > 0);
 
-  const handlePnlSell = (position: PnlPosition) => {
-    if (!position.mint) return;
-    setSelectedToken(
-      { mint: position.mint, name: position.title, symbol: position.ticker },
-      { openForSell: true }
-    );
-    setBuyPanelOpen(true, "token");
-  };
-
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
@@ -1023,16 +1013,6 @@ export default function PortfolioPage() {
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0">
-            <div className="min-w-0 w-full flex justify-center md:justify-start">
-            <PnlCard
-              totalPnlUsd={null}
-              totalPnlPercent={null}
-              positions={pnlPositions}
-              walletAddress={publicKey?.toBase58()}
-              isLoading={tokensLoading}
-              onSell={handlePnlSell}
-            />
-            </div>
             <div
               className="rounded-2xl border overflow-hidden"
               style={{

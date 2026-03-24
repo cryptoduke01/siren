@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Star, Briefcase } from "lucide-react";
+import { Menu, X, Star, Wallet } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
@@ -94,7 +94,7 @@ export function TopBar() {
             style={{ color: pathname === "/portfolio" ? "var(--accent)" : "var(--text-2)" }}
             aria-label="Portfolio"
           >
-            <Briefcase className="w-4 h-4" />
+            <Wallet className="w-4 h-4" />
           </Link>
           <button
             type="button"
