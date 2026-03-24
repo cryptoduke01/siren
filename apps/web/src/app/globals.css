@@ -189,9 +189,9 @@ body {
 .app-shell .left-panel {
   grid-column: 1;
   grid-row: 1;
-  width: 300px;
-  min-width: 220px;
-  max-width: 440px;
+  width: 360px;
+  min-width: 280px;
+  max-width: 560px;
   overflow-y: auto;
   overflow-x: hidden;
 }

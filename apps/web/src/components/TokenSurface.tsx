@@ -11,7 +11,6 @@ import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
 import { StarButton } from "./StarButton";
 import { TokenAlertButton } from "./AlertButton";
 import { MarketAlertButton } from "./AlertButton";
-import { MiniSparkline } from "./MiniSparkline";
 import { LaunchpadBadge } from "./LaunchpadBadge";
 import { hapticLight } from "@/lib/haptics";
 import type { SurfacedToken } from "@siren/shared";
@@ -119,7 +118,7 @@ export function TokenSurface() {
 
   return (
     <div
-      className="flex flex-col min-h-0 min-w-0 p-4 md:p-6 overflow-hidden"
+      className="flex flex-col h-full min-h-0 min-w-0 p-4 md:p-6 overflow-y-auto overflow-x-hidden"
       style={{ background: "var(--bg-void)" }}
     >
       <div className="mb-3">
@@ -287,7 +286,7 @@ export function TokenSurface() {
                 initial={{ opacity: 0, transform: "translateY(6px)" }}
                 animate={{ opacity: 1, transform: "translateY(0)" }}
                 transition={{ duration: 0.18, delay: i * 0.05, ease: "easeOut" }}
-                className="rounded-[14px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden min-h-[152px]"
+                className="rounded-[14px] p-2.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border-subtle)",
@@ -314,120 +313,77 @@ export function TokenSurface() {
                   });
                 }}
               >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-[56px] h-[56px] rounded-[10px] border shrink-0 overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
                     <img
                       src={t.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.symbol || t.name)}&background=0F172A&color=E2E8F0&size=64`}
                       alt=""
-                      className="w-6 h-6 rounded-full object-cover shrink-0"
+                      className="w-full h-full object-cover"
                       onError={(e) => {
                         const target = e.currentTarget;
                         target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.symbol || t.name)}&background=0F172A&color=E2E8F0&size=64`;
                       }}
                     />
-                    <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
-                      ${t.symbol}
-                    </p>
-                    <LaunchpadBadge launchpad={t.launchpad} />
-                    {(t.riskScore ?? 0) >= 60 && (
-                      <span
-                        className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-[9px] uppercase tracking-wide"
-                        style={{
-                          background: "color-mix(in srgb, var(--down) 14%, var(--bg-elevated))",
-                          color: "var(--down)",
-                          border: "1px solid color-mix(in srgb, var(--down) 24%, var(--border-subtle))",
-                        }}
-                      >
-                        Risk trade analysed
-                      </span>
-                    )}
                   </div>
-                  <div className="flex items-center gap-0">
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>
+                        ${t.symbol}
+                      </p>
+                      <LaunchpadBadge launchpad={t.launchpad} />
+                      {isUserLaunch && (
+                        <span className="font-body text-[10px]" style={{ color: "var(--bags)" }}>
+                          Yours
+                        </span>
+                      )}
+                    </div>
+                    <p className="font-body text-[11px] truncate mt-0.5" style={{ color: "var(--text-2)" }}>
+                      {t.name}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="font-body text-[11px] tabular-nums" style={{ color: "var(--text-1)" }}>
+                        ${t.price != null ? t.price.toFixed(4) : "—"}
+                      </span>
+                      <span className="font-body text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                        Vol ${t.volume24h?.toLocaleString() ?? "—"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <TokenAlertButton mint={t.mint} symbol={t.symbol} price={t.price} />
                     <StarButton type="token" id={t.mint} />
                     <CopyCAButton mint={t.mint} />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        hapticLight();
+                        setSelectedToken({
+                          mint: t.mint,
+                          name: t.name,
+                          symbol: t.symbol,
+                          price: t.price,
+                          volume24h: t.volume24h,
+                          riskScore: t.riskScore,
+                          riskLabel: t.riskLabel,
+                          riskReasons: t.riskReasons,
+                          riskBlocked: t.riskBlocked,
+                        });
+                        setBuyPanelOpen(true, "token");
+                      }}
+                      className="h-9 px-4 rounded-[9px] font-heading font-semibold text-[11px] uppercase transition-all duration-[80ms] ease hover:brightness-[1.08] shrink-0"
+                      style={{
+                        background: "transparent",
+                        color: "var(--text-1)",
+                        border: "1px solid var(--border-default)",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      Buy
+                    </button>
                   </div>
                 </div>
-                <p
-                  className="font-body font-normal text-[11px] truncate mb-2"
-                  style={{ color: "var(--text-2)" }}
-                >
-                  {t.name}
-                </p>
-                {isUserLaunch && (
-                  <p className="font-body text-[10px] mb-1" style={{ color: "var(--bags)" }}>
-                    Launched on Bags (you)
-                  </p>
-                )}
-                {(t.riskScore ?? 0) >= 60 && (
-                  <p className="font-body text-[10px] mb-2" style={{ color: "var(--down)" }}>
-                    {t.riskReasons?.[0] ?? "Risk trade analysed before display."}
-                  </p>
-                )}
-                {selectedMarket && (
-                  <span
-                    className="inline-flex items-center px-2 py-0.5 rounded-md font-body text-[10px] mb-2"
-                    style={{
-                      background: "color-mix(in srgb, var(--up) 14%, var(--bg-surface))",
-                      color: "var(--up)",
-                      border: "1px solid color-mix(in srgb, var(--up) 28%, transparent)",
-                    }}
-                    title={selectedMarket.title}
-                  >
-                    {selectedMarket.title.slice(0, 24)}{selectedMarket.title.length > 24 ? "…" : ""}
-                  </span>
-                )}
-                {t.price != null && (
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-baseline gap-1">
-                      <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                        ~$
-                      </span>
-                      <span className="font-body text-[13px] tabular-nums" style={{ color: "var(--text-1)" }}>
-                        {t.price.toFixed(4)}
-                      </span>
-                      <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                        USD
-                      </span>
-                    </div>
-                    <MiniSparkline data={[t.price * 0.92, t.price * 0.96, t.price * 0.98, t.price, t.price]} width={48} height={18} />
-                  </div>
-                )}
-                <div className="flex justify-between items-center mb-1">
-                  <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
-                    24h Vol
-                  </span>
-                  <span className="font-body text-xs tabular-nums">
-                    <span style={{ color: "var(--text-1)" }}>{t.volume24h?.toLocaleString() ?? "—"}</span>
-                    <span style={{ color: "var(--text-3)" }}> USD</span>
-                  </span>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    hapticLight();
-                    setSelectedToken({
-                      mint: t.mint,
-                      name: t.name,
-                      symbol: t.symbol,
-                      price: t.price,
-                      volume24h: t.volume24h,
-                      riskScore: t.riskScore,
-                      riskLabel: t.riskLabel,
-                      riskReasons: t.riskReasons,
-                      riskBlocked: t.riskBlocked,
-                    });
-                    setBuyPanelOpen(true, "token");
-                  }}
-                  className="w-full h-8 rounded-[7px] font-heading font-bold text-xs uppercase transition-all duration-[80ms] ease hover:brightness-[1.08]"
-                  style={{
-                    background: "var(--bags)",
-                    color: "var(--accent-text)",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  Buy
-                </button>
               </motion.div>
             );
           })}

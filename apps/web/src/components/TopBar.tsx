@@ -58,8 +58,8 @@ export function TopBar() {
           />
         </Link>
         <nav className="hidden md:flex items-center gap-6">
-          {navItems.map(({ href, label, external }) => {
-            const isActive = !external && (pathname === href || (href === "/" && pathname === "/"));
+          {navItems.map(({ href, label }) => {
+            const isActive = pathname === href || (href === "/" && pathname === "/");
             const linkProps = {
               href,
               onClick: () => hapticLight(),
@@ -73,13 +73,7 @@ export function TopBar() {
                 transition: "color 120ms ease, border-color 120ms ease",
               } as React.CSSProperties,
             };
-            return external ? (
-              <a key={href} {...linkProps} target="_blank" rel="noopener noreferrer">
-                {label}
-              </a>
-            ) : (
-              <Link key={href} {...linkProps}>{label}</Link>
-            );
+            return <Link key={href} {...linkProps}>{label}</Link>;
           })}
         </nav>
         <div className="hidden md:flex items-center gap-2">
@@ -162,23 +156,11 @@ export function TopBar() {
                 </button>
               </div>
               <nav className="flex-1 p-4 flex flex-col gap-1 overflow-y-auto">
-                {navItems.map(({ href, label, external }) => {
-                  const isActive = !external && (pathname === href || (href === "/" && pathname === "/"));
+                {navItems.map(({ href, label }) => {
+                  const isActive = pathname === href || (href === "/" && pathname === "/");
                   const className = "font-body font-medium text-sm py-3 px-3 rounded-[8px]";
                   const style = { color: isActive ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" };
-                  return external ? (
-                    <a
-                      key={href}
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => { hapticLight(); setMenuOpen(false); }}
-                      className={className}
-                      style={style}
-                    >
-                      {label}
-                    </a>
-                  ) : (
+                  return (
                     <Link
                       key={href}
                       href={href}

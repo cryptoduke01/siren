@@ -34,9 +34,9 @@ import { MobileStickyMarket } from "@/components/MobileStickyMarket";
    return out;
  }
 
-const SIDEBAR_MIN = 300;
-const SIDEBAR_MAX = 520;
-const SIDEBAR_DEFAULT = 360;
+const SIDEBAR_MIN = 340;
+const SIDEBAR_MAX = 620;
+const SIDEBAR_DEFAULT = 400;
 
 export function HomeInner() {
   const router = useRouter();
@@ -174,7 +174,7 @@ export function HomeInner() {
         <div className="lg:hidden">
           <MobileStickyMarket onOpenMarkets={() => setSheetOpen(true)} />
         </div>
-        <div className="h-full rounded-[16px] border overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+        <div className="h-full rounded-[16px] border overflow-y-auto overflow-x-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
           <TokenSurface />
         </div>
        </main>
