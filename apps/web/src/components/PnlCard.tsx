@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { toPng } from "html-to-image";
-import { ArrowUpRight, Share2, Download, ChevronLeft, ChevronRight, LogOut } from "lucide-react";
+import { ArrowUpRight, Share2, Download, ChevronLeft, ChevronRight, LogOut, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { hapticLight } from "@/lib/haptics";
 
@@ -24,8 +24,40 @@ interface PnlCardProps {
   positions: PnlPosition[];
   walletAddress?: string | null;
   isLoading?: boolean;
+  /** Random sample data mode — enables export for testing without real positions. */
+  demoMode?: boolean;
   /** Called when user clicks sell for a position. Opens buy panel in sell mode. */
   onSell?: (position: PnlPosition) => void;
+}
+
+/** Sample positions for testing the card / download without real holdings (no mint → no Sell). */
+export function createMockPnlPositions(): PnlPosition[] {
+  const between = (min: number, max: number) => min + Math.random() * (max - min);
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  const mk = (ticker: string, title: string, pred: boolean) => {
+    const valueUsd = round2(between(400, 9800));
+    const pnlUsd = round2(between(-valueUsd * 0.35, valueUsd * 0.55));
+    const cost = Math.max(valueUsd - pnlUsd, 1);
+    const pnlPercent = round2((pnlUsd / cost) * 100);
+    const row: PnlPosition = {
+      ticker,
+      title,
+      valueUsd,
+      pnlUsd,
+      pnlPercent,
+    };
+    if (pred) {
+      row.side = Math.random() > 0.5 ? "yes" : "no";
+      row.kalshiMarket = `Kalshi: ${ticker}`;
+    }
+    return row;
+  };
+
+  return [
+    mk("KXRTCMAR-25", "Will the Fed cut rates in March?", true),
+    mk("SOL", "Solana", false),
+  ];
 }
 
 export function formatPnl(value: number | null): string {
@@ -45,16 +77,27 @@ function truncateAddress(addr: string, len = 6): string {
   return `${addr.slice(0, len)}…${addr.slice(-len)}`;
 }
 
+function maskPnl(): string {
+  return "••••••";
+}
+
+function maskPercent(): string {
+  return "••••";
+}
+
 export function PnlCard({
   totalPnlUsd,
   totalPnlPercent,
   positions,
   walletAddress,
   isLoading,
+  demoMode,
   onSell,
 }: PnlCardProps) {
   const [exporting, setExporting] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [privacy, setPrivacy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const displayPositions = positions;
@@ -64,22 +107,42 @@ export function PnlCard({
   const pnlPercent = selected?.pnlPercent ?? totalPnlPercent;
   const hasPnl = pnlUsd !== null && pnlUsd !== 0;
   const isPositive = pnlUsd != null && pnlUsd > 0;
-  const hasShareableContent = positions.some(
-    (p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null
-  );
+  const isLoss = pnlUsd != null && pnlUsd < 0;
+  const hasShareableContent =
+    demoMode ||
+    positions.some((p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null);
+
+  const accent = isLoss ? "var(--down)" : "var(--up)";
+  const glowRgb = isLoss ? "255, 69, 96" : "0, 255, 133";
+
+  const tokenLabel = selected?.title ?? "—";
+  const signalLine =
+    selected == null
+      ? ""
+      : selected.side != null
+        ? `${selected.side === "yes" ? "YES" : "NO"} · ${selected.kalshiMarket ?? `Kalshi · ${selected.ticker}`}`
+        : `${selected.ticker} · spot`;
 
   const handleExport = (asShare: boolean) => async () => {
-    if (!cardRef.current || !hasShareableContent) return;
+    setExportError(null);
+    if (!hasShareableContent) {
+      setExportError("Nothing to export yet — trade or hold a position first.");
+      return;
+    }
+    if (!cardRef.current) {
+      setExportError("Card is not ready. Refresh and try again.");
+      return;
+    }
     hapticLight();
     setExporting(true);
     try {
       await document.fonts.ready;
-      // Ensure images/fonts are painted before exporting.
-      await new Promise((r) => setTimeout(r, 50));
-      const dataUrl = await toPng(cardRef.current, {
+      await new Promise((r) => setTimeout(r, 120));
+      const node = cardRef.current;
+      const dataUrl = await toPng(node, {
         pixelRatio: 2,
         cacheBust: true,
-        backgroundColor: "#0F0F18",
+        backgroundColor: "#000000",
         skipFonts: false,
       });
       const blob = await fetch(dataUrl).then((r) => r.blob());
@@ -94,87 +157,171 @@ export function PnlCard({
         const a = document.createElement("a");
         a.href = dataUrl;
         a.download = `siren-pnl-${Date.now()}.png`;
+        a.rel = "noopener";
+        document.body.appendChild(a);
         a.click();
+        a.remove();
       }
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
       console.warn("Export failed", e);
+      setExportError(
+        msg.includes("taint") || msg.includes("security")
+          ? "Export blocked by the browser (image security). Try again or use Chrome."
+          : "Could not save the image. Try again, or use Download in Chrome."
+      );
     } finally {
       setExporting(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div
+        className="w-full max-w-[360px] aspect-square rounded-2xl animate-pulse"
+        style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <div
-        ref={hasShareableContent ? cardRef : undefined}
-        className="w-full min-w-0 max-w-[380px] rounded-lg overflow-visible relative font-body"
-        style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
-          boxShadow: "0 1px 0 0 rgba(0,255,133,0.06)",
-        }}
-      >
-        {/* Top: P&L SUMMARY + wallet */}
-        <div className="px-4 pt-4 pb-2">
-          <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--kalshi)" }}>
-            P&L Summary
-          </span>
-          {walletAddress && (
-            <span className="font-mono text-[10px] ml-2" style={{ color: "var(--text-3)" }}>
-              {truncateAddress(walletAddress)}
-            </span>
-          )}
-        </div>
-
-        {/* Main PnL + mascot (right beside it, no background) */}
-        <div className="px-4 pb-2 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <img
-              src={hasPnl && isPositive ? "/brand/profit-mascot.png" : "/brand/loss-mascot.png"}
-              alt="Remi"
-              className="pnl-mascot w-10 h-10 shrink-0"
-              style={{ objectFit: "contain" }}
-            />
-            <span
-              className="font-mono text-2xl font-bold tabular-nums"
-              style={{
-                color: hasPnl ? (isPositive ? "var(--up)" : "var(--down)") : "var(--text-3)",
+      {demoMode && (
+        <p className="max-w-[360px] font-body text-xs leading-snug" style={{ color: "var(--text-3)" }}>
+          Preview: random sample numbers — not your real portfolio. Turn off demo to use live data.
+        </p>
+      )}
+      <div className="w-full min-w-0 max-w-[360px]">
+        <div className="relative">
+          {/* Privacy control sits outside export ref so it is not baked into PNG */}
+          {hasShareableContent && (
+            <button
+              type="button"
+              onClick={() => {
+                hapticLight();
+                setPrivacy((p) => !p);
               }}
+              className="absolute right-3 top-3 z-20 rounded-lg p-2 transition-colors hover:bg-white/5"
+              style={{ color: "var(--text-3)" }}
+              title={privacy ? "Show amounts" : "Hide amounts"}
+              aria-pressed={privacy}
             >
-              {formatPnl(pnlUsd)}
-            </span>
-            {pnlPercent != null && (
-              <span
-                className="font-mono text-sm tabular-nums"
-                style={{
-                  color: hasPnl ? (isPositive ? "var(--up)" : "var(--down)") : "var(--text-3)",
-                }}
+              {privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          )}
+
+          {/* Shareable square card (design: dynamic HTML; designer SVGs in /brand/pnl/*.svg) */}
+          <div
+            ref={cardRef}
+            className="relative w-full aspect-square overflow-hidden rounded-2xl border font-body"
+            style={{
+              borderColor: "color-mix(in srgb, var(--border-subtle) 80%, transparent)",
+              boxShadow: `0 0 0 1px rgba(${glowRgb}, 0.12), 0 24px 48px -16px rgba(0,0,0,0.5)`,
+            }}
+          >
+          <div className="absolute inset-0 z-0 bg-black" aria-hidden />
+
+          {/* Neutral grain only — full Figma SVGs use green→magenta gradients that screen-blend into purple bands over text */}
+          <div
+            className="pointer-events-none absolute inset-0 z-0 opacity-[0.07]"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E")`,
+              mixBlendMode: "overlay",
+            }}
+            aria-hidden
+          />
+
+          {/* Ambient glow (matches designer SVG: #00FF85 / loss red) */}
+          <div
+            className="absolute -bottom-[20%] left-1/2 h-[55%] w-[130%] -translate-x-1/2 rounded-[100%] opacity-35 blur-[72px]"
+            style={{ background: `radial-gradient(ellipse at center, rgba(${glowRgb}, 0.55) 0%, transparent 68%)` }}
+            aria-hidden
+          />
+          <div
+            className="absolute inset-0 opacity-[0.035]"
+            style={{
+              background: `radial-gradient(800px 400px at 80% 20%, rgba(${glowRgb}, 1) 0%, transparent 55%)`,
+            }}
+            aria-hidden
+          />
+
+          {/* Mascot — PNGs keyed to profit/loss; blend on dark bg */}
+          <img
+            src={isLoss ? "/brand/loss-mascot.png" : "/brand/profit-mascot.png"}
+            alt=""
+            className="pnl-mascot pointer-events-none absolute bottom-2 right-2 z-[1] h-[38%] max-h-[200px] w-auto object-contain select-none"
+            style={{ objectFit: "contain" }}
+          />
+
+          <div className="relative z-[2] flex h-full flex-col p-5 pr-14 md:p-6 md:pr-16">
+            <div className="min-w-0">
+              <p className="font-heading text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: accent }}>
+                P&amp;L snapshot
+              </p>
+              {walletAddress && (
+                <p className="mt-1 font-mono text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                  {privacy ? "••••••••••••" : truncateAddress(walletAddress)}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-6 min-w-0 flex-1">
+              <p
+                className="font-heading text-[clamp(1.75rem,7vw,2.75rem)] font-bold leading-tight tabular-nums tracking-tight"
+                style={{ color: hasPnl ? accent : "var(--text-3)" }}
               >
-                {formatPercent(pnlPercent)}
+                {privacy ? maskPnl() : formatPnl(pnlUsd)}
+              </p>
+              {(pnlPercent != null || privacy) && (
+                <p
+                  className="font-mono text-xl font-semibold tabular-nums md:text-2xl"
+                  style={{ color: hasPnl ? accent : "var(--text-3)" }}
+                >
+                  {privacy ? maskPercent() : formatPercent(pnlPercent)}
+                </p>
+              )}
+              <p
+                className="mt-4 line-clamp-2 font-heading text-base font-semibold leading-snug md:text-lg"
+                style={{ color: "var(--text-1)" }}
+              >
+                {privacy ? "••••••••••" : tokenLabel}
+              </p>
+              {signalLine && (
+                <p className="mt-1 line-clamp-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  {privacy ? "•• • •••••• ••••" : signalLine}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+              <img src="/brand/mark.svg" alt="Siren" className="h-6 w-auto opacity-95 md:h-7" />
+              <span className="font-mono text-xs font-medium md:text-sm" style={{ color: accent }}>
+                onsiren.xyz
               </span>
-            )}
+            </div>
+          </div>
           </div>
         </div>
 
-        {/* Token from Kalshi market */}
-        {selected && (
-          <div className="px-4 pb-3">
+        {/* Controls: not part of PNG export */}
+        {selected && displayPositions.length > 0 && (
+          <div className="mt-3 space-y-3">
             {displayPositions.length > 1 && (
-              <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center justify-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     hapticLight();
                     setSelectedIndex((i) => (i - 1 + displayPositions.length) % displayPositions.length);
                   }}
-                  className="p-1 rounded"
+                  className="rounded-lg p-1.5"
                   style={{ color: "var(--text-3)" }}
                   aria-label="Previous position"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="font-mono text-[10px]" style={{ color: "var(--text-3)" }}>
+                <span className="font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
                   {selectedIndex + 1} / {displayPositions.length}
                 </span>
                 <button
@@ -183,23 +330,15 @@ export function PnlCard({
                     hapticLight();
                     setSelectedIndex((i) => (i + 1) % displayPositions.length);
                   }}
-                  className="p-1 rounded"
+                  className="rounded-lg p-1.5"
                   style={{ color: "var(--text-3)" }}
                   aria-label="Next position"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             )}
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{selected.title}</p>
-                {selected.kalshiMarket && (
-                  <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>
-                    {selected.kalshiMarket}
-                  </p>
-                )}
-              </div>
+            <div className="flex justify-end">
               {onSell && selected.mint && (
                 <button
                   type="button"
@@ -207,14 +346,14 @@ export function PnlCard({
                     hapticLight();
                     onSell(selected);
                   }}
-                  className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-body text-[11px] font-medium transition-colors hover:opacity-90"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-body text-[11px] font-medium transition-colors hover:opacity-90"
                   style={{
                     background: "color-mix(in srgb, var(--down) 16%, var(--bg-surface))",
                     color: "var(--down)",
                     border: "1px solid color-mix(in srgb, var(--down) 28%, transparent)",
                   }}
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <LogOut className="h-3.5 w-3.5" />
                   Sell
                 </button>
               )}
@@ -222,54 +361,53 @@ export function PnlCard({
           </div>
         )}
 
-        {/* Download + Share + Logo + URL */}
         <div
-          className="px-4 py-3 flex flex-col gap-3"
-          style={{ background: "var(--bg-base)", borderTop: "1px solid var(--border-subtle)" }}
+          className="mt-4 flex flex-col gap-3 rounded-xl border p-4"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
         >
+          {exportError && (
+            <p className="font-body text-xs leading-snug" style={{ color: "var(--down)" }}>
+              {exportError}
+            </p>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleExport(false)}
-              disabled={exporting}
-              className="flex-1 py-2.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-wide flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={exporting || !hasShareableContent}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 font-heading text-sm font-semibold uppercase tracking-wide disabled:opacity-50"
               style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-subtle)" }}
             >
-              <Download className="w-4 h-4" />
+              <Download className="h-4 w-4" />
               Download
             </button>
             <button
               type="button"
               onClick={handleExport(true)}
-              disabled={exporting}
-              className="flex-1 py-2.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-wide flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={exporting || !hasShareableContent}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 font-heading text-sm font-semibold uppercase tracking-wide disabled:opacity-50"
               style={{ background: "var(--accent)", color: "var(--accent-text)" }}
             >
-              <Share2 className="w-4 h-4" />
+              <Share2 className="h-4 w-4" />
               Share
             </button>
-          </div>
-          <div className="flex items-center justify-between">
-            <img src="/brand/mark.svg" alt="Siren" className="h-5 w-auto" />
-            <span className="font-mono text-xs" style={{ color: "var(--accent)" }}>onsiren.xyz</span>
           </div>
         </div>
       </div>
 
-      {/* Actions */}
-      {!hasShareableContent && (
-        <div className="flex flex-wrap items-center gap-2">
+      {!hasShareableContent && !demoMode && (
+        <div className="flex max-w-[360px] flex-wrap items-center gap-2">
           <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-            Connect and trade to see P&L.
+            Connect and trade to see P&amp;L, or use &quot;Try demo numbers&quot; above to test the card.
           </p>
           <Link
             href="/"
             onClick={() => hapticLight()}
-            className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg"
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
             style={{ background: "var(--accent)", color: "var(--accent-text)" }}
           >
             Go to Terminal
-            <ArrowUpRight className="w-3.5 h-3.5" />
+            <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
         </div>
       )}

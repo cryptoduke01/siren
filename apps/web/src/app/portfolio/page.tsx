@@ -9,6 +9,7 @@ import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
 import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { PnlCard, createMockPnlPositions, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
@@ -492,6 +493,25 @@ function buildMintToMarket(
   return map;
 }
 
+function totalsFromPnlPositions(positions: PnlPosition[]) {
+  let sum = 0;
+  let anyUsd = false;
+  for (const p of positions) {
+    if (p.pnlUsd != null) {
+      sum += p.pnlUsd;
+      anyUsd = true;
+    }
+  }
+  const totalPnlUsd = anyUsd ? sum : null;
+  const withPct = positions.filter((p) => p.pnlPercent != null && p.valueUsd > 0);
+  const den = withPct.reduce((s, p) => s + p.valueUsd, 0);
+  const totalPnlPercent =
+    withPct.length === 0 || den <= 0
+      ? null
+      : (withPct.reduce((s, p) => s + (p.pnlPercent! / 100) * p.valueUsd, 0) / den) * 100;
+  return { totalPnlUsd, totalPnlPercent };
+}
+
 export default function PortfolioPage() {
   const { connected, publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
@@ -506,6 +526,15 @@ export default function PortfolioPage() {
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
   const [platformVolumeSol, setPlatformVolumeSol] = useState(0);
   const [pnlByMint, setPnlByMint] = useState<Record<string, { pnlUsd: number; pnlPercent: number }>>({});
+  /** Test PnL card + export without real positions */
+  const [pnlDemoMode, setPnlDemoMode] = useState(false);
+  const [mockPnlPositions, setMockPnlPositions] = useState(() => createMockPnlPositions());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("demoPnl") === "1") setPnlDemoMode(true);
+  }, []);
 
   const loadBagsLaunches = () => {
     if (!publicKey) return;
@@ -792,6 +821,16 @@ export default function PortfolioPage() {
       }),
   ].filter((p) => p.valueUsd > 0);
 
+  const { totalPnlUsd, totalPnlPercent } = totalsFromPnlPositions(pnlPositions);
+  const demoTotals = totalsFromPnlPositions(mockPnlPositions);
+
+  const handlePnlSell = (position: PnlPosition) => {
+    if (!position.mint) return;
+    hapticLight();
+    setSelectedToken({ mint: position.mint, symbol: position.ticker, name: position.title }, { openForSell: true });
+    setBuyPanelOpen(true);
+  };
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
@@ -1012,6 +1051,50 @@ export default function PortfolioPage() {
                 </div>
               )}
             </div>
+            {connected && (
+              <div className="mb-6 md:mb-8">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h2
+                    className="font-heading font-semibold text-sm uppercase tracking-wider"
+                    style={{ color: "var(--text-3)" }}
+                  >
+                    P&amp;L card
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticLight();
+                      setPnlDemoMode((wasDemo) => {
+                        const next = !wasDemo;
+                        if (next) setMockPnlPositions(createMockPnlPositions());
+                        return next;
+                      });
+                    }}
+                    className="w-fit rounded-lg border px-3 py-1.5 font-body text-xs font-medium transition-colors"
+                    style={{
+                      borderColor: "var(--border-subtle)",
+                      background: pnlDemoMode ? "var(--accent-dim)" : "var(--bg-elevated)",
+                      color: pnlDemoMode ? "var(--accent)" : "var(--text-2)",
+                    }}
+                  >
+                    {pnlDemoMode ? "Use live portfolio data" : "Try demo numbers"}
+                  </button>
+                </div>
+                <p className="mb-2 font-body text-[11px] leading-snug" style={{ color: "var(--text-3)" }}>
+                  Download is off until you have a real position — or tap <strong>Try demo numbers</strong> (
+                  <span className="font-mono">?demoPnl=1</span>).
+                </p>
+                <PnlCard
+                  totalPnlUsd={pnlDemoMode ? demoTotals.totalPnlUsd : totalPnlUsd}
+                  totalPnlPercent={pnlDemoMode ? demoTotals.totalPnlPercent : totalPnlPercent}
+                  positions={pnlDemoMode ? mockPnlPositions : pnlPositions}
+                  walletAddress={publicKey?.toBase58() ?? null}
+                  isLoading={!!connected && tokensLoading}
+                  demoMode={pnlDemoMode}
+                  onSell={handlePnlSell}
+                />
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0">
             <div
               className="rounded-2xl border overflow-hidden"
