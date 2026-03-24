@@ -6,12 +6,10 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
-import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, Rocket } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const LAMPORTS_PER_SOL = 1e9;
-const inputCls = "w-full px-3 py-1.5 rounded-md text-sm border transition-colors focus:outline-none focus:ring-1";
-const labelCls = "text-[11px] font-medium block mb-0.5";
 
 type Step = "form" | "creating" | "config" | "launching" | "done" | "error";
 
@@ -39,6 +37,9 @@ function extractErrorMessage(e: unknown): string {
   if (typeof e === "string") return e;
   return "Something went wrong. Please try again.";
 }
+
+const inputStyle = "w-full px-3 py-2 rounded-xl text-sm border transition-all focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--border-active)]";
+const labelStyle = "text-[10px] font-medium uppercase tracking-wider block mb-1";
 
 export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, signTransaction } = useSirenWallet();
@@ -169,180 +170,188 @@ export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ background: "rgba(0,0,0,0.6)" }}
+        className="fixed inset-0 z-50"
         onClick={onClose}
       >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.96 }}
-          className="relative w-full max-w-sm rounded-xl border shadow-xl overflow-hidden"
-          style={{
-            background: "var(--bg-surface)",
-            borderColor: "var(--border-subtle)",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex justify-between items-center px-4 py-2.5 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-            <h3 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Launch Token</h3>
-            <button onClick={onClose} className="p-1 rounded hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-3)" }} aria-label="Close">✕</button>
+        <div className="absolute inset-0 bg-black/50" />
+      </motion.div>
+      <motion.div
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        transition={{ type: "spring", damping: 28, stiffness: 300 }}
+        className="fixed top-0 right-0 bottom-0 z-[51] w-full max-w-[400px] flex flex-col"
+        style={{
+          background: "var(--bg-surface)",
+          borderLeft: "1px solid var(--border-subtle)",
+          boxShadow: "-8px 0 32px rgba(0,0,0,0.4)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center px-4 py-3 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="flex items-center gap-2">
+            <Rocket className="w-4 h-4" style={{ color: "var(--accent)" }} />
+            <h3 className="font-heading font-bold text-sm uppercase tracking-wider" style={{ color: "var(--accent)" }}>Launch Token</h3>
           </div>
-          <div className="p-4 max-h-[70vh] overflow-y-auto">
-            {step === "form" && (
-              <>
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className={labelCls} style={{ color: "var(--text-2)" }}>Name</label>
-                      <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="My Token"
-                        className={inputCls}
-                        style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelCls} style={{ color: "var(--text-2)" }}>Symbol</label>
-                      <input
-                        value={symbol}
-                        onChange={(e) => setSymbol(e.target.value.toUpperCase().slice(0, 10))}
-                        placeholder="MTK"
-                        className={inputCls}
-                        style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelCls} style={{ color: "var(--text-2)" }}>Description</label>
-                    <input
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value.slice(0, 200))}
-                      placeholder="Short description"
-                      className={inputCls}
-                      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls} style={{ color: "var(--text-2)" }}>Image URL</label>
-                    <input
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                      placeholder="https://..."
-                      type="url"
-                      className={inputCls}
-                      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls} style={{ color: "var(--text-2)" }}>Initial buy (SOL)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={initialSol}
-                      onChange={(e) => setInitialSol(e.target.value)}
-                      className={inputCls}
-                      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowOptional(!showOptional)}
-                    className="flex items-center gap-1 text-[11px]"
-                    style={{ color: "var(--text-3)" }}
-                  >
-                    {showOptional ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    Links (optional)
-                  </button>
-                  {showOptional && (
-                    <div className="grid grid-cols-1 gap-2 pt-1">
-                      <input
-                        value={twitter}
-                        onChange={(e) => setTwitter(e.target.value)}
-                        placeholder="Twitter URL"
-                        type="url"
-                        className={inputCls}
-                        style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                      />
-                      <input
-                        value={telegram}
-                        onChange={(e) => setTelegram(e.target.value)}
-                        placeholder="Telegram URL"
-                        type="url"
-                        className={inputCls}
-                        style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                      />
-                      <input
-                        value={website}
-                        onChange={(e) => setWebsite(e.target.value)}
-                        placeholder="Website URL"
-                        type="url"
-                        className={inputCls}
-                        style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                      />
-                    </div>
-                  )}
+          <button onClick={onClose} className="p-2 -m-2 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors" style={{ color: "var(--text-3)" }} aria-label="Close">✕</button>
+        </div>
+        <div className="p-4 overflow-y-auto flex-1 min-h-0">
+          {step === "form" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelStyle} style={{ color: "var(--text-3)" }}>Name</label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="My Token"
+                    className={inputStyle}
+                    style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                  />
                 </div>
-                <button
-                  onClick={runLaunch}
-                  disabled={!name.trim() || !symbol.trim() || !description.trim() || !imageUrl.trim()}
-                  className="mt-4 w-full py-2 rounded-lg font-heading font-semibold text-sm transition-opacity disabled:opacity-50"
-                  style={{ background: "var(--bags)", color: "var(--accent-text)" }}
-                >
-                  Launch
-                </button>
-              </>
-            )}
-            {(step === "creating" || step === "config" || step === "launching") && (
-              <div className="py-6 flex flex-col items-center gap-2">
-                <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--bags)" }} />
-                <p className="text-xs" style={{ color: "var(--text-2)" }}>
-                  {step === "creating" && "Creating token…"}
-                  {step === "config" && "Fee-share config…"}
-                  {step === "launching" && "Launching…"}
-                </p>
+                <div>
+                  <label className={labelStyle} style={{ color: "var(--text-3)" }}>Symbol</label>
+                  <input
+                    value={symbol}
+                    onChange={(e) => setSymbol(e.target.value.toUpperCase().slice(0, 10))}
+                    placeholder="MTK"
+                    className={inputStyle}
+                    style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                  />
+                </div>
               </div>
-            )}
-            {step === "done" && (
-              <div className="py-4 text-center">
-                <p className="font-heading font-semibold text-sm mb-2" style={{ color: "var(--bags)" }}>Token launched</p>
-                {createdMint && (
-                  <p className="font-mono text-[10px] break-all mb-3" style={{ color: "var(--text-3)" }}>{createdMint}</p>
+              <div>
+                <label className={labelStyle} style={{ color: "var(--text-3)" }}>Description</label>
+                <input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value.slice(0, 200))}
+                  placeholder="Short description"
+                  className={inputStyle}
+                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                />
+              </div>
+              <div>
+                <label className={labelStyle} style={{ color: "var(--text-3)" }}>Image URL</label>
+                <input
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://..."
+                  type="url"
+                  className={inputStyle}
+                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                />
+              </div>
+              <div>
+                <label className={labelStyle} style={{ color: "var(--text-3)" }}>Initial buy (SOL)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={initialSol}
+                  onChange={(e) => setInitialSol(e.target.value)}
+                  className={inputStyle}
+                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                />
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowOptional(!showOptional)}
+                  className="flex items-center gap-1.5 text-[11px] font-medium"
+                  style={{ color: "var(--text-3)" }}
+                >
+                  {showOptional ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  Links (optional)
+                </button>
+                {showOptional && (
+                  <div className="mt-2 space-y-2">
+                    <input
+                      value={twitter}
+                      onChange={(e) => setTwitter(e.target.value)}
+                      placeholder="Twitter URL"
+                      type="url"
+                      className={inputStyle}
+                      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                    />
+                    <input
+                      value={telegram}
+                      onChange={(e) => setTelegram(e.target.value)}
+                      placeholder="Telegram URL"
+                      type="url"
+                      className={inputStyle}
+                      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                    />
+                    <input
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                      placeholder="Website URL"
+                      type="url"
+                      className={inputStyle}
+                      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                    />
+                  </div>
                 )}
+              </div>
+              <button
+                onClick={runLaunch}
+                disabled={!name.trim() || !symbol.trim() || !description.trim() || !imageUrl.trim()}
+                className="w-full py-3 rounded-xl font-heading font-bold text-sm uppercase tracking-wider transition-all disabled:opacity-50 hover:brightness-110"
+                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+              >
+                Launch on Bags
+              </button>
+            </div>
+          )}
+          {(step === "creating" || step === "config" || step === "launching") && (
+            <div className="py-12 flex flex-col items-center gap-4">
+              <Loader2 className="w-10 h-10 animate-spin" style={{ color: "var(--accent)" }} />
+              <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                {step === "creating" && "Creating token…"}
+                {step === "config" && "Fee-share config…"}
+                {step === "launching" && "Launching…"}
+              </p>
+            </div>
+          )}
+          {step === "done" && (
+            <div className="py-8 text-center">
+              <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "color-mix(in srgb, var(--up) 20%, transparent)" }}>
+                <Rocket className="w-7 h-7" style={{ color: "var(--up)" }} />
+              </div>
+              <p className="font-heading font-semibold text-base mb-2" style={{ color: "var(--up)" }}>Token launched</p>
+              {createdMint && (
+                <p className="font-mono text-[10px] break-all mb-4 px-2" style={{ color: "var(--text-3)" }}>{createdMint}</p>
+              )}
+              <button
+                onClick={onClose}
+                className="px-6 py-2.5 rounded-xl font-heading text-sm font-medium"
+                style={{ background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid var(--accent)" }}
+              >
+                Close
+              </button>
+            </div>
+          )}
+          {step === "error" && (
+            <div className="py-4">
+              <p className="font-body text-sm mb-4 p-3 rounded-xl" style={{ background: "color-mix(in srgb, var(--down) 12%, transparent)", color: "var(--down)" }}>{error}</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setStep("form"); setError(null); }}
+                  className="flex-1 py-2.5 rounded-xl font-body text-sm font-medium"
+                  style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-subtle)" }}
+                >
+                  Try again
+                </button>
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg font-heading text-sm"
-                  style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                  className="flex-1 py-2.5 rounded-xl font-heading text-sm font-medium"
+                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                 >
                   Close
                 </button>
               </div>
-            )}
-            {step === "error" && (
-              <div className="py-2">
-                <p className="text-sm mb-3" style={{ color: "var(--down)" }}>{error}</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setStep("form"); setError(null); }}
-                    className="flex-1 py-2 rounded-lg font-body text-sm"
-                    style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-subtle)" }}
-                  >
-                    Try again
-                  </button>
-                  <button
-                    onClick={onClose}
-                    className="flex-1 py-2 rounded-lg font-heading text-sm"
-                    style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </motion.div>
+            </div>
+          )}
+        </div>
       </motion.div>
     </AnimatePresence>
   );

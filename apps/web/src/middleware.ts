@@ -14,10 +14,8 @@ export function middleware(req: NextRequest) {
   const host = req.headers.get("host") || "";
   const forwardedHost = (req.headers.get("x-forwarded-host") || "").split(",")[0]?.trim() || "";
   const hostStr = `${host} ${forwardedHost}`.toLowerCase();
-  // Gate by default; only skip when explicitly disabled
-  const gateDisabled = process.env.SIREN_GATE_ENABLED === "false" || process.env.SIREN_GATE_ENABLED === "0";
-  const isProdHost = hostStr.includes("onsiren.xyz");
-  const shouldGate = !gateDisabled || isProdHost;
+  // Gate removed — never block access
+  const shouldGate = false;
 
   const url = req.nextUrl.clone();
   const pathname = url.pathname;

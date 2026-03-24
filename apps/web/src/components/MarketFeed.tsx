@@ -61,7 +61,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
   const [shownCount, setShownCount] = useState(INITIAL_SHOWN);
   const [activeCategory, setActiveCategory] = useState("All");
   const [marketSearchQuery, setMarketSearchQuery] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("default");
+  const [sortMode, setSortMode] = useState<SortMode>("hot");
 
   const addToast = useToastStore((s) => s.addToast);
   const { data: markets = [], isLoading, isError, error, refetch } = useMarkets();
@@ -109,7 +109,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         });
       case "default":
       default:
-        return filteredMarkets;
+        return base;
     }
   }, [filteredMarkets, sortMode]);
 
@@ -216,15 +216,22 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             {sortedMarkets.slice(0, shownCount).map((m, i) => {
               const isSelected = selectedMarket?.ticker === m.ticker;
               const yesPct = Math.min(100, Math.max(0, m.probability));
+              const isHot = Math.abs(m.velocity_1h) >= 1;
+              const signalStrength = Math.min(100, Math.max(0, 50 + m.velocity_1h * 10));
+              const signalColor = m.velocity_1h > 0 ? "var(--up)" : m.velocity_1h < 0 ? "var(--down)" : "var(--border-subtle)";
               return (
                 <motion.li
                   key={m.ticker}
                   layout
                   initial={{ opacity: 0, transform: "translateY(6px)" }}
-                  animate={{ opacity: 1, transform: "translateY(0)" }}
+                  animate={{
+                    opacity: 1,
+                    transform: "translateY(0)",
+                    boxShadow: isHot ? "0 0 0 1px color-mix(in srgb, var(--up) 20%, transparent)" : undefined,
+                  }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.18, delay: Math.min(i * 0.03, 0.2), ease: "easeOut" }}
-                  className="cursor-pointer rounded-[6px] p-3 mb-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative"
+                  className={`cursor-pointer rounded-[8px] p-3 mb-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative overflow-hidden ${isHot ? "pulse-hot" : ""}`}
                   style={{
                     background: isSelected ? "var(--bg-elevated)" : "var(--bg-surface)",
                     border: "1px solid var(--border-subtle)",
@@ -251,44 +258,63 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   }}
                 >
                   <p
-                    className="font-heading font-semibold text-[13px] leading-[1.35] line-clamp-3 mb-2 break-words"
+                    className="font-heading font-bold text-[13px] leading-tight line-clamp-1 mb-2"
                     style={{ color: "var(--text-1)" }}
                   >
                     {m.title}
                   </p>
-                  <div className="flex items-baseline justify-between gap-2 mb-2">
-                    <div className="flex items-baseline gap-1.5">
-                      <span
-                        className="font-mono text-[22px] font-normal tabular-nums"
-                        style={{ color: "var(--accent)" }}
-                      >
-                        {yesPct.toFixed(0)}% YES
-                      </span>
-                    </div>
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                    <span
+                      className="font-mono text-[20px] font-semibold tabular-nums"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      {yesPct.toFixed(0)}%
+                    </span>
                     <VelocityBadge v={m.velocity_1h} />
                   </div>
                   <div
-                    className="w-full h-[3px] rounded-[2px] mb-2 flex overflow-hidden"
+                    className="w-full h-[2px] rounded-full mb-2 flex overflow-hidden"
                     style={{ background: "var(--border-subtle)" }}
                   >
                     <div
-                      className="h-full rounded-l-[2px] shrink-0"
-                      style={{ width: `${yesPct}%`, background: "var(--accent)" }}
+                      className="h-full rounded-full shrink-0 transition-all duration-300"
+                      style={{
+                        width: `${Math.max(4, signalStrength)}%`,
+                        background: signalColor,
+                      }}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <MiniSparkline data={[Math.max(0, yesPct - 15), yesPct - 8, yesPct - 4, yesPct, yesPct]} width={56} height={18} />
-                  <div className="flex items-baseline gap-1">
-                    <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      Vol
+                    <span className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>
+                      Vol {m.volume?.toLocaleString() ?? "—"}
                     </span>
-                    <span
-                      className="font-mono text-[11px] tabular-nums"
-                      style={{ color: "var(--text-2)" }}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        hapticLight();
+                        setSelectedMarket({
+                          ticker: m.ticker,
+                          title: m.title,
+                          probability: m.probability,
+                          velocity_1h: m.velocity_1h,
+                          volume: m.volume,
+                          open_interest: m.open_interest,
+                          event_ticker: m.event_ticker,
+                          series_ticker: m.series_ticker,
+                          subtitle: m.subtitle,
+                          keywords: extractKeywords(m.title),
+                          yes_mint: m.yes_mint,
+                          no_mint: m.no_mint,
+                          kalshi_url: m.kalshi_url,
+                        });
+                        onAfterSelectMarket?.(m);
+                      }}
+                      className="font-body text-[10px] font-medium hover:underline"
+                      style={{ color: "var(--accent)" }}
                     >
-                      {m.volume?.toLocaleString() ?? "—"}
-                    </span>
-                  </div>
+                      View tokens →
+                    </button>
                   </div>
                 </motion.li>
               );

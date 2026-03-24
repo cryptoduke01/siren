@@ -13,7 +13,19 @@ import { hapticLight } from "@/lib/haptics";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-async function fetchTokenInfo(mint: string): Promise<{ mint: string; name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null> {
+async function fetchTokenInfo(
+  mint: string
+): Promise<{
+  mint: string;
+  name: string;
+  symbol: string;
+  imageUrl?: string;
+  priceUsd?: number;
+  riskScore?: number;
+  riskLabel?: "low" | "moderate" | "high" | "critical";
+  riskReasons?: string[];
+  riskBlocked?: boolean;
+} | null> {
   const res = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
   if (!res.ok) return null;
   const j = await res.json();
@@ -143,10 +155,10 @@ export default function WatchlistPage() {
                       initial={{ opacity: 0, translateY: 6 }}
                       animate={{ opacity: 1, translateY: 0 }}
                       transition={{ delay: i * 0.03 }}
-                      className="rounded-[8px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] relative"
+                      className="rounded-[10px] p-3 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] relative border"
                       style={{
                         background: "var(--bg-surface)",
-                        border: "1px solid var(--border-subtle)",
+                        borderColor: "var(--border-subtle)",
                       }}
                       onClick={() => {
                         hapticLight();
@@ -157,6 +169,10 @@ export default function WatchlistPage() {
                           price: info?.priceUsd,
                           volume24h: undefined,
                           ctMentions: undefined,
+                          riskScore: info?.riskScore,
+                          riskLabel: info?.riskLabel,
+                          riskReasons: info?.riskReasons,
+                          riskBlocked: info?.riskBlocked,
                         });
                         router.push("/");
                       }}
@@ -166,12 +182,17 @@ export default function WatchlistPage() {
                       </div>
                       <div className="flex items-center gap-2 mb-2 pr-6">
                         {info?.imageUrl && (
-                          <img src={info.imageUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+                          <img src={info.imageUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
                         )}
                         <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
                           {info?.symbol ?? mint.slice(0, 8) + "…"}
                         </p>
                       </div>
+                      {(info?.riskScore ?? 0) >= 60 && (
+                        <p className="font-body text-[10px] mb-2" style={{ color: "var(--down)" }}>
+                          Risk trade analysed
+                        </p>
+                      )}
                       <p className="font-body text-[11px] truncate" style={{ color: "var(--text-2)" }}>
                         {info?.name ?? mint}
                       </p>

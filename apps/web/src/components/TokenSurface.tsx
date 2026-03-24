@@ -250,7 +250,7 @@ export function TokenSurface() {
                 initial={{ opacity: 0, transform: "translateY(6px)" }}
                 animate={{ opacity: 1, transform: "translateY(0)" }}
                 transition={{ duration: 0.18, delay: i * 0.05, ease: "easeOut" }}
-                className="rounded-[8px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden"
+                className="rounded-[10px] p-3 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border-subtle)",
@@ -270,7 +270,10 @@ export function TokenSurface() {
                     symbol: t.symbol,
                     price: t.price,
                     volume24h: t.volume24h,
-                    ctMentions: t.ctMentions,
+                    riskScore: t.riskScore,
+                    riskLabel: t.riskLabel,
+                    riskReasons: t.riskReasons,
+                    riskBlocked: t.riskBlocked,
                   });
                 }}
               >
@@ -280,7 +283,7 @@ export function TokenSurface() {
                       <img
                         src={t.imageUrl}
                         alt=""
-                        className="w-7 h-7 rounded-full object-cover shrink-0"
+                        className="w-6 h-6 rounded-full object-cover shrink-0"
                       />
                     )}
                     <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
@@ -323,25 +326,17 @@ export function TokenSurface() {
                   </p>
                 )}
                 {selectedMarket && (
-                  <div className="mb-2">
-                    <div
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[4px] mb-1"
-                      style={{
-                        background: "var(--bg-elevated)",
-                        border: "1px solid var(--border-subtle)",
-                      }}
-                    >
-                      <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--accent)" }}>
-                        {selectedMarket.probability.toFixed(0)}%
-                      </span>
-                      <span className="font-mono text-[10px]" style={{ color: "var(--text-3)" }}>
-                        YES
-                      </span>
-                    </div>
-                    <p className="font-body text-[10px] truncate" style={{ color: "var(--text-3)" }} title={selectedMarket.title}>
-                      Linked to: {selectedMarket.title}
-                    </p>
-                  </div>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-md font-body text-[10px] mb-2"
+                    style={{
+                      background: "color-mix(in srgb, var(--up) 14%, var(--bg-surface))",
+                      color: "var(--up)",
+                      border: "1px solid color-mix(in srgb, var(--up) 28%, transparent)",
+                    }}
+                    title={selectedMarket.title}
+                  >
+                    {selectedMarket.title.slice(0, 24)}{selectedMarket.title.length > 24 ? "…" : ""}
+                  </span>
                 )}
                 {t.price != null && (
                   <div className="flex items-center justify-between gap-2 mb-2">
@@ -373,14 +368,6 @@ export function TokenSurface() {
                     )}
                   </span>
                 </div>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
-                    CT mentions
-                  </span>
-                  <span className="font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
-                    {t.ctMentions ?? "—"}
-                  </span>
-                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -391,10 +378,14 @@ export function TokenSurface() {
                       symbol: t.symbol,
                       price: t.price,
                       volume24h: t.volume24h,
-                      ctMentions: t.ctMentions,
+                      riskScore: t.riskScore,
+                      riskLabel: t.riskLabel,
+                      riskReasons: t.riskReasons,
+                      riskBlocked: t.riskBlocked,
                     });
+                    setBuyPanelOpen(true, "token");
                   }}
-                  className="w-full h-8 rounded-[6px] font-heading font-bold text-xs uppercase transition-all duration-[80ms] ease hover:brightness-[1.08]"
+                  className="w-full h-8 rounded-[7px] font-heading font-bold text-xs uppercase transition-all duration-[80ms] ease hover:brightness-[1.08]"
                   style={{
                     background: "var(--bags)",
                     color: "var(--accent-text)",

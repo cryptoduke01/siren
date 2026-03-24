@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { toPng } from "html-to-image";
-import { ArrowUpRight, Share2, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowUpRight, Share2, Download, ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import Link from "next/link";
 import { hapticLight } from "@/lib/haptics";
 
@@ -14,6 +14,8 @@ export interface PnlPosition {
   valueUsd: number;
   pnlUsd: number | null;
   pnlPercent: number | null;
+  /** Mint address for one-click sell (token or Kalshi prediction). */
+  mint?: string;
 }
 
 interface PnlCardProps {
@@ -22,6 +24,8 @@ interface PnlCardProps {
   positions: PnlPosition[];
   walletAddress?: string | null;
   isLoading?: boolean;
+  /** Called when user clicks sell for a position. Opens buy panel in sell mode. */
+  onSell?: (position: PnlPosition) => void;
 }
 
 export function formatPnl(value: number | null): string {
@@ -47,6 +51,7 @@ export function PnlCard({
   positions,
   walletAddress,
   isLoading,
+  onSell,
 }: PnlCardProps) {
   const [exporting, setExporting] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -67,13 +72,8 @@ export function PnlCard({
     setExporting(true);
     try {
       await document.fonts.ready;
-      await toPng(cardRef.current, {
-        pixelRatio: 2,
-        cacheBust: true,
-        backgroundColor: "#0F0F18",
-        skipFonts: false,
-      });
-      await new Promise((r) => setTimeout(r, 100));
+      // Ensure images/fonts are painted before exporting.
+      await new Promise((r) => setTimeout(r, 50));
       const dataUrl = await toPng(cardRef.current, {
         pixelRatio: 2,
         cacheBust: true,
@@ -127,7 +127,13 @@ export function PnlCard({
 
         {/* Main PnL + mascot (right beside it, no background) */}
         <div className="px-4 pb-2 flex items-center justify-between gap-3">
-          <div className="flex items-baseline gap-2 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <img
+              src={hasPnl && isPositive ? "/brand/profit-mascot.png" : "/brand/loss-mascot.png"}
+              alt="Remi"
+              className="pnl-mascot w-10 h-10 shrink-0"
+              style={{ objectFit: "contain" }}
+            />
             <span
               className="font-mono text-2xl font-bold tabular-nums"
               style={{
@@ -183,12 +189,34 @@ export function PnlCard({
                 </button>
               </div>
             )}
-            <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{selected.title}</p>
-            {selected.kalshiMarket && (
-              <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>
-                {selected.kalshiMarket}
-              </p>
-            )}
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{selected.title}</p>
+                {selected.kalshiMarket && (
+                  <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>
+                    {selected.kalshiMarket}
+                  </p>
+                )}
+              </div>
+              {onSell && selected.mint && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticLight();
+                    onSell(selected);
+                  }}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-body text-[11px] font-medium transition-colors hover:opacity-90"
+                  style={{
+                    background: "color-mix(in srgb, var(--down) 16%, var(--bg-surface))",
+                    color: "var(--down)",
+                    border: "1px solid color-mix(in srgb, var(--down) 28%, transparent)",
+                  }}
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Sell
+                </button>
+              )}
+            </div>
           </div>
         )}
 

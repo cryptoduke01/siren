@@ -27,6 +27,59 @@ const MOCK_CHART_DATA = [
   { t: "24h", v: 0.00042 },
 ];
 
+/** DexScreener-based signal: volume tier + keyword match. */
+function TokenSignalSection({
+  volume24h,
+  matchedMarketTitle,
+}: {
+  volume24h?: number;
+  matchedMarketTitle?: string;
+}) {
+  const vol = volume24h ?? 0;
+  const tier = vol >= 10_000 ? "High" : vol >= 1_000 ? "Medium" : vol > 0 ? "Low" : null;
+  return (
+    <div
+      className="rounded-xl border mt-3 px-4 py-3"
+      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}
+    >
+      <p className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider mb-2">Signal (DexScreener)</p>
+      <div className="flex flex-wrap gap-2">
+        {tier && (
+          <span
+            className="inline-flex items-center px-2.5 py-1 rounded-md font-mono text-[11px]"
+            style={{
+              background: tier === "High" ? "color-mix(in srgb, var(--up) 14%, var(--bg-surface))" : "var(--bg-surface)",
+              color: tier === "High" ? "var(--up)" : "var(--text-2)",
+              border: `1px solid ${tier === "High" ? "color-mix(in srgb, var(--up) 30%, transparent)" : "var(--border-subtle)"}`,
+            }}
+          >
+            Vol {tier}
+          </span>
+        )}
+        {matchedMarketTitle && (
+          <span
+            className="inline-flex items-center px-2.5 py-1 rounded-md font-body text-[11px] truncate max-w-[180px]"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
+              color: "var(--accent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+            }}
+            title={matchedMarketTitle}
+          >
+            {matchedMarketTitle.slice(0, 28)}{matchedMarketTitle.length > 28 ? "…" : ""}
+          </span>
+        )}
+        {!tier && !matchedMarketTitle && (
+          <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            No volume or market match data
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** X/Twitter mentions (requires TWITTER_BEARER_TOKEN on API). */
 function TokenTweetsSection({ mint }: { mint: string }) {
   const [expanded, setExpanded] = useState(false);
   const { data: tweets = [], isLoading, isError, error } = useQuery({
@@ -34,7 +87,7 @@ function TokenTweetsSection({ mint }: { mint: string }) {
     queryFn: async () => {
       const res = await fetch(`${API_URL}/api/token-tweets?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? "Failed to fetch tweets");
+      if (!res.ok) throw new Error(j.error ?? "Failed to fetch");
       return j.data ?? [];
     },
     enabled: expanded && !!mint && mint.length >= 32,
@@ -45,37 +98,29 @@ function TokenTweetsSection({ mint }: { mint: string }) {
     <div className="rounded-xl border mt-3" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
       <button
         type="button"
-        onClick={() => { hapticLight(); setExpanded(!expanded); }}
+        onClick={() => setExpanded(!expanded)}
         className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left"
       >
-        <span className="text-[var(--text-secondary)] text-xs uppercase">CT mentions (X)</span>
+        <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>CT mentions (X)</span>
         {expanded ? <ChevronUp className="w-4 h-4" style={{ color: "var(--text-3)" }} /> : <ChevronDown className="w-4 h-4" style={{ color: "var(--text-3)" }} />}
       </button>
       {expanded && (
         <div className="px-4 pb-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
           {isLoading ? (
-            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>Loading tweets…</p>
+            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>Loading…</p>
           ) : isError ? (
             <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>
-              {String(error).includes("not configured") || String(error).includes("503")
-                ? "Set TWITTER_BEARER_TOKEN in API to see tweets."
-                : "Unable to load tweets."}
+              {String(error).includes("not configured") ? "Set TWITTER_BEARER_TOKEN in API to enable X search." : "Unable to load."}
             </p>
           ) : tweets.length === 0 ? (
-            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>No recent tweets mention this CA.</p>
+            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>No recent mentions.</p>
           ) : (
-            <ul className="space-y-3 max-h-48 overflow-y-auto">
+            <ul className="space-y-3 max-h-40 overflow-y-auto">
               {tweets.map((t: { id: string; text: string; created_at?: string }) => (
                 <li key={t.id} className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
                   <p className="line-clamp-3">{t.text}</p>
                   {t.created_at && (
-                    <a
-                      href={`https://x.com/i/status/${t.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] mt-1 inline-block"
-                      style={{ color: "var(--accent)" }}
-                    >
+                    <a href={`https://x.com/i/status/${t.id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] mt-1 inline-block" style={{ color: "var(--accent)" }}>
                       View on X
                     </a>
                   )}
@@ -352,35 +397,39 @@ export function UnifiedBuyPanel() {
   return (
     <AnimatePresence>
       {buyPanelOpen && (
-        <motion.div
-          key="unified-buy-panel"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
-          onClick={onClose}
-        >
-          <div className="absolute inset-0 bg-black/60" />
+        <>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="relative w-full max-w-2xl max-h-[90vh] md:max-h-[85vh] overflow-hidden flex flex-col rounded-2xl border shadow-xl"
-            style={{
-              background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
-              borderColor: "var(--border-subtle)",
-              boxShadow: "0 0 0 1px var(--border-subtle), 0 20px 50px -15px rgba(0,0,0,0.35)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50"
+            aria-hidden="true"
           >
-            <div className="flex justify-between items-center px-4 md:px-6 py-3 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-              <h3 className="font-heading font-bold text-[var(--accent-primary)] text-base">Unified Buy Panel</h3>
-              <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors p-2 -m-2 rounded-lg hover:bg-[var(--bg-elevated)]" aria-label="Close">✕</button>
+            <div
+              className="absolute inset-0 bg-black/50 md:bg-black/30"
+              onClick={onClose}
+            />
+          </motion.div>
+          <motion.div
+            key="unified-buy-panel"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            className="fixed top-0 right-0 bottom-0 z-[51] w-full max-w-[420px] md:w-[400px] flex flex-col overflow-hidden"
+            style={{
+              background: "var(--bg-surface)",
+              borderLeft: "1px solid var(--border-subtle)",
+              boxShadow: "-8px 0 32px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div className="flex justify-between items-center px-4 py-3 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+              <h3 className="font-heading font-bold text-sm uppercase tracking-wider" style={{ color: "var(--accent)" }}>Trade</h3>
+              <button onClick={onClose} className="p-2 -m-2 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors" style={{ color: "var(--text-3)" }} aria-label="Close">✕</button>
             </div>
-            <div className="p-4 md:p-6 overflow-y-auto flex-1 min-h-0">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            <div className="p-4 overflow-y-auto flex-1 min-h-0">
+              <div className="flex flex-col gap-4">
                 {buyPanelMode === "market" && selectedMarket && (
                   <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction market</p>
@@ -598,16 +647,20 @@ export function UnifiedBuyPanel() {
                       Chart is illustrative. Execute swaps via Jupiter; confirm in your wallet.
                     </p>
                   </div>
+                  <TokenSignalSection
+                        volume24h={selectedToken.volume24h}
+                        matchedMarketTitle={selectedMarket?.title}
+                      />
                   <TokenTweetsSection mint={selectedToken.mint} />
                   </>
                 )}
               </div>
               {!resultModal && error && <p className="text-sm mt-3" style={{ color: "var(--down)" }}>{error}</p>}
               {!resultModal && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
-              <p className="text-[var(--text-secondary)] text-[11px] mt-3 md:mt-4 leading-relaxed">Connect wallet. Markets: Kalshi. Swaps: DFlow (market tokens) or Jupiter (fallback). MEV protected.</p>
+              <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">Connect wallet. Markets: Kalshi. Swaps: DFlow (market tokens) or Jupiter (fallback). MEV protected.</p>
             </div>
           </motion.div>
-        </motion.div>
+        </>
       )}
       {resultModal && (
         <ResultModal

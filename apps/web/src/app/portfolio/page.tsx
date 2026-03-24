@@ -739,6 +739,7 @@ export default function PortfolioPage() {
         valueUsd,
         pnlUsd: mintPnl ? mintPnl.pnlUsd : null,
         pnlPercent: mintPnl ? mintPnl.pnlPercent : null,
+        mint: p.mint,
       };
     }),
     ...tokenHoldings
@@ -753,9 +754,19 @@ export default function PortfolioPage() {
           valueUsd,
           pnlUsd: mintPnl ? mintPnl.pnlUsd : null,
           pnlPercent: mintPnl ? mintPnl.pnlPercent : null,
+          mint: t.mint,
         };
       }),
   ].filter((p) => p.valueUsd > 0);
+
+  const handlePnlSell = (position: (typeof pnlPositions)[0]) => {
+    if (!position.mint) return;
+    setSelectedToken(
+      { mint: position.mint, name: position.title, symbol: position.ticker },
+      { openForSell: true }
+    );
+    setBuyPanelOpen(true, "token");
+  };
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
@@ -985,6 +996,7 @@ export default function PortfolioPage() {
               positions={pnlPositions}
               walletAddress={publicKey?.toBase58()}
               isLoading={tokensLoading}
+              onSell={handlePnlSell}
             />
             </div>
             <div

@@ -6,10 +6,11 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { WalletButton } from "./WalletButton";
-import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 import { WaitlistHeader } from "./WaitlistHeader";
+import { usePrivy } from "@privy-io/react-auth";
 
 const NAV = [
   { href: "/", label: "Terminal" },
@@ -23,9 +24,9 @@ const NAV = [
 export function TopBar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useThemeStore();
-  const { connected } = useSirenWallet();
+  const { authenticated } = usePrivy();
   const [menuOpen, setMenuOpen] = useState(false);
-  const navItems = connected ? NAV.filter((item) => item.href !== "/waitlist") : NAV;
+  const navItems = authenticated ? NAV.filter((item) => item.href !== "/waitlist") : NAV;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -83,6 +84,7 @@ export function TopBar() {
           })}
         </nav>
         <div className="hidden md:flex items-center gap-2">
+          <NavbarBalance />
           <button
             type="button"
             onClick={() => { hapticLight(); toggleTheme(); }}
