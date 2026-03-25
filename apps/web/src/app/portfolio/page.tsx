@@ -9,7 +9,7 @@ import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
 import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
-import { PnlCard, createMockPnlPositions, type PnlPosition } from "@/components/PnlCard";
+import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
@@ -526,15 +526,6 @@ export default function PortfolioPage() {
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
   const [platformVolumeSol, setPlatformVolumeSol] = useState(0);
   const [pnlByMint, setPnlByMint] = useState<Record<string, { pnlUsd: number; pnlPercent: number }>>({});
-  /** Test PnL card + export without real positions */
-  const [pnlDemoMode, setPnlDemoMode] = useState(false);
-  const [mockPnlPositions, setMockPnlPositions] = useState(() => createMockPnlPositions());
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("demoPnl") === "1") setPnlDemoMode(true);
-  }, []);
 
   const loadBagsLaunches = () => {
     if (!publicKey) return;
@@ -715,7 +706,7 @@ export default function PortfolioPage() {
       setPlatformVolumeSol(0);
       setPnlByMint({});
     }
-  }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings.length]);
+  }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings]);
 
   const { data: bagsLaunchInfos } = useQuery({
     queryKey: ["bags-launch-infos", bagsLaunches],
@@ -782,7 +773,8 @@ export default function PortfolioPage() {
     });
 
   const openSellPanel = (mint: string, symbol: string, name: string) => {
-    setSelectedToken({ mint, symbol, name }, { openForSell: true });
+    const price = tokenInfoByMint.get(mint)?.priceUsd;
+    setSelectedToken({ mint, symbol, name, price: price ?? undefined }, { openForSell: true });
     setBuyPanelOpen(true);
   };
 
@@ -822,12 +814,15 @@ export default function PortfolioPage() {
   ].filter((p) => p.valueUsd > 0);
 
   const { totalPnlUsd, totalPnlPercent } = totalsFromPnlPositions(pnlPositions);
-  const demoTotals = totalsFromPnlPositions(mockPnlPositions);
 
   const handlePnlSell = (position: PnlPosition) => {
     if (!position.mint) return;
     hapticLight();
-    setSelectedToken({ mint: position.mint, symbol: position.ticker, name: position.title }, { openForSell: true });
+    const price = tokenInfoByMint.get(position.mint)?.priceUsd;
+    setSelectedToken(
+      { mint: position.mint, symbol: position.ticker, name: position.title, price: price ?? undefined },
+      { openForSell: true }
+    );
     setBuyPanelOpen(true);
   };
 
@@ -975,7 +970,15 @@ export default function PortfolioPage() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => { hapticLight(); setSelectedToken({ mint: t.mint, name, symbol: sym }, { openForSell: true }); setBuyPanelOpen(true, "token"); setSwapOpen(false); }}
+                                  onClick={() => {
+                                    hapticLight();
+                                    setSelectedToken(
+                                      { mint: t.mint, name, symbol: sym, price: info?.priceUsd ?? undefined },
+                                      { openForSell: true }
+                                    );
+                                    setBuyPanelOpen(true, "token");
+                                    setSwapOpen(false);
+                                  }}
                                   className="shrink-0 px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110"
                                   style={{ background: "var(--bags)", color: "var(--accent-text)" }}
                                 >
@@ -1053,44 +1056,18 @@ export default function PortfolioPage() {
             </div>
             {connected && (
               <div className="mb-6 md:mb-8">
-                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h2
-                    className="font-heading font-semibold text-sm uppercase tracking-wider"
-                    style={{ color: "var(--text-3)" }}
-                  >
-                    P&amp;L card
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      hapticLight();
-                      setPnlDemoMode((wasDemo) => {
-                        const next = !wasDemo;
-                        if (next) setMockPnlPositions(createMockPnlPositions());
-                        return next;
-                      });
-                    }}
-                    className="w-fit rounded-lg border px-3 py-1.5 font-body text-xs font-medium transition-colors"
-                    style={{
-                      borderColor: "var(--border-subtle)",
-                      background: pnlDemoMode ? "var(--accent-dim)" : "var(--bg-elevated)",
-                      color: pnlDemoMode ? "var(--accent)" : "var(--text-2)",
-                    }}
-                  >
-                    {pnlDemoMode ? "Use live portfolio data" : "Try demo numbers"}
-                  </button>
-                </div>
-                <p className="mb-2 font-body text-[11px] leading-snug" style={{ color: "var(--text-3)" }}>
-                  Download is off until you have a real position — or tap <strong>Try demo numbers</strong> (
-                  <span className="font-mono">?demoPnl=1</span>).
-                </p>
+                <h2
+                  className="font-heading font-semibold text-sm uppercase tracking-wider mb-3"
+                  style={{ color: "var(--text-3)" }}
+                >
+                  P&amp;L card
+                </h2>
                 <PnlCard
-                  totalPnlUsd={pnlDemoMode ? demoTotals.totalPnlUsd : totalPnlUsd}
-                  totalPnlPercent={pnlDemoMode ? demoTotals.totalPnlPercent : totalPnlPercent}
-                  positions={pnlDemoMode ? mockPnlPositions : pnlPositions}
+                  totalPnlUsd={totalPnlUsd}
+                  totalPnlPercent={totalPnlPercent}
+                  positions={pnlPositions}
                   walletAddress={publicKey?.toBase58() ?? null}
                   isLoading={!!connected && tokensLoading}
-                  demoMode={pnlDemoMode}
                   onSell={handlePnlSell}
                 />
               </div>
@@ -1261,7 +1238,13 @@ export default function PortfolioPage() {
                   </div>
                 ) : (
                   <ul className="space-y-3">
-                    {predictionPositions.map((p) => (
+                    {predictionPositions.map((p) => {
+                      const info = tokenInfoByMint.get(p.mint);
+                      const displayName = info?.name ?? p.title;
+                      const displaySymbol = info?.symbol ?? p.ticker;
+                      const mintPnl = pnlByMint[p.mint];
+                      const caShort = `${p.mint.slice(0, 6)}…${p.mint.slice(-4)}`;
+                      return (
                       <li
                         key={`${p.ticker}-${p.side}`}
                         className="rounded-xl border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
@@ -1270,9 +1253,26 @@ export default function PortfolioPage() {
                           background: "var(--bg-elevated)",
                         }}
                       >
-                        <p className="font-heading font-medium text-sm line-clamp-2 mb-3" style={{ color: "var(--text-1)" }}>
-                          {p.title}
-                        </p>
+                        <div className="flex items-center gap-3 min-w-0 mb-3">
+                          {info?.imageUrl ? (
+                            <img src={info.imageUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
+                          ) : (
+                            <div
+                              className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center font-mono text-sm font-semibold"
+                              style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
+                            >
+                              {displaySymbol.slice(0, 2)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-heading font-medium text-sm line-clamp-2" style={{ color: "var(--text-1)" }}>
+                              {displayName}
+                            </p>
+                            <p className="font-mono text-[11px] mt-0.5 truncate" style={{ color: "var(--text-3)" }} title={p.mint}>
+                              {caShort}
+                            </p>
+                          </div>
+                        </div>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span
                             className="text-[11px] font-body font-semibold px-2.5 py-1 rounded-lg"
@@ -1292,10 +1292,40 @@ export default function PortfolioPage() {
                                 Market {p.probability.toFixed(0)}% YES
                               </p>
                             )}
+                            {mintPnl && (
+                              <p
+                                className="font-mono text-[11px] tabular-nums mt-1"
+                                style={{ color: mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)" }}
+                                title="Approximate PnL from Siren trades"
+                              >
+                                PnL:{" "}
+                                {mintPnl.pnlUsd >= 0 ? "+" : "-"}$
+                                {Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}{" "}
+                                ({mintPnl.pnlPercent.toFixed(1)}%)
+                              </p>
+                            )}
                           </div>
                         </div>
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              hapticLight();
+                              openSellPanel(p.mint, displaySymbol, displayName);
+                            }}
+                            className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
+                            style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                          >
+                            Sell
+                          </button>
+                        </div>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -1396,6 +1426,13 @@ export default function PortfolioPage() {
                               </p>
                               <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
                                 {displayName !== "Unknown" ? displayName : t.mint}
+                              </p>
+                              <p
+                                className="font-mono text-[11px] mt-1 truncate"
+                                style={{ color: "var(--text-3)" }}
+                                title={t.mint}
+                              >
+                                {t.mint.slice(0, 6)}…{t.mint.slice(-4)}
                               </p>
                             </div>
                           </div>

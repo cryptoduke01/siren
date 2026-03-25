@@ -24,40 +24,8 @@ interface PnlCardProps {
   positions: PnlPosition[];
   walletAddress?: string | null;
   isLoading?: boolean;
-  /** Random sample data mode — enables export for testing without real positions. */
-  demoMode?: boolean;
   /** Called when user clicks sell for a position. Opens buy panel in sell mode. */
   onSell?: (position: PnlPosition) => void;
-}
-
-/** Sample positions for testing the card / download without real holdings (no mint → no Sell). */
-export function createMockPnlPositions(): PnlPosition[] {
-  const between = (min: number, max: number) => min + Math.random() * (max - min);
-  const round2 = (n: number) => Math.round(n * 100) / 100;
-
-  const mk = (ticker: string, title: string, pred: boolean) => {
-    const valueUsd = round2(between(400, 9800));
-    const pnlUsd = round2(between(-valueUsd * 0.35, valueUsd * 0.55));
-    const cost = Math.max(valueUsd - pnlUsd, 1);
-    const pnlPercent = round2((pnlUsd / cost) * 100);
-    const row: PnlPosition = {
-      ticker,
-      title,
-      valueUsd,
-      pnlUsd,
-      pnlPercent,
-    };
-    if (pred) {
-      row.side = Math.random() > 0.5 ? "yes" : "no";
-      row.kalshiMarket = `Kalshi: ${ticker}`;
-    }
-    return row;
-  };
-
-  return [
-    mk("KXRTCMAR-25", "Will the Fed cut rates in March?", true),
-    mk("SOL", "Solana", false),
-  ];
 }
 
 export function formatPnl(value: number | null): string {
@@ -91,7 +59,6 @@ export function PnlCard({
   positions,
   walletAddress,
   isLoading,
-  demoMode,
   onSell,
 }: PnlCardProps) {
   const [exporting, setExporting] = useState(false);
@@ -109,7 +76,6 @@ export function PnlCard({
   const isPositive = pnlUsd != null && pnlUsd > 0;
   const isLoss = pnlUsd != null && pnlUsd < 0;
   const hasShareableContent =
-    demoMode ||
     positions.some((p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null);
 
   const accent = isLoss ? "var(--down)" : "var(--up)";
@@ -187,11 +153,6 @@ export function PnlCard({
 
   return (
     <div className="flex flex-col gap-3">
-      {demoMode && (
-        <p className="max-w-[360px] font-body text-xs leading-snug" style={{ color: "var(--text-3)" }}>
-          Preview: random sample numbers — not your real portfolio. Turn off demo to use live data.
-        </p>
-      )}
       <div className="w-full min-w-0 max-w-[360px]">
         <div className="relative">
           {/* Privacy control sits outside export ref so it is not baked into PNG */}
@@ -395,10 +356,10 @@ export function PnlCard({
         </div>
       </div>
 
-      {!hasShareableContent && !demoMode && (
+      {!hasShareableContent && (
         <div className="flex max-w-[360px] flex-wrap items-center gap-2">
           <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-            Connect and trade to see P&amp;L, or use &quot;Try demo numbers&quot; above to test the card.
+            Connect and trade to see P&amp;L.
           </p>
           <Link
             href="/"

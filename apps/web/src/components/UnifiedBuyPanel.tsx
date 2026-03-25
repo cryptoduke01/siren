@@ -24,6 +24,32 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
+async function getMintDecimals(conn: any, mint: string): Promise<number> {
+  const info = await conn.getParsedAccountInfo(new PublicKey(mint));
+  const parsed = info.value ? (info.value.data as any)?.parsed : null;
+  const decimals = parsed?.info?.decimals;
+  if (typeof decimals !== "number") throw new Error("Unable to fetch mint decimals");
+  return decimals;
+}
+
+function parseUnitsToBigInt(amountStr: string, decimals: number): bigint {
+  const raw = amountStr.trim();
+  if (!raw) return BigInt(0);
+  const negative = raw.startsWith("-");
+  const s = negative ? raw.slice(1) : raw;
+
+  const [wholePart, fracPartRaw = ""] = s.split(".");
+  const whole = wholePart ? BigInt(wholePart) : BigInt(0);
+  const fracDigits = fracPartRaw.replace(/[^0-9]/g, "");
+  const fracTrunc = fracDigits.slice(0, decimals);
+  const fracPadded = fracTrunc.padEnd(decimals, "0");
+  const frac = fracPadded ? BigInt(fracPadded) : BigInt(0);
+
+  const scale = BigInt(10) ** BigInt(decimals);
+  const baseUnits = whole * scale + frac;
+  return negative ? -baseUnits : baseUnits;
+}
+
 const MOCK_CHART_DATA = [
   { t: "0h", v: 0.0003 },
   { t: "4h", v: 0.00035 },
@@ -250,8 +276,8 @@ export function UnifiedBuyPanel() {
           setLoading(false);
           return;
         }
-        const decimals = 6;
-        amount = String(BigInt(Math.floor(amountNum * 10 ** decimals)));
+        const decimals = await getMintDecimals(connection, selectedToken.mint);
+        amount = parseUnitsToBigInt(amountStr, decimals).toString();
         inputMint = selectedToken.mint;
         outputMint = NATIVE_SOL_MINT;
       } else {

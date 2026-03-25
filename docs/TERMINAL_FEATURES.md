@@ -20,14 +20,14 @@ Standard terminal capabilities and roadmap. Brand assets incoming — placeholde
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Slippage UI** | 📋 | Slider/preset in UnifiedBuyPanel (25, 50, 100, 200, 500 bps) |
-| **MEV badge** | 📋 | Display “MEV protected” in swap panel |
-| **Limit orders** | 📋 | Conditional / limit for markets (DFlow API dependent) |
-| **Price alerts** | 📋 | Token/market alerts; notify on threshold |
-| **PWA / offline** | 📋 | Service worker, install prompt |
-| **Charts** | 📋 | Real price history (DexScreener/Jupiter) |
-| **RPC fallback** | 📋 | Multiple RPC endpoints |
-| **Transaction history** | 📋 | Recent swaps, link to explorer |
+| **Slippage UI** | WIP | Slider/preset in UnifiedBuyPanel (25, 50, 100, 200, 500 bps) |
+| **MEV badge** | WIP | Display “MEV protected” in swap panel |
+| **Limit orders** | WIP | Conditional / limit for markets (DFlow API dependent) |
+| **Price alerts** | WIP | Token/market alerts; notify on threshold |
+| **PWA / offline** | WIP | Service worker, install prompt |
+| **Charts** | WIP | Real price history (DexScreener/Jupiter) |
+| **RPC fallback** | WIP | Multiple RPC endpoints |
+| **Transaction history** | WIP | Recent swaps, link to explorer |
 
 ## Brand Assets (Placeholders)
 
