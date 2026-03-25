@@ -1,8 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { XCircle, Trash2, Users, ClipboardList, Copy, Check, KeyRound, Mail, Search } from "lucide-react";
+import { toPng } from "html-to-image";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
 import { hapticLight } from "@/lib/haptics";
 import { PasscodeDigits } from "@/components/PasscodeDigits";
 import { AdminNav } from "@/components/AdminNav";
@@ -102,6 +112,17 @@ export default function AdminPage() {
   const [volumeLoading, setVolumeLoading] = useState(false);
   const [volumeEmailInput, setVolumeEmailInput] = useState("");
 
+  type UserStats = {
+    totalUsers: number;
+    newUsers24h: number;
+    newUsers7d: number;
+    activeUsers24h: number;
+  };
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [dailyVolumeSeries, setDailyVolumeSeries] = useState<Array<{ day: string; volumeSol: number }>>([]);
+  const [dashboardExporting, setDashboardExporting] = useState(false);
+  const dashboardRef = useRef<HTMLDivElement>(null);
+
   const filteredWaitlist = searchQuery.trim()
     ? waitlistRows.filter(
         (r) =>
@@ -110,6 +131,29 @@ export default function AdminPage() {
           r.wallet?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : waitlistRows;
+
+  const waitlistDailySeries = useMemo(() => {
+    const days = 14;
+    const dayMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const startMs = now - (days - 1) * dayMs;
+
+    const buckets = Array.from({ length: days }, (_, i) => {
+      const ts = startMs + i * dayMs;
+      return { day: new Date(ts).toISOString().slice(0, 10), count: 0 };
+    });
+    const idxByDay = new Map<string, number>();
+    buckets.forEach((b, i) => idxByDay.set(b.day, i));
+
+    for (const row of waitlistRows) {
+      const ts = row.created_at ? Date.parse(row.created_at) : NaN;
+      if (!Number.isFinite(ts) || ts < startMs) continue;
+      const dayKey = new Date(ts).toISOString().slice(0, 10);
+      const idx = idxByDay.get(dayKey);
+      if (typeof idx === "number") buckets[idx].count += 1;
+    }
+    return buckets;
+  }, [waitlistRows]);
 
   const handlePassSubmit = () => {
     if (!ADMIN_PASSCODE) {
@@ -179,6 +223,28 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadUserStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/stats`, { credentials: "omit" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load user stats");
+      setUserStats(data.data ?? null);
+    } catch {
+      setUserStats(null);
+    }
+  }, []);
+
+  const loadDailyVolume = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/volume/daily?days=14`, { credentials: "omit" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load daily volume");
+      setDailyVolumeSeries(data.data?.series ?? []);
+    } catch {
+      setDailyVolumeSeries([]);
+    }
+  }, []);
+
   const loadAppUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -200,6 +266,12 @@ export default function AdminPage() {
   }, [hasAccess, loadWaitlist]);
 
   useEffect(() => {
+    if (!hasAccess) return;
+    void loadUserStats();
+    void loadDailyVolume();
+  }, [hasAccess, loadUserStats, loadDailyVolume]);
+
+  useEffect(() => {
     if (!hasAccess || tab !== "app-users") return;
     void loadAppUsers();
   }, [hasAccess, tab, loadAppUsers]);
@@ -210,9 +282,38 @@ export default function AdminPage() {
   }, [hasAccess, tab, loadVolume]);
 
   const refresh = () => {
+    void loadUserStats();
+    void loadDailyVolume();
     if (tab === "waitlist") void loadWaitlist();
     else if (tab === "app-users") void loadAppUsers();
     else if (tab === "volume") void loadVolume();
+  };
+
+  const handleExportDashboard = async () => {
+    if (!dashboardRef.current) return;
+    setDashboardExporting(true);
+    try {
+      await document.fonts.ready;
+      await new Promise((r) => setTimeout(r, 120));
+      const dataUrl = await toPng(dashboardRef.current, {
+        pixelRatio: 2,
+        cacheBust: true,
+        backgroundColor: "transparent",
+        skipFonts: false,
+      });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `siren-admin-dashboard-${Date.now()}.png`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("Dashboard export failed", e);
+    } finally {
+      setDashboardExporting(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -418,6 +519,139 @@ export default function AdminPage() {
               Refresh
             </button>
           </header>
+
+          <div
+            ref={dashboardRef}
+            className="mb-6 p-4 rounded-xl border"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+          >
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-heading text-sm mb-1" style={{ color: "var(--text-2)" }}>
+                  Dashboard overview
+                </h2>
+                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                  Daily volume, waitlist activity, and app user health.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportDashboard}
+                disabled={dashboardExporting}
+                className="px-3 py-2 rounded-lg text-xs font-heading uppercase tracking-[0.10em] disabled:opacity-50 transition-opacity"
+                style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-default)" }}
+              >
+                {dashboardExporting ? "Exporting…" : "Export PNG"}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Total app users
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {userStats ? userStats.totalUsers.toLocaleString() : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  New users (24h)
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {userStats ? userStats.newUsers24h.toLocaleString() : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Active users (24h)
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {userStats ? userStats.activeUsers24h.toLocaleString() : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Platform volume (7d)
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {volumeData ? volumeData.platform7d.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "—"} SOL
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  Daily platform volume (SOL)
+                </p>
+                <div className="h-[240px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={dailyVolumeSeries}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                      <XAxis dataKey="day" tickFormatter={(v) => (typeof v === "string" ? v.slice(5) : v)} stroke="var(--text-3)" />
+                      <YAxis stroke="var(--text-3)" tickFormatter={(v) => `${v}`} />
+                      <Tooltip
+                        contentStyle={{ background: "var(--bg-base)", border: "1px solid var(--border-subtle)" }}
+                        labelStyle={{ color: "var(--text-2)" }}
+                      />
+                      <Line type="monotone" dataKey="volumeSol" stroke="var(--accent)" dot={false} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  Waitlist signups (last 14 days)
+                </p>
+                <div className="h-[240px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={waitlistDailySeries}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                      <XAxis dataKey="day" tickFormatter={(v) => (typeof v === "string" ? v.slice(5) : v)} stroke="var(--text-3)" />
+                      <YAxis stroke="var(--text-3)" />
+                      <Tooltip
+                        contentStyle={{ background: "var(--bg-base)", border: "1px solid var(--border-subtle)" }}
+                        labelStyle={{ color: "var(--text-2)" }}
+                      />
+                      <Line type="monotone" dataKey="count" stroke="var(--accent)" dot={false} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  Waitlist pipeline
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Total waitlist</p>
+                    <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                      {waitlistRows.length.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Showing</p>
+                    <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                      500 max
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  PnL & trading metrics
+                </p>
+                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                  PnL tracking is currently shown in-app (Portfolio). Admin PnL aggregation needs server-side trade logging first.
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
             <button

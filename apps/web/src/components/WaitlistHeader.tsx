@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Sun, Moon } from "lucide-react";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -103,7 +103,7 @@ export function WaitlistHeader() {
                     className="w-9 h-9 rounded-[6px] flex items-center justify-center text-sm"
                     style={{ background: "var(--bg-surface)", color: "var(--text-1)" }}
                   >
-                    {theme === "dark" ? "☀" : "☽"}
+                    {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                   </button>
                 </div>
               </nav>

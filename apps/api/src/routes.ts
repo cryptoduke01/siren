@@ -51,6 +51,34 @@ function getVolumeStats(): {
   return { platform7d, platform30d, platformAllTime, byWallet };
 }
 
+function getDailyPlatformVolumeStats(days: number): { day: string; volumeSol: number }[] {
+  const safeDays = Math.min(Math.max(days || 14, 1), 30);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const startMs = now - (safeDays - 1) * dayMs;
+
+  const buckets = Array.from({ length: safeDays }, (_, i) => {
+    const ts = startMs + i * dayMs;
+    return {
+      day: new Date(ts).toISOString().slice(0, 10),
+      volumeSol: 0,
+    };
+  });
+
+  for (const [, entries] of volumeStore) {
+    for (const e of entries) {
+      if (!e || typeof e.volumeSol !== "number" || !Number.isFinite(e.volumeSol) || e.volumeSol <= 0) continue;
+      if (typeof e.ts !== "number" || !Number.isFinite(e.ts)) continue;
+      if (e.ts < startMs) continue;
+      const idx = Math.floor((e.ts - startMs) / dayMs);
+      if (idx < 0 || idx >= buckets.length) continue;
+      buckets[idx].volumeSol += e.volumeSol;
+    }
+  }
+
+  return buckets;
+}
+
 export function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true, ts: Date.now() }));
 
@@ -743,6 +771,13 @@ export function registerRoutes(app: FastifyInstance) {
   app.get("/api/admin/volume", async (_req, reply) => {
     const stats = getVolumeStats();
     return reply.send({ success: true, data: stats });
+  });
+
+  /** Admin: daily platform volume series (for dashboard charts). */
+  app.get<{ Querystring: { days?: string } }>("/api/admin/volume/daily", async (req, reply) => {
+    const days = Number.parseInt(req.query.days || "14", 10);
+    const series = getDailyPlatformVolumeStats(Number.isFinite(days) ? days : 14);
+    return reply.send({ success: true, data: { series } });
   });
 
   /** Admin: aggregate user stats for dashboard. */

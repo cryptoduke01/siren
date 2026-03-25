@@ -6,15 +6,15 @@ Standard terminal capabilities and roadmap. Brand assets incoming — placeholde
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **DFlow-first swap router** | ✅ | Prediction market tokens via DFlow, Jupiter fallback for all SPL |
-| **MEV protection** | ✅ | Jupiter routing includes MEV-resistant paths |
-| **Prediction markets** | ✅ | Kalshi via DFlow; markets list, velocity, sort/filter |
-| **Token swap (buy/sell)** | ✅ | Unified panel; DFlow or Jupiter |
-| **Slippage** | ⚙️ | Default 2% (200 bps); configurable via API |
-| **Bags token launch** | ✅ | Create token, social links, fee share |
-| **Portfolio** | ✅ | Balances, positions, token holdings, Bags launches |
-| **Watchlist** | ✅ | Saved markets/tokens |
-| **Responsive layout** | ✅ | Mobile markets sheet, adjustable sidebar |
+| **DFlow-first swap router** | OK | Prediction market tokens via DFlow, Jupiter fallback for all SPL |
+| **MEV protection** | OK | Jupiter routing includes MEV-resistant paths |
+| **Prediction markets** | OK | Kalshi via DFlow; markets list, velocity, sort/filter |
+| **Token swap (buy/sell)** | OK | Unified panel; DFlow or Jupiter |
+| **Slippage** | Config | Default 2% (200 bps); configurable via API |
+| **Bags token launch** | OK | Create token, social links, fee share |
+| **Portfolio** | OK | Balances, positions, token holdings, Bags launches |
+| **Watchlist** | OK | Saved markets/tokens |
+| **Responsive layout** | OK | Mobile markets sheet, adjustable sidebar |
 
 ## Planned / Placeholder
 

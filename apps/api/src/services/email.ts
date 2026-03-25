@@ -44,13 +44,13 @@ export async function sendWelcomeWithAccessCode(params: {
                 <tr>
                   <td style="padding-top:32px;">
                     <h1 style="margin:0 0 20px;font-size:22px;font-weight:600;font-family:'Georgia', serif;color:#f4f4f6;">
-                      You're in — welcome to Siren
+                      You're in - welcome to Siren
                     </h1>
                     <p style="margin:0 0 20px;font-size:16px;line-height:1.65;color:#a1a1aa;">
                       ${greeting},
                     </p>
                     <p style="margin:0 0 28px;font-size:16px;line-height:1.65;color:#a1a1aa;">
-                      You're among the first to access Siren — the event-driven meme token terminal on Solana. Use your one-time access code below to unlock the app.
+                      You're among the first to access Siren - the event-driven meme token terminal on Solana. Use your one-time access code below to unlock the app.
                     </p>
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:28px;">
                       <tr>
@@ -69,7 +69,7 @@ export async function sendWelcomeWithAccessCode(params: {
                       <li>Browse Kalshi prediction markets and trade meme tokens</li>
                     </ol>
                     <a href="${APP_URL}" style="display:inline-block;background:#22c55e;color:#0c0c0e;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">
-                      Open Siren →
+                      Open Siren ->
                     </a>
                   </td>
                 </tr>
@@ -79,7 +79,7 @@ export async function sendWelcomeWithAccessCode(params: {
                       <a href="${DOCS_URL}" style="color:#71717a;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#71717a;text-decoration:underline;">X @sirentracker</a>
                     </p>
                     <p style="margin:0;font-size:12px;color:#52525b;">
-                      © ${new Date().getFullYear()} Siren · Event-driven meme terminal
+                      (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
                     </p>
                   </td>
                 </tr>
@@ -97,7 +97,7 @@ export async function sendWelcomeWithAccessCode(params: {
   const { error } = await resend.emails.send({
     from: FROM,
     to: [params.to],
-    subject: "Your Siren access code — you're in",
+    subject: "Your Siren access code - you're in",
     html,
   });
 
@@ -139,13 +139,13 @@ export async function sendVolumeCompetitionEmail(params: {
                 ${greeting},
               </p>
               <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#b4b4c8;">
-                We’ve been heads down wiring swaps, portfolio PnL, Bags fee claiming, and surfaced tokens around real-world events — and we’re finally ready to start inviting more traders back in.
+                We’ve been heads down wiring swaps, portfolio PnL, Bags fee claiming, and surfaced tokens around real-world events - and we’re finally ready to start inviting more traders back in.
               </p>
               <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#b4b4c8;">
                 Now’s a great time to jump back in, try the terminal, and help us shake out the edges. Connect your wallet, trade a few tokens, and tell us what feels good (or rough).
               </p>
               <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#b4b4c8;">
-                We’re also kicking off a low‑key volume competition for early users. We’ll share full details (prizes, dates, and rules) publicly soon — for now, just know that early trading volume will count.
+                We’re also kicking off a low‑key volume competition for early users. We’ll share full details (prizes, dates, and rules) publicly soon - for now, just know that early trading volume will count.
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;">
                 <tr>
@@ -160,7 +160,7 @@ export async function sendVolumeCompetitionEmail(params: {
                 </tr>
               </table>
               <a href="${APP_URL}" style="display:inline-block;background:#22c55e;color:#050509;font-size:14px;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px;margin:0 0 12px;">
-                Open Siren →
+                Open Siren ->
               </a>
               <p style="margin:8px 0 0;font-size:12px;color:#717189;">
                 You’re receiving this because you joined the Siren waitlist or connected a wallet.
@@ -173,7 +173,7 @@ export async function sendVolumeCompetitionEmail(params: {
                 <a href="${DOCS_URL}" style="color:#77778f;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#77778f;text-decoration:underline;">X @sirentracker</a>
               </p>
               <p style="margin:0;font-size:11px;color:#55556a;">
-                © ${new Date().getFullYear()} Siren · Event-driven meme terminal
+                (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
               </p>
             </td>
           </tr>
@@ -188,7 +188,7 @@ export async function sendVolumeCompetitionEmail(params: {
   const { error } = await resend.emails.send({
     from: FROM,
     to: [params.to],
-    subject: "Siren Volume Sprint — trade to climb the board",
+    subject: "Siren Volume Sprint - trade to climb the board",
     html,
   });
 

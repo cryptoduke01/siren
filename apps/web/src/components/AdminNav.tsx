@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Sun, Moon } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
+import { useThemeStore } from "@/store/useThemeStore";
 
 export function AdminNav() {
   const pathname = usePathname();
+  const { theme, toggleTheme } = useThemeStore();
   return (
     <header
       className="h-14 flex items-center justify-between px-4 flex-shrink-0"
@@ -49,6 +52,15 @@ export function AdminNav() {
           </Link>
         </nav>
       </div>
+      <button
+        type="button"
+        onClick={() => { hapticLight(); toggleTheme(); }}
+        className="w-9 h-9 rounded-[8px] flex items-center justify-center"
+        style={{ color: "var(--text-2)", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
     </header>
   );
 }

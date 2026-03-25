@@ -524,7 +524,6 @@ export default function PortfolioPage() {
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
-  const [platformVolumeSol, setPlatformVolumeSol] = useState(0);
   const [pnlByMint, setPnlByMint] = useState<Record<string, { pnlUsd: number; pnlPercent: number }>>({});
 
   const loadBagsLaunches = () => {
@@ -607,24 +606,6 @@ export default function PortfolioPage() {
       const now = Date.now();
       const cutoffVolume = now - 7 * dayMs;
 
-      // Platform volume (7d, all siren-volume-* keys, device-local)
-      let platformVol = 0;
-      try {
-        const keys = Object.keys(window.localStorage).filter((k) => k.startsWith("siren-volume-"));
-        for (const k of keys) {
-          const raw = window.localStorage.getItem(k);
-          if (!raw) continue;
-          const entries: Array<{ ts?: number; volumeSol?: number }> = JSON.parse(raw);
-          if (!Array.isArray(entries)) continue;
-          platformVol += entries
-            .filter((e) => (e.ts ?? 0) >= cutoffVolume && typeof e.volumeSol === "number" && Number.isFinite(e.volumeSol))
-            .reduce((sum, e) => sum + (e.volumeSol || 0), 0);
-        }
-      } catch {
-        platformVol = 0;
-      }
-      setPlatformVolumeSol(platformVol);
-
       if (!publicKey) {
         setWalletVolumeSol(0);
         setPnlByMint({});
@@ -703,7 +684,6 @@ export default function PortfolioPage() {
       setPnlByMint(nextPnl);
     } catch {
       setWalletVolumeSol(0);
-      setPlatformVolumeSol(0);
       setPnlByMint({});
     }
   }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings]);
@@ -909,14 +889,7 @@ export default function PortfolioPage() {
                   )}
                 </p>
               )}
-              {platformVolumeSol > 0 && (
-                <p className="font-body text-xs mt-0.5" style={{ color: "var(--text-3)" }}>
-                  Platform 7d volume:{" "}
-                  <span className="font-mono">
-                    {platformVolumeSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
-                  </span>
-                </p>
-              )}
+              {/* Platform volume is admin/competition metric; keep it off user-facing portfolio. */}
               <div className="flex flex-wrap gap-2 mt-4">
                 <button
                   type="button"

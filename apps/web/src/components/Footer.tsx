@@ -11,7 +11,7 @@ export function Footer() {
       <div className="max-w-5xl mx-auto px-5 py-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
         <div>
           <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
-            © {new Date().getFullYear()} Siren
+            (c) {new Date().getFullYear()} Siren
           </p>
           <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
             Event-driven meme terminal.

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Star, Wallet } from "lucide-react";
+import { Menu, X, Star, Wallet, Sun, Moon, Rocket, TrendingUp, ClipboardList } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
@@ -14,9 +14,9 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 
 const NAV = [
-  { href: "/", label: "Terminal" },
-  { href: "/trending", label: "Trending" },
-  { href: "/waitlist", label: "Waitlist" },
+  { href: "/", label: "Terminal", icon: Rocket },
+  { href: "/trending", label: "Trending", icon: TrendingUp },
+  { href: "/waitlist", label: "Waitlist", icon: ClipboardList },
 ];
 
 export function TopBar() {
@@ -103,7 +103,7 @@ export function TopBar() {
             style={{ color: "var(--text-2)" }}
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
-            {theme === "dark" ? "☀" : "☽"}
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
           <WalletButton />
         </div>
@@ -156,7 +156,7 @@ export function TopBar() {
                 </button>
               </div>
               <nav className="flex-1 p-4 flex flex-col gap-1 overflow-y-auto">
-                {navItems.map(({ href, label }) => {
+                {navItems.map(({ href, label, icon: Icon }) => {
                   const isActive = pathname === href || (href === "/" && pathname === "/");
                   const className = "font-body font-medium text-sm py-3 px-3 rounded-[8px]";
                   const style = { color: isActive ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" };
@@ -168,7 +168,10 @@ export function TopBar() {
                       className={className}
                       style={style}
                     >
-                      {label}
+                      <span className="flex items-center gap-2">
+                        <Icon className="w-4 h-4" />
+                        {label}
+                      </span>
                     </Link>
                   );
                 })}
@@ -196,7 +199,7 @@ export function TopBar() {
                     className="w-9 h-9 rounded-[6px] flex items-center justify-center text-sm"
                     style={{ background: "var(--bg-surface)", color: "var(--text-1)" }}
                   >
-                    {theme === "dark" ? "☀" : "☽"}
+                    {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                   </button>
                 </div>
                 <div className="pt-2">
