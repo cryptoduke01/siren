@@ -10,6 +10,7 @@ import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import { Copy, Check, Loader2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 import { useSirenStore } from "@/store/useSirenStore";
 import { ResultModal } from "./ResultModal";
+import { TradePnLCard, type TradePnLToken } from "./TradePnLCard";
 import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -211,6 +212,17 @@ export function UnifiedBuyPanel() {
   const [tokenPriceFetchState, setTokenPriceFetchState] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [tokenPriceFetchReason, setTokenPriceFetchReason] = useState<string | null>(null);
 
+  type TradePnLCardModel = {
+    token: TradePnLToken;
+    profitUsd: number;
+    percent: number;
+    kalshiMarket: string;
+    wallet: string | null;
+    executedAt: number;
+  };
+  const [tradePnLModalOpen, setTradePnLModalOpen] = useState(false);
+  const [tradePnLData, setTradePnLData] = useState<TradePnLCardModel | null>(null);
+
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
     queryFn: async () => {
@@ -284,15 +296,17 @@ export function UnifiedBuyPanel() {
     };
   }, [selectedToken?.mint, selectedToken?.price, selectedToken?.name, selectedToken?.symbol, sellMode, openForSell]);
 
-  if (!buyPanelOpen) return null;
-  if (buyPanelMode === "market" && !selectedMarket) return null;
-  if (buyPanelMode === "token" && !selectedToken) return null;
+  if (!buyPanelOpen && !tradePnLModalOpen) return null;
+  if (buyPanelOpen && buyPanelMode === "market" && !selectedMarket) return null;
+  if (buyPanelOpen && buyPanelMode === "token" && !selectedToken) return null;
 
   const onClose = () => {
     setBuyPanelOpen(false);
     setError(null);
     setSuccess(null);
     setResultModal(null);
+    setTradePnLModalOpen(false);
+    setTradePnLData(null);
   };
   const buyBlocked = !!selectedToken?.riskBlocked && !sellMode;
   const riskScore = selectedToken?.riskScore ?? 0;
@@ -352,6 +366,14 @@ export function UnifiedBuyPanel() {
       const tokenPriceUsd = typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
       const tokenNameToLog = tokenDisplayName || selectedToken.name;
       const tokenSymbolToLog = tokenDisplaySymbol || selectedToken.symbol;
+
+      // For the Trade PnL card (buy flows)
+      let tokenAmountForPnL: number | null = null;
+      let boughtUsdForPnL: number | null = null;
+      if (!isSell && tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0 && Number.isFinite(amountNum)) {
+        boughtUsdForPnL = amountNum * solPriceUsd;
+        tokenAmountForPnL = (amountNum * solPriceUsd) / tokenPriceUsd;
+      }
 
       const res = await fetch(`${API_URL}/api/swap/order`, {
         method: "POST",
@@ -496,6 +518,42 @@ export function UnifiedBuyPanel() {
         }
       } catch {
         // ignore volume tracking errors
+      }
+
+      // Show screenshot-matching Trade PnL card after successful BUY (for quick testing).
+      if (!isSell && tokenAmountForPnL != null && boughtUsdForPnL != null && tokenAmountForPnL > 0 && boughtUsdForPnL > 0) {
+        try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+          const res = await fetch(`${apiUrl}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
+          const j = await res.json();
+          const currentPriceUsd = typeof j?.data?.priceUsd === "number" && Number.isFinite(j.data.priceUsd) ? j.data.priceUsd : null;
+
+          const currentValueUsd = currentPriceUsd != null ? tokenAmountForPnL * currentPriceUsd : boughtUsdForPnL;
+          const profitUsdCard = currentValueUsd - boughtUsdForPnL;
+          const percentCard = boughtUsdForPnL > 0 ? (profitUsdCard / boughtUsdForPnL) * 100 : 0;
+
+          const kalshiTitle =
+            buyPanelMode === "market" && selectedMarket?.title ? selectedMarket.title : selectedMarket?.title ?? "Signal from Kalshi";
+
+          setTradePnLData({
+            token: {
+              name: tokenDisplayName || selectedToken.name,
+              symbol: tokenDisplaySymbol || selectedToken.symbol,
+            },
+            profitUsd: profitUsdCard,
+            percent: percentCard,
+            kalshiMarket: kalshiTitle,
+            wallet: publicKey.toBase58(),
+            executedAt: Date.now(),
+          });
+          setTradePnLModalOpen(true);
+          setBuyPanelOpen(false);
+          setResultModal(null);
+          setSuccess(null);
+          return;
+        } catch {
+          // If price fetch fails, still show regular success UI.
+        }
       }
 
       setSuccess(isSell ? `Sold! ${tokenDisplayName || selectedToken.name} Tx: ${sig.slice(0, 8)}...` : `Swap successful! ${sig.slice(0, 8)}...`);
@@ -802,6 +860,49 @@ export function UnifiedBuyPanel() {
             </div>
           </motion.div>
         </>
+      )}
+      {tradePnLModalOpen && tradePnLData && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={() => {
+            hapticLight();
+            setTradePnLModalOpen(false);
+            setTradePnLData(null);
+          }}
+        >
+          <div
+            className="w-full max-w-[460px]"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              borderRadius: "20px",
+            }}
+          >
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  hapticLight();
+                  setTradePnLModalOpen(false);
+                  setTradePnLData(null);
+                }}
+                className="px-3 py-2 rounded-lg font-body text-xs font-medium"
+                style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
+                aria-label="Close PnL card"
+              >
+                Close
+              </button>
+            </div>
+            <TradePnLCard
+              token={tradePnLData.token}
+              profitUsd={tradePnLData.profitUsd}
+              percent={tradePnLData.percent}
+              kalshiMarket={tradePnLData.kalshiMarket}
+              wallet={tradePnLData.wallet}
+              executedAt={tradePnLData.executedAt}
+            />
+          </div>
+        </div>
       )}
       {resultModal && (
         <ResultModal
