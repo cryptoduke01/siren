@@ -818,6 +818,69 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Trades: log buys/sells permanently for open-position tracking + PnL. */
+  app.post<{
+    Body: {
+      wallet: string;
+      mint: string;
+      side: "buy" | "sell";
+      tokenAmount: number | null;
+      priceUsd: number | null;
+      tokenName?: string | null;
+      tokenSymbol?: string | null;
+      txSignature?: string | null;
+      timestamp?: number | null;
+    };
+  }>("/api/trades/log", async (req, reply) => {
+    const {
+      wallet,
+      mint,
+      side,
+      tokenAmount,
+      priceUsd,
+      tokenName = null,
+      tokenSymbol = null,
+      txSignature = null,
+      timestamp,
+    } = req.body || {};
+
+    if (!wallet || typeof wallet !== "string" || wallet.length < 32) {
+      return reply.status(400).send({ success: false, error: "Valid wallet required" });
+    }
+    if (!mint || typeof mint !== "string" || mint.length < 32) {
+      return reply.status(400).send({ success: false, error: "Valid mint required" });
+    }
+    if (side !== "buy" && side !== "sell") {
+      return reply.status(400).send({ success: false, error: "side must be buy or sell" });
+    }
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      const executedAt = typeof timestamp === "number" && Number.isFinite(timestamp) ? new Date(timestamp) : new Date();
+      const { error } = await supabase.from("siren_trades").insert({
+        wallet: wallet.trim(),
+        mint: mint.trim(),
+        side,
+        token_amount: tokenAmount,
+        price_usd: priceUsd,
+        token_name: tokenName,
+        token_symbol: tokenSymbol,
+        tx_signature: txSignature,
+        executed_at: executedAt.toISOString(),
+      });
+
+      if (error) {
+        app.log.error({ err: error }, "siren_trades insert failed");
+        return reply.status(503).send({ success: false, error: error.message || "Trade log failed" });
+      }
+
+      return reply.send({ success: true });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Trade log failed" });
+    }
+  });
+
   /** Admin: list app users (wallet-connected users from users table). */
   app.get<{ Querystring: { limit?: string; offset?: string } }>("/api/admin/users", async (req, reply) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit || "100", 10) || 100, 1), 500);

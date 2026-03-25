@@ -208,6 +208,8 @@ export function UnifiedBuyPanel() {
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
   const [slippageBps, setSlippageBps] = useState(200);
+  const [tokenPriceFetchState, setTokenPriceFetchState] = useState<"idle" | "loading" | "error" | "ready">("idle");
+  const [tokenPriceFetchReason, setTokenPriceFetchReason] = useState<string | null>(null);
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
@@ -227,6 +229,60 @@ export function UnifiedBuyPanel() {
   useEffect(() => {
     if (openForSell && selectedToken) setSellMode(true);
   }, [openForSell, selectedToken?.mint]);
+
+  const tokenDisplayName =
+    selectedToken?.name && selectedToken.name !== "-" && selectedToken.name !== "Unknown" ? selectedToken.name : selectedToken?.symbol ?? "";
+  const tokenDisplaySymbol =
+    selectedToken?.symbol && selectedToken.symbol !== "-" && selectedToken.symbol !== "—" ? selectedToken.symbol : selectedToken?.name ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      if (!selectedToken) return;
+      // Fetch price/name on-demand if we don't have a usable USD price yet.
+      const needsPrice = selectedToken.price == null || !Number.isFinite(selectedToken.price);
+      const needsNameOrSymbol =
+        !selectedToken.name || selectedToken.name === "Unknown" || selectedToken.name === "-" || !selectedToken.symbol || selectedToken.symbol === "-" || selectedToken.symbol === "—";
+      if (!needsPrice && !needsNameOrSymbol) return;
+      setTokenPriceFetchState("loading");
+      setTokenPriceFetchReason(null);
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+        const res = await fetch(`${apiUrl}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
+        const j = await res.json();
+        if (!res.ok || !j?.data) {
+          throw new Error(j?.error || "Token info unavailable");
+        }
+        const d = j.data as { name?: string; symbol?: string; priceUsd?: number };
+        const nextName = d.name ?? selectedToken.name;
+        const nextSymbolRaw = d.symbol ?? selectedToken.symbol;
+        const nextSymbol =
+          nextSymbolRaw && nextSymbolRaw !== "-" && nextSymbolRaw !== "—" ? nextSymbolRaw : (nextName && nextName !== "Unknown" ? nextName : selectedToken.symbol);
+        const nextPrice = typeof d.priceUsd === "number" && Number.isFinite(d.priceUsd) ? d.priceUsd : undefined;
+
+        if (cancelled) return;
+        setSelectedToken(
+          {
+            ...selectedToken,
+            name: nextName,
+            symbol: nextSymbol,
+            price: nextPrice,
+          },
+          { openForSell: sellMode || openForSell }
+        );
+        setTokenPriceFetchState(nextPrice != null ? "ready" : "error");
+        setTokenPriceFetchReason(nextPrice != null ? null : "No reliable USD quote for this mint yet.");
+      } catch (e) {
+        if (cancelled) return;
+        setTokenPriceFetchState("error");
+        setTokenPriceFetchReason(e instanceof Error ? e.message : "Unable to load token price.");
+      }
+    }
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedToken?.mint, selectedToken?.price, selectedToken?.name, selectedToken?.symbol, sellMode, openForSell]);
 
   if (!buyPanelOpen) return null;
   if (buyPanelMode === "market" && !selectedMarket) return null;
@@ -293,6 +349,10 @@ export function UnifiedBuyPanel() {
         outputMint = selectedToken.mint;
       }
 
+      const tokenPriceUsd = typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
+      const tokenNameToLog = tokenDisplayName || selectedToken.name;
+      const tokenSymbolToLog = tokenDisplaySymbol || selectedToken.symbol;
+
       const res = await fetch(`${API_URL}/api/swap/order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -319,23 +379,24 @@ export function UnifiedBuyPanel() {
 
       // Track per-wallet volume and trades for Siren (local, in SOL terms)
       try {
-        if (typeof window !== "undefined" && solPriceUsd > 0) {
+        if (typeof window !== "undefined") {
           let volumeSol: number | null = null;
           let tokenAmountApprox: number | null = null;
-          const tokenPriceUsd = selectedToken.price ?? null;
 
+          // Approximate SOL volume + token amount (used by our local PnL calc)
           if (isSell) {
-            if (tokenPriceUsd != null && tokenPriceUsd > 0) {
+            if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
               tokenAmountApprox = amountNum;
               const approxSolPerToken = tokenPriceUsd / solPriceUsd;
               volumeSol = amountNum * approxSolPerToken;
             }
           } else {
             volumeSol = amountNum;
-            if (tokenPriceUsd != null && tokenPriceUsd > 0) {
+            if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
               tokenAmountApprox = (amountNum * solPriceUsd) / tokenPriceUsd;
             }
           }
+
           if (volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0) {
             const key = `siren-volume-${publicKey.toBase58()}`;
             const raw = window.localStorage.getItem(key);
@@ -359,6 +420,7 @@ export function UnifiedBuyPanel() {
               entries = entries.slice(entries.length - 500);
             }
             window.localStorage.setItem(key, JSON.stringify(entries));
+
             // Also log to API for admin volume stats
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
             fetch(`${apiUrl}/api/volume/log`, {
@@ -368,8 +430,14 @@ export function UnifiedBuyPanel() {
             }).catch(() => {});
           }
 
-          // Trade log for PnL / detailed stats
-          if (tokenAmountApprox != null && tokenAmountApprox > 0 && tokenPriceUsd != null && tokenPriceUsd > 0) {
+          // Trade log for PnL / detailed stats (local)
+          if (
+            tokenAmountApprox != null &&
+            tokenAmountApprox > 0 &&
+            tokenPriceUsd != null &&
+            tokenPriceUsd > 0 &&
+            volumeSol != null
+          ) {
             const tradesKey = `siren-trades-${publicKey.toBase58()}`;
             const rawTrades = window.localStorage.getItem(tradesKey);
             let trades: Array<{
@@ -401,16 +469,47 @@ export function UnifiedBuyPanel() {
             }
             window.localStorage.setItem(tradesKey, JSON.stringify(trades));
           }
+
+          // Trade log (permanent) for future on-chain PnL/open positions
+          // Note: requires a Supabase table to exist (see docs).
+          try {
+            const tokenAmountForLog = isSell ? amountNum : tokenAmountApprox ?? null;
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+            fetch(`${apiUrl}/api/trades/log`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                wallet: publicKey.toBase58(),
+                mint: selectedToken.mint,
+                side: isSell ? "sell" : "buy",
+                tokenAmount: tokenAmountForLog,
+                priceUsd: tokenPriceUsd,
+                tokenName: tokenNameToLog,
+                tokenSymbol: tokenSymbolToLog,
+                txSignature: sig,
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+          } catch {
+            // ignore
+          }
         }
       } catch {
         // ignore volume tracking errors
       }
 
-      setSuccess(isSell ? `Sold! Tx: ${sig.slice(0, 8)}...` : `Swap successful! ${sig.slice(0, 8)}...`);
+      setSuccess(isSell ? `Sold! ${tokenDisplayName || selectedToken.name} Tx: ${sig.slice(0, 8)}...` : `Swap successful! ${sig.slice(0, 8)}...`);
       if (isSell) setSellAmount("");
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
-      setResultModal({ type: "success", title: "Swap complete", message: isSell ? `Sold ${selectedToken.symbol}.` : `Swap successful.`, txSignature: sig });
+      setResultModal({
+        type: "success",
+        title: "Swap complete",
+        message: isSell
+          ? `Sold ${tokenDisplayName || selectedToken.name} (${amountNum.toLocaleString(undefined, { maximumFractionDigits: 6 })} tokens).`
+          : `Swap successful.`,
+        txSignature: sig,
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const lower = msg.toLowerCase();
@@ -511,9 +610,9 @@ export function UnifiedBuyPanel() {
                         Sell
                       </button>
                     </div>
-                    <p className="font-heading font-bold text-[var(--text-primary)]">${selectedToken.symbol}</p>
+                    <p className="font-heading font-bold text-[var(--text-primary)]">{tokenDisplayName}</p>
                     <p className="font-body text-[var(--accent-primary)] text-sm mt-1 tabular-nums">
-                      {selectedToken.price != null ? `~$${selectedToken.price.toFixed(4)} USD` : "Price unavailable"}
+                      {tokenPriceFetchState === "loading" ? "Fetching price..." : selectedToken.price != null ? `~$${selectedToken.price.toFixed(4)} USD` : `Price unavailable${tokenPriceFetchReason ? `: ${tokenPriceFetchReason}` : ""}`}
                     </p>
                     <p className="font-body text-[var(--text-1)] mt-2 text-sm tabular-nums">
                       Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} USD
@@ -589,14 +688,14 @@ export function UnifiedBuyPanel() {
                           ) : buyBlocked ? (
                             "Blocked by risk analysis"
                           ) : (
-                            `Buy ${selectedToken.symbol}`
+                            `Buy ${tokenDisplayName}`
                           )}
                         </button>
                       </>
                     ) : (
                       <>
                         <div className="mt-3">
-                          <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount of {selectedToken.symbol} to sell</label>
+                          <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount of {tokenDisplayName} to sell</label>
                           <div className="flex gap-1.5 mb-2">
                             {([25, 50, 75, 100] as const).map((pct) => (
                               <button
@@ -635,7 +734,13 @@ export function UnifiedBuyPanel() {
                           className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
                           style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
                         >
-                          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Selling…</> : `Sell ${selectedToken.symbol} → SOL`}
+                          {loading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" /> Selling...
+                            </>
+                          ) : (
+                            `Sell ${tokenDisplayName} → SOL`
+                          )}
                         </button>
                       </>
                     )}

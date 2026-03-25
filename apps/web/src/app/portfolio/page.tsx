@@ -9,7 +9,6 @@ import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
 import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
-import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
@@ -493,25 +492,6 @@ function buildMintToMarket(
   return map;
 }
 
-function totalsFromPnlPositions(positions: PnlPosition[]) {
-  let sum = 0;
-  let anyUsd = false;
-  for (const p of positions) {
-    if (p.pnlUsd != null) {
-      sum += p.pnlUsd;
-      anyUsd = true;
-    }
-  }
-  const totalPnlUsd = anyUsd ? sum : null;
-  const withPct = positions.filter((p) => p.pnlPercent != null && p.valueUsd > 0);
-  const den = withPct.reduce((s, p) => s + p.valueUsd, 0);
-  const totalPnlPercent =
-    withPct.length === 0 || den <= 0
-      ? null
-      : (withPct.reduce((s, p) => s + (p.pnlPercent! / 100) * p.valueUsd, 0) / den) * 100;
-  return { totalPnlUsd, totalPnlPercent };
-}
-
 export default function PortfolioPage() {
   const { connected, publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
@@ -730,7 +710,7 @@ export default function PortfolioPage() {
       0
     );
 
-  const { data: markets = [] } = useQuery({
+  const { data: markets = [], isLoading: marketsLoading, isError: marketsError } = useQuery({
     queryKey: ["markets"],
     queryFn: fetchMarkets,
     enabled: !!connected,
@@ -755,54 +735,6 @@ export default function PortfolioPage() {
   const openSellPanel = (mint: string, symbol: string, name: string) => {
     const price = tokenInfoByMint.get(mint)?.priceUsd;
     setSelectedToken({ mint, symbol, name, price: price ?? undefined }, { openForSell: true });
-    setBuyPanelOpen(true);
-  };
-
-  const predictionMints = new Set(predictionPositions.map((p) => p.mint));
-  const pnlPositions = [
-    ...predictionPositions.map((p) => {
-      const info = tokenInfoByMint.get(p.mint);
-      const priceUsd = info?.priceUsd ?? 0;
-      const valueUsd = p.balance * priceUsd;
-      const mintPnl = pnlByMint[p.mint];
-      return {
-        ticker: p.ticker,
-        title: p.title,
-        side: p.side as "yes" | "no",
-        kalshiMarket: `Kalshi: ${p.ticker}`,
-        valueUsd,
-        pnlUsd: mintPnl ? mintPnl.pnlUsd : null,
-        pnlPercent: mintPnl ? mintPnl.pnlPercent : null,
-        mint: p.mint,
-      };
-    }),
-    ...tokenHoldings
-      .filter((t) => !predictionMints.has(t.mint))
-      .map((t) => {
-        const info = tokenInfoByMint.get(t.mint);
-        const valueUsd = (info?.priceUsd ?? 0) * t.balance;
-        const mintPnl = pnlByMint[t.mint];
-        return {
-          ticker: info?.symbol ?? t.symbol,
-          title: info?.name ?? t.name,
-          valueUsd,
-          pnlUsd: mintPnl ? mintPnl.pnlUsd : null,
-          pnlPercent: mintPnl ? mintPnl.pnlPercent : null,
-          mint: t.mint,
-        };
-      }),
-  ].filter((p) => p.valueUsd > 0);
-
-  const { totalPnlUsd, totalPnlPercent } = totalsFromPnlPositions(pnlPositions);
-
-  const handlePnlSell = (position: PnlPosition) => {
-    if (!position.mint) return;
-    hapticLight();
-    const price = tokenInfoByMint.get(position.mint)?.priceUsd;
-    setSelectedToken(
-      { mint: position.mint, symbol: position.ticker, name: position.title, price: price ?? undefined },
-      { openForSell: true }
-    );
     setBuyPanelOpen(true);
   };
 
@@ -1027,24 +959,7 @@ export default function PortfolioPage() {
                 </div>
               )}
             </div>
-            {connected && (
-              <div className="mb-6 md:mb-8">
-                <h2
-                  className="font-heading font-semibold text-sm uppercase tracking-wider mb-3"
-                  style={{ color: "var(--text-3)" }}
-                >
-                  P&amp;L card
-                </h2>
-                <PnlCard
-                  totalPnlUsd={totalPnlUsd}
-                  totalPnlPercent={totalPnlPercent}
-                  positions={pnlPositions}
-                  walletAddress={publicKey?.toBase58() ?? null}
-                  isLoading={!!connected && tokensLoading}
-                  onSell={handlePnlSell}
-                />
-              </div>
-            )}
+            {/* PnL card temporarily removed while we fix trade logging + SVG integration. */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0">
             <div
               className="rounded-2xl border overflow-hidden"
@@ -1190,7 +1105,25 @@ export default function PortfolioPage() {
                 </div>
               </div>
               <div className="p-5">
-                {predictionPositions.length === 0 ? (
+              {marketsError ? (
+                <div className="py-8 text-center">
+                  <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
+                    Unable to load markets
+                  </p>
+                  <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                    DFlow request failed. Refresh the page and try again.
+                  </p>
+                </div>
+              ) : marketsLoading ? (
+                <div className="py-8 text-center">
+                  <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
+                    Markets Loading...
+                  </p>
+                  <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                    Pulling DFlow markets and mapping tokens to YES/NO positions.
+                  </p>
+                </div>
+              ) : predictionPositions.length === 0 ? (
                   <div className="py-8 text-center">
                     <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-40" style={{ color: "var(--text-3)" }} />
                     <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
@@ -1216,7 +1149,6 @@ export default function PortfolioPage() {
                       const displayName = info?.name ?? p.title;
                       const displaySymbol = info?.symbol ?? p.ticker;
                       const mintPnl = pnlByMint[p.mint];
-                      const caShort = `${p.mint.slice(0, 6)}…${p.mint.slice(-4)}`;
                       return (
                       <li
                         key={`${p.ticker}-${p.side}`}
@@ -1242,7 +1174,7 @@ export default function PortfolioPage() {
                               {displayName}
                             </p>
                             <p className="font-mono text-[11px] mt-0.5 truncate" style={{ color: "var(--text-3)" }} title={p.mint}>
-                              {caShort}
+                              {displaySymbol}
                             </p>
                           </div>
                         </div>
@@ -1370,7 +1302,13 @@ export default function PortfolioPage() {
                     {tokenHoldings.map((t) => {
                       const info = tokenInfoByMint.get(t.mint);
                       const displayName = info?.name ?? t.name;
-                      const displaySymbol = info?.symbol ?? (t.symbol !== "—" ? t.symbol : t.mint.slice(0, 8) + "…");
+                      const rawSymbol = info?.symbol ?? t.symbol;
+                      const displaySymbol =
+                        rawSymbol && rawSymbol !== "-" && rawSymbol !== "—"
+                          ? rawSymbol
+                          : displayName && displayName !== "Unknown"
+                            ? displayName
+                            : "Token";
                       const valueUsd = info?.priceUsd != null ? t.balance * info.priceUsd : undefined;
                       const mintPnl = pnlByMint[t.mint];
                       return (
@@ -1382,7 +1320,11 @@ export default function PortfolioPage() {
                             background: "var(--bg-elevated)",
                           }}
                         >
-                          <div className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" onClick={() => { hapticLight(); openSellPanel(t.mint, t.symbol, t.name); }}>
+                          <div
+                            className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                            onClick={() => { hapticLight(); openSellPanel(t.mint, displaySymbol, displayName); }}
+                            title={t.mint}
+                          >
                             {info?.imageUrl ? (
                               <img src={info.imageUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
                             ) : (
@@ -1395,17 +1337,10 @@ export default function PortfolioPage() {
                             )}
                             <div className="min-w-0">
                               <p className="font-heading font-semibold truncate" style={{ color: "var(--text-1)" }}>
-                                {displaySymbol}
+                                {displayName && displayName !== "Unknown" ? displayName : displaySymbol}
                               </p>
                               <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
-                                {displayName !== "Unknown" ? displayName : t.mint}
-                              </p>
-                              <p
-                                className="font-mono text-[11px] mt-1 truncate"
-                                style={{ color: "var(--text-3)" }}
-                                title={t.mint}
-                              >
-                                {t.mint.slice(0, 6)}…{t.mint.slice(-4)}
+                                {displaySymbol}
                               </p>
                             </div>
                           </div>
@@ -1431,7 +1366,7 @@ export default function PortfolioPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); hapticLight(); openSellPanel(t.mint, t.symbol, t.name); }}
+                              onClick={(e) => { e.stopPropagation(); hapticLight(); openSellPanel(t.mint, displaySymbol, displayName); }}
                               className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
                               style={{ background: "var(--bags)", color: "var(--accent-text)" }}
                             >
