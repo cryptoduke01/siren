@@ -112,6 +112,12 @@ export function ActivityFeed() {
                 symbol: t.symbol,
                 price: t.price,
                 volume24h: t.volume24h,
+                liquidityUsd: t.liquidityUsd,
+                fdvUsd: t.fdvUsd,
+                holders: t.holders,
+                bondingCurveStatus: t.bondingCurveStatus,
+                rugcheckScore: t.rugcheckScore,
+                safe: t.safe,
                 ctMentions: t.ctMentions,
               });
             }}

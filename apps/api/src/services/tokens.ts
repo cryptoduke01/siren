@@ -3,10 +3,11 @@ import { getKeywordsForCategory } from "@siren/shared";
 import { matchTokenToKeywords } from "@siren/shared";
 import { searchPairs, getTokenPairs, getLatestBoostedTokens } from "./dexscreener.js";
 import type { DexPair } from "./dexscreener.js";
-import { getBagsPools } from "./bags.js";
+import { getBagsPools, getBagsPoolByTokenMint } from "./bags.js";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 type RiskLabel = "low" | "moderate" | "high" | "critical";
+type BondingCurveStatus = "bonded" | "bonding" | "unknown";
 
 interface RiskAnalysis {
   score: number;
@@ -14,6 +15,26 @@ interface RiskAnalysis {
   reasons: string[];
   blocked: boolean;
 }
+
+interface RugcheckSummary {
+  holders?: number;
+  rugcheckScore?: number;
+  safe?: boolean;
+}
+
+interface TokenEnrichment {
+  imageUrl?: string;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: BondingCurveStatus;
+  rugcheckScore?: number;
+  safe?: boolean;
+  risk: RiskAnalysis;
+}
+
+const RUGCHECK_CACHE_MS = 10 * 60 * 1000;
+const rugcheckCache = new Map<string, { expiry: number; value: RugcheckSummary | null }>();
 
 /** Detect launchpad from mint suffix (Bags: BAGS, Pump.fun: pump, Bonk.fun: bonk, Moonshot: shot). */
 export function getLaunchpadFromMint(mint: string): LaunchpadId | undefined {
@@ -31,6 +52,74 @@ function tokenMintFromPair(p: DexPair): string {
   if (base === SOL_MINT) return quote;
   if (quote === SOL_MINT) return base;
   return base;
+}
+
+function normalizeDexImageUrl(imageUrl?: string): string | undefined {
+  if (!imageUrl) return undefined;
+  if (imageUrl.startsWith("http")) return imageUrl;
+  return `https://cdn.dexscreener.com/cms/images/${imageUrl}?width=800&height=800&quality=90`;
+}
+
+function parseUsd(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function deriveBondingCurveStatus(params: {
+  pair?: DexPair;
+  launchpad?: LaunchpadId;
+  bagsPool?: { dammV2PoolKey?: string | null } | null;
+}): BondingCurveStatus {
+  if (params.launchpad === "bags" && params.bagsPool) {
+    return params.bagsPool.dammV2PoolKey ? "bonded" : "bonding";
+  }
+  const dexId = params.pair?.dexId?.toLowerCase() ?? "";
+  if (!dexId) return "unknown";
+  if (dexId.includes("meteora") || dexId.includes("raydium") || dexId.includes("orca")) return "bonded";
+  if (dexId.includes("pump") || dexId.includes("moonshot") || dexId.includes("bags")) return "bonding";
+  return params.pair?.liquidity?.usd && params.pair.liquidity.usd > 0 ? "bonded" : "unknown";
+}
+
+async function getRugcheckSummary(mint: string): Promise<RugcheckSummary | null> {
+  const cached = rugcheckCache.get(mint);
+  if (cached && cached.expiry > Date.now()) return cached.value;
+  try {
+    const res = await fetch(`https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(mint)}/report`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) {
+      rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value: null });
+      return null;
+    }
+    const json = (await res.json()) as {
+      totalHolders?: number;
+      score?: number;
+      score_normalised?: number;
+      rugged?: boolean;
+    };
+    const rugcheckScore =
+      typeof json.score_normalised === "number"
+        ? json.score_normalised
+        : typeof json.score === "number"
+          ? json.score
+          : undefined;
+    const value: RugcheckSummary = {
+      holders: typeof json.totalHolders === "number" ? json.totalHolders : undefined,
+      rugcheckScore,
+      safe:
+        typeof json.rugged === "boolean"
+          ? !json.rugged && (rugcheckScore == null || rugcheckScore < 60)
+          : rugcheckScore == null
+            ? undefined
+            : rugcheckScore < 60,
+    };
+    rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value });
+    return value;
+  } catch {
+    rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value: null });
+    return null;
+  }
 }
 
 function analyzeTokenRisk(params: {
@@ -91,6 +180,78 @@ function analyzeTokenRisk(params: {
   };
 }
 
+async function enrichToken(params: {
+  mint: string;
+  pair?: DexPair;
+  name: string;
+  symbol: string;
+  priceUsd?: number;
+}): Promise<TokenEnrichment> {
+  const launchpad = getLaunchpadFromMint(params.mint);
+  const dexImageUrl = normalizeDexImageUrl(params.pair?.info?.imageUrl);
+  const jup = !dexImageUrl ? await getJupiterTokenByMint(params.mint) : null;
+  const imageUrl = dexImageUrl ?? jup?.imageUrl;
+  const rugcheck = await getRugcheckSummary(params.mint);
+  const bagsPool =
+    launchpad === "bags" && process.env.BAGS_API_KEY
+      ? await getBagsPoolByTokenMint(params.mint).catch(() => null)
+      : null;
+  const liquidityUsd = params.pair?.liquidity?.usd;
+  const fdvUsd = params.pair?.fdv ?? params.pair?.marketCap;
+  const risk = analyzeTokenRisk({
+    pair: params.pair,
+    mint: params.mint,
+    name: params.name,
+    symbol: params.symbol,
+    priceUsd: params.priceUsd,
+    volume24h: params.pair?.volume?.h24,
+    imageUrl,
+  });
+  return {
+    imageUrl,
+    liquidityUsd,
+    fdvUsd,
+    holders: rugcheck?.holders,
+    bondingCurveStatus: deriveBondingCurveStatus({ pair: params.pair, launchpad, bagsPool }),
+    rugcheckScore: rugcheck?.rugcheckScore,
+    safe: rugcheck?.safe ?? (risk.label === "low" || risk.label === "moderate"),
+    risk,
+  };
+}
+
+async function hydrateSurfacedTokens(tokens: SurfacedToken[]): Promise<SurfacedToken[]> {
+  return Promise.all(
+    tokens.map(async (token) => {
+      const pairs = await getTokenPairs(token.mint);
+      const bestPair = pairs.reduce<DexPair | undefined>((best, pair) => {
+        if (!best) return pair;
+        return (pair.volume?.h24 ?? 0) > (best.volume?.h24 ?? 0) ? pair : best;
+      }, undefined);
+      const enrichment = await enrichToken({
+        mint: token.mint,
+        pair: bestPair,
+        name: token.name,
+        symbol: token.symbol,
+        priceUsd: token.price,
+      });
+      return {
+        ...token,
+        imageUrl: enrichment.imageUrl ?? token.imageUrl,
+        liquidityUsd: enrichment.liquidityUsd ?? token.liquidityUsd,
+        fdvUsd: enrichment.fdvUsd ?? token.fdvUsd,
+        holders: enrichment.holders ?? token.holders,
+        bondingCurveStatus: enrichment.bondingCurveStatus ?? token.bondingCurveStatus,
+        rugcheckScore: enrichment.rugcheckScore ?? token.rugcheckScore,
+        safe: enrichment.safe ?? token.safe,
+        riskScore: enrichment.risk.score,
+        riskLabel: enrichment.risk.label,
+        riskReasons: enrichment.risk.reasons,
+        riskBlocked: enrichment.risk.blocked,
+      };
+    })
+  );
+}
+
 async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Promise<SurfacedToken[]> {
   const byMint = new Map<string, DexPair>();
   for (const p of pairs) {
@@ -101,23 +262,17 @@ async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Prom
     if (!existing || vol > existingVol) byMint.set(mint, p);
   }
 
-  const tokens = await Promise.all(Array.from(byMint.entries()).map(async ([mint, p]) => {
+  const tokens = Array.from(byMint.entries()).map(([mint, p]) => {
     const token = (p.baseToken.address === mint ? p.baseToken : p.quoteToken) as { address: string; symbol: string; name: string };
     const name = token.name || token.symbol || "Unknown";
     const symbol = token.symbol || "???";
-    const priceUsd = p.priceUsd ? parseFloat(p.priceUsd) : undefined;
+    const priceUsd = parseUsd(p.priceUsd);
     const vol24h = p.volume?.h24;
-    const dexImageUrl = p.info?.imageUrl?.startsWith("http")
-      ? p.info.imageUrl
-      : p.info?.imageUrl
-        ? `https://cdn.dexscreener.com/cms/images/${p.info.imageUrl}?width=800&height=800&quality=90`
-        : undefined;
-    const jup = !dexImageUrl ? await getJupiterTokenByMint(mint) : null;
-    const imageUrl = dexImageUrl ?? jup?.imageUrl;
-    const risk = analyzeTokenRisk({ pair: p, mint, name, symbol, priceUsd, volume24h: vol24h, imageUrl });
     const nameMatch = keywords.length ? matchTokenToKeywords(name, symbol, keywords) : true;
-    const volumeWeight = vol24h ? Math.min(vol24h / 100_000, 1) * 0.5 : 0;
-    const relevanceScore = (nameMatch ? 0.5 : 0) + volumeWeight;
+    const volumeWeight = vol24h ? Math.min(vol24h / 250_000, 1) * 0.45 : 0;
+    const liquidityWeight = p.liquidity?.usd ? Math.min(p.liquidity.usd / 250_000, 1) * 0.25 : 0;
+    const keywordWeight = nameMatch ? 0.3 : 0;
+    const relevanceScore = volumeWeight + liquidityWeight + keywordWeight;
     const matchType: "name" | "volume" | "ct" = nameMatch ? "name" : "volume";
 
     return {
@@ -126,17 +281,15 @@ async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Prom
       symbol,
       price: priceUsd,
       volume24h: vol24h ? Math.round(vol24h) : undefined,
-      imageUrl,
+      imageUrl: normalizeDexImageUrl(p.info?.imageUrl),
+      liquidityUsd: p.liquidity?.usd,
+      fdvUsd: p.fdv ?? p.marketCap,
       relevanceScore,
       matchType,
       launchpad: getLaunchpadFromMint(mint),
-      riskScore: risk.score,
-      riskLabel: risk.label,
-      riskReasons: risk.reasons,
-      riskBlocked: risk.blocked,
     };
-  }));
-  return tokens.filter((t) => !t.riskBlocked);
+  });
+  return tokens;
 }
 
 const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
@@ -162,7 +315,6 @@ export function extractKeywordsFromTitle(title: string): string[] {
 }
 
 export async function getSurfacedTokens(marketId?: string, categoryId?: string, keywordsParam?: string): Promise<SurfacedToken[]> {
-  const hasExplicitKeywords = parseKeywordsParam(keywordsParam).length > 0 || !!categoryId;
   const keywords =
     parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
     : categoryId ? getKeywordsForCategory(categoryId)
@@ -171,35 +323,14 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
   const allPairs: DexPair[] = [];
   const seenMints = new Set<string>();
 
-  if (!hasExplicitKeywords) {
-    if (process.env.BAGS_API_KEY) {
-      try {
-        const pools = await getBagsPools();
-        const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, 24);
-        for (let i = 0; i < bagsMints.length; i += 4) {
-          const batch = bagsMints.slice(i, i + 4);
-          const results = await Promise.all(batch.map((m) => getTokenPairs(m)));
-          for (let j = 0; j < batch.length; j++) {
-            const pairs = results[j];
-            const queriedMint = batch[j];
-            if (pairs.length > 0 && !seenMints.has(queriedMint)) {
-              const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
-              seenMints.add(queriedMint);
-              allPairs.push(best);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[tokens] Bags pools fetch failed:", e);
-      }
-    }
+  if (process.env.BAGS_API_KEY) {
     try {
-      const boosted = await getLatestBoostedTokens();
-      const boostedMints = boosted.slice(0, 16).map((t) => t.tokenAddress).filter((m) => !seenMints.has(m));
-      for (let i = 0; i < boostedMints.length; i += 4) {
-        const batch = boostedMints.slice(i, i + 4);
+      const pools = await getBagsPools();
+      const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, 24);
+      for (let i = 0; i < bagsMints.length; i += 4) {
+        const batch = bagsMints.slice(i, i + 4);
         const results = await Promise.all(batch.map((m) => getTokenPairs(m)));
-        for (let j = 0; j < batch.length; j++) {
+        for (let j = 0; j < batch.length; j += 1) {
           const pairs = results[j];
           const queriedMint = batch[j];
           if (pairs.length > 0 && !seenMints.has(queriedMint)) {
@@ -209,15 +340,29 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
           }
         }
       }
-      const surfaced = await pairsToSurfacedTokens(allPairs, []);
-      if (surfaced.length > 0) {
-        return surfaced
-          .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
-          .slice(0, 24);
-      }
     } catch (e) {
-      console.warn("[tokens] DexScreener boosted failed:", e);
+      console.warn("[tokens] Bags pools fetch failed:", e);
     }
+  }
+
+  try {
+    const boosted = await getLatestBoostedTokens();
+    const boostedMints = boosted.slice(0, 20).map((t) => t.tokenAddress).filter((m) => !seenMints.has(m));
+    for (let i = 0; i < boostedMints.length; i += 4) {
+      const batch = boostedMints.slice(i, i + 4);
+      const results = await Promise.all(batch.map((m) => getTokenPairs(m)));
+      for (let j = 0; j < batch.length; j += 1) {
+        const pairs = results[j];
+        const queriedMint = batch[j];
+        if (pairs.length > 0 && !seenMints.has(queriedMint)) {
+          const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
+          seenMints.add(queriedMint);
+          allPairs.push(best);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[tokens] DexScreener boosted failed:", e);
   }
 
   if (keywords.length > 0) {
@@ -225,11 +370,11 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
       const searchTerms = keywords.slice(0, 5);
       const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
       const keywordPairs: DexPair[] = searchResults.flat();
-      const surfaced = await pairsToSurfacedTokens(keywordPairs, keywords);
-      if (surfaced.length > 0) {
-        return surfaced
-          .sort((a, b) => b.relevanceScore - a.relevanceScore)
-          .slice(0, 24);
+      for (const pair of keywordPairs) {
+        const mint = tokenMintFromPair(pair);
+        if (seenMints.has(mint)) continue;
+        seenMints.add(mint);
+        allPairs.push(pair);
       }
     } catch (e) {
       console.warn("[tokens] DexScreener search failed:", e);
@@ -237,9 +382,14 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
   }
 
   const surfaced = await pairsToSurfacedTokens(allPairs, keywords);
-  return surfaced
-    .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
+  const ranked = surfaced
+    .sort((a, b) => {
+      if (keywords.length > 0) return b.relevanceScore - a.relevanceScore;
+      return (b.volume24h ?? 0) - (a.volume24h ?? 0);
+    })
     .slice(0, 24);
+  const hydrated = await hydrateSurfacedTokens(ranked);
+  return hydrated.filter((token) => !token.riskBlocked);
 }
 
 export interface TokenInfo {
@@ -249,6 +399,12 @@ export interface TokenInfo {
   imageUrl?: string;
   priceUsd?: number;
   volume24h?: number;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: BondingCurveStatus;
+  rugcheckScore?: number;
+  safe?: boolean;
   riskScore?: number;
   riskLabel?: RiskLabel;
   riskReasons?: string[];
@@ -293,54 +449,56 @@ export async function getTokenInfoByMint(mint: string): Promise<TokenInfo | null
     if (pairs.length > 0) {
       const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
       const base = best.baseToken.address === mint ? best.baseToken : best.quoteToken;
-      const priceUsd = best.priceUsd ? parseFloat(best.priceUsd) : undefined;
-      const imageUrl = best.info?.imageUrl?.startsWith("http")
-        ? best.info.imageUrl
-        : best.info?.imageUrl
-          ? `https://cdn.dexscreener.com/cms/images/${best.info.imageUrl}?width=800&height=800&quality=90`
-          : undefined;
-      const risk = analyzeTokenRisk({
-        pair: best,
+      const priceUsd = parseUsd(best.priceUsd);
+      const enrichment = await enrichToken({
         mint,
         name: base.name || base.symbol || "Unknown",
         symbol: base.symbol || "???",
+        pair: best,
         priceUsd,
-        volume24h: best.volume?.h24,
-        imageUrl,
       });
       return {
         mint,
         name: base.name || base.symbol || "Unknown",
         symbol: base.symbol || "???",
-        imageUrl,
+        imageUrl: enrichment.imageUrl,
         priceUsd,
         volume24h: best.volume?.h24 ? Math.round(best.volume.h24) : undefined,
-        riskScore: risk.score,
-        riskLabel: risk.label,
-        riskReasons: risk.reasons,
-        riskBlocked: risk.blocked,
+        liquidityUsd: enrichment.liquidityUsd,
+        fdvUsd: enrichment.fdvUsd,
+        holders: enrichment.holders,
+        bondingCurveStatus: enrichment.bondingCurveStatus,
+        rugcheckScore: enrichment.rugcheckScore,
+        safe: enrichment.safe,
+        riskScore: enrichment.risk.score,
+        riskLabel: enrichment.risk.label,
+        riskReasons: enrichment.risk.reasons,
+        riskBlocked: enrichment.risk.blocked,
       };
     }
     const jup = await getJupiterTokenByMint(mint);
     if (jup) {
-      const risk = analyzeTokenRisk({
+      const enrichment = await enrichToken({
         mint,
         name: jup.name,
         symbol: jup.symbol,
-        priceUsd: undefined,
-        volume24h: undefined,
-        imageUrl: jup.imageUrl,
       });
       return {
         mint,
         name: jup.name,
         symbol: jup.symbol,
-        imageUrl: jup.imageUrl,
+        imageUrl: enrichment.imageUrl ?? jup.imageUrl,
         priceUsd: undefined,
-        riskScore: risk.score,
-        riskLabel: risk.label,
-        riskReasons: risk.reasons,
-        riskBlocked: risk.blocked,
+        liquidityUsd: enrichment.liquidityUsd,
+        fdvUsd: enrichment.fdvUsd,
+        holders: enrichment.holders,
+        bondingCurveStatus: enrichment.bondingCurveStatus,
+        rugcheckScore: enrichment.rugcheckScore,
+        safe: enrichment.safe,
+        riskScore: enrichment.risk.score,
+        riskLabel: enrichment.risk.label,
+        riskReasons: enrichment.risk.reasons,
+        riskBlocked: enrichment.risk.blocked,
       };
     }
     return null;

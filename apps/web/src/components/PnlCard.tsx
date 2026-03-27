@@ -82,6 +82,7 @@ export function PnlCard({
   const glowRgb = isLoss ? "255, 69, 96" : "0, 255, 133";
 
   const tokenLabel = selected?.title ?? "—";
+  const isPredictionCard = selected?.side != null;
   const signalLine =
     selected == null
       ? ""
@@ -218,7 +219,7 @@ export function PnlCard({
           <div className="relative z-[2] flex h-full flex-col p-5 pr-14 md:p-6 md:pr-16">
             <div className="min-w-0">
               <p className="font-heading text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: accent }}>
-                P&amp;L snapshot
+                {isPredictionCard ? "Prediction P&L" : "P&L snapshot"}
               </p>
               {walletAddress && (
                 <p className="mt-1 font-mono text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
@@ -252,6 +253,18 @@ export function PnlCard({
                 <p className="mt-1 line-clamp-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
                   {privacy ? "•• • •••••• ••••" : signalLine}
                 </p>
+              )}
+              {isPredictionCard && (
+                <div
+                  className="mt-3 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-heading font-semibold uppercase tracking-[0.14em]"
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    color: accent,
+                    border: `1px solid rgba(${glowRgb}, 0.28)`,
+                  }}
+                >
+                  Marked to live market
+                </div>
               )}
             </div>
 

@@ -298,7 +298,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                       className="font-body text-[10px] font-medium hover:underline"
                       style={{ color: "var(--accent)" }}
                     >
-                      Matched tokens: {Math.max(1, extractKeywords(m.title).length)}
+                      View token surface
                     </button>
                   </div>
                 </motion.li>

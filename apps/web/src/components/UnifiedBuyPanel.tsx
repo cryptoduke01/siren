@@ -18,11 +18,85 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const LAMPORTS_PER_SOL = 1e9;
 
+function formatCompactNumber(value?: number, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
 function base64ToUint8Array(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function formatUsd(value?: number | null, digits = 2): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function getFriendlyTradeError(message: string, fallback: string): string {
+  const lower = message.toLowerCase();
+  if (message.includes("0x1771") || lower.includes("slippage")) {
+    return "Price moved. Try a smaller amount.";
+  }
+  if (lower.includes("simulation failed") || lower.includes("custom program error")) {
+    return "Transaction simulation failed. Try a smaller amount or higher slippage.";
+  }
+  if (lower.includes("insufficient")) {
+    return "Insufficient balance for this trade.";
+  }
+  if (
+    lower.includes("wallet must be verified") ||
+    lower.includes("unverified_wallet_not_allowed") ||
+    lower.includes("dflow.net/proof")
+  ) {
+    return "Prediction market trading currently requires DFlow Proof verification. Verify at dflow.net/proof and try again.";
+  }
+  if (lower.includes("rate limited") || lower.includes("429")) {
+    return "Routing is being rate limited upstream right now. Wait a few seconds and try again.";
+  }
+  return fallback;
+}
+
+type DflowAsyncStatus = {
+  status?: "pending" | "expired" | "failed" | "open" | "pendingClose" | "closed";
+  error?: string;
+};
+
+async function waitForDflowSettlement(signature: string, lastValidBlockHeight?: number): Promise<DflowAsyncStatus> {
+  let lastStatus: DflowAsyncStatus = {};
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await sleep(attempt === 0 ? 800 : 1500);
+    const qs = new URLSearchParams({ signature });
+    if (typeof lastValidBlockHeight === "number" && Number.isFinite(lastValidBlockHeight)) {
+      qs.set("lastValidBlockHeight", String(lastValidBlockHeight));
+    }
+    const res = await fetch(`${API_URL}/api/dflow/order-status?${qs.toString()}`, { credentials: "omit" });
+    const data = (await res.json()) as DflowAsyncStatus;
+    if (!res.ok) {
+      throw new Error(data.error || "Unable to confirm DFlow order status.");
+    }
+    lastStatus = data;
+    if (data.status === "closed" || data.status === "failed" || data.status === "expired") {
+      return data;
+    }
+  }
+  return lastStatus;
 }
 
 async function getMintDecimals(conn: any, mint: string): Promise<number> {
@@ -190,7 +264,7 @@ function CopyCAButton({ mint }: { mint: string }) {
 }
 
 export function UnifiedBuyPanel() {
-  const { selectedMarket, selectedToken, buyPanelOpen, buyPanelMode, setBuyPanelOpen, setSelectedMarket, setSelectedToken, openForSell } =
+  const { selectedMarket, selectedToken, buyPanelOpen, buyPanelMode, setBuyPanelOpen, setSelectedToken, openForSell } =
     useSirenStore();
   const { connected, publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
@@ -208,6 +282,7 @@ export function UnifiedBuyPanel() {
   const [solAmount, setSolAmount] = useState("");
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
+  const [marketSide, setMarketSide] = useState<"yes" | "no">("yes");
   const [slippageBps, setSlippageBps] = useState(200);
   const [tokenPriceFetchState, setTokenPriceFetchState] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [tokenPriceFetchReason, setTokenPriceFetchReason] = useState<string | null>(null);
@@ -242,10 +317,30 @@ export function UnifiedBuyPanel() {
     if (openForSell && selectedToken) setSellMode(true);
   }, [openForSell, selectedToken?.mint]);
 
+  useEffect(() => {
+    if (!selectedMarket) return;
+    if (selectedMarket.yes_mint) {
+      setMarketSide("yes");
+      return;
+    }
+    if (selectedMarket.no_mint) {
+      setMarketSide("no");
+    }
+  }, [selectedMarket?.ticker, selectedMarket?.yes_mint, selectedMarket?.no_mint]);
+
   const tokenDisplayName =
     selectedToken?.name && selectedToken.name !== "-" && selectedToken.name !== "Unknown" ? selectedToken.name : selectedToken?.symbol ?? "";
   const tokenDisplaySymbol =
     selectedToken?.symbol && selectedToken.symbol !== "-" && selectedToken.symbol !== "—" ? selectedToken.symbol : selectedToken?.name ?? "";
+  const isPredictionToken = selectedToken?.assetType === "prediction";
+  const marketYesPriceUsd = selectedMarket ? Math.min(1, Math.max(0, selectedMarket.probability / 100)) : null;
+  const marketNoPriceUsd = selectedMarket ? Math.min(1, Math.max(0, 1 - selectedMarket.probability / 100)) : null;
+  const selectedMarketPriceUsd = marketSide === "yes" ? marketYesPriceUsd : marketNoPriceUsd;
+  const selectedMarketMint = marketSide === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
+  const estimatedContracts =
+    selectedMarketPriceUsd && solPriceUsd > 0 && Number.parseFloat(solAmount || "0") > 0
+      ? (Number.parseFloat(solAmount || "0") * solPriceUsd) / selectedMarketPriceUsd
+      : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -260,12 +355,34 @@ export function UnifiedBuyPanel() {
       setTokenPriceFetchReason(null);
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[UnifiedBuyPanel] fetching token info", {
+            mint: selectedToken.mint,
+            sellMode,
+            openForSell,
+          });
+        }
         const res = await fetch(`${apiUrl}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
         const j = await res.json();
         if (!res.ok || !j?.data) {
           throw new Error(j?.error || "Token info unavailable");
         }
-        const d = j.data as { name?: string; symbol?: string; priceUsd?: number };
+        const d = j.data as {
+          name?: string;
+          symbol?: string;
+          priceUsd?: number;
+          volume24h?: number;
+          liquidityUsd?: number;
+          fdvUsd?: number;
+          holders?: number;
+          bondingCurveStatus?: "bonded" | "bonding" | "unknown";
+          rugcheckScore?: number;
+          safe?: boolean;
+          riskScore?: number;
+          riskLabel?: "low" | "moderate" | "high" | "critical";
+          riskReasons?: string[];
+          riskBlocked?: boolean;
+        };
         const nextName = d.name ?? selectedToken.name;
         const nextSymbolRaw = d.symbol ?? selectedToken.symbol;
         const nextSymbol =
@@ -279,6 +396,17 @@ export function UnifiedBuyPanel() {
             name: nextName,
             symbol: nextSymbol,
             price: nextPrice,
+            volume24h: d.volume24h ?? selectedToken.volume24h,
+            liquidityUsd: d.liquidityUsd ?? selectedToken.liquidityUsd,
+            fdvUsd: d.fdvUsd ?? selectedToken.fdvUsd,
+            holders: d.holders ?? selectedToken.holders,
+            bondingCurveStatus: d.bondingCurveStatus ?? selectedToken.bondingCurveStatus,
+            rugcheckScore: d.rugcheckScore ?? selectedToken.rugcheckScore,
+            safe: d.safe ?? selectedToken.safe,
+            riskScore: d.riskScore ?? selectedToken.riskScore,
+            riskLabel: d.riskLabel ?? selectedToken.riskLabel,
+            riskReasons: d.riskReasons ?? selectedToken.riskReasons,
+            riskBlocked: d.riskBlocked ?? selectedToken.riskBlocked,
           },
           { openForSell: sellMode || openForSell }
         );
@@ -312,6 +440,114 @@ export function UnifiedBuyPanel() {
   const riskScore = selectedToken?.riskScore ?? 0;
   const riskReasons = selectedToken?.riskReasons ?? [];
   const riskLabel = selectedToken?.riskLabel ?? "low";
+
+  const recordLocalTrade = ({
+    mint,
+    side,
+    volumeSol,
+    tokenAmount,
+    priceUsd,
+    tokenName,
+    tokenSymbol,
+    txSignature,
+  }: {
+    mint: string;
+    side: "buy" | "sell";
+    volumeSol: number | null;
+    tokenAmount: number | null;
+    priceUsd: number | null;
+    tokenName: string;
+    tokenSymbol: string;
+    txSignature: string;
+  }) => {
+    if (typeof window === "undefined" || !publicKey) return;
+
+    if (volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0) {
+      const key = `siren-volume-${publicKey.toBase58()}`;
+      const raw = window.localStorage.getItem(key);
+      let entries: Array<{ ts: number; mint: string; side: "buy" | "sell"; volumeSol: number }> = [];
+      if (raw) {
+        try {
+          entries = JSON.parse(raw);
+          if (!Array.isArray(entries)) entries = [];
+        } catch {
+          entries = [];
+        }
+      }
+      entries.push({
+        ts: Date.now(),
+        mint,
+        side,
+        volumeSol,
+      });
+      if (entries.length > 500) {
+        entries = entries.slice(entries.length - 500);
+      }
+      window.localStorage.setItem(key, JSON.stringify(entries));
+
+      fetch(`${API_URL}/api/volume/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol }),
+      }).catch(() => {});
+    }
+
+    if (
+      tokenAmount != null &&
+      tokenAmount > 0 &&
+      priceUsd != null &&
+      priceUsd > 0 &&
+      volumeSol != null &&
+      Number.isFinite(volumeSol)
+    ) {
+      const tradesKey = `siren-trades-${publicKey.toBase58()}`;
+      const rawTrades = window.localStorage.getItem(tradesKey);
+      let trades: Array<{
+        ts: number;
+        mint: string;
+        side: "buy" | "sell";
+        solAmount: number;
+        tokenAmount: number;
+        priceUsd: number;
+      }> = [];
+      if (rawTrades) {
+        try {
+          trades = JSON.parse(rawTrades);
+          if (!Array.isArray(trades)) trades = [];
+        } catch {
+          trades = [];
+        }
+      }
+      trades.push({
+        ts: Date.now(),
+        mint,
+        side,
+        solAmount: volumeSol,
+        tokenAmount,
+        priceUsd,
+      });
+      if (trades.length > 1000) {
+        trades = trades.slice(trades.length - 1000);
+      }
+      window.localStorage.setItem(tradesKey, JSON.stringify(trades));
+    }
+
+    fetch(`${API_URL}/api/trades/log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        wallet: publicKey.toBase58(),
+        mint,
+        side,
+        tokenAmount,
+        priceUsd,
+        tokenName,
+        tokenSymbol,
+        txSignature,
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  };
 
   const executeSwap = async () => {
     hapticLight();
@@ -398,124 +634,42 @@ export function UnifiedBuyPanel() {
       const signed = await signTransaction(tx);
       const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
       await connection.confirmTransaction(sig, "confirmed");
+      const asyncStatus =
+        data.provider === "dflow" && data.executionMode === "async"
+          ? await waitForDflowSettlement(sig, data.lastValidBlockHeight)
+          : null;
+      if (asyncStatus?.status === "failed" || asyncStatus?.status === "expired") {
+        throw new Error(`DFlow order ${asyncStatus.status}.`);
+      }
 
       // Track per-wallet volume and trades for Siren (local, in SOL terms)
       try {
-        if (typeof window !== "undefined") {
-          let volumeSol: number | null = null;
-          let tokenAmountApprox: number | null = null;
+        let volumeSol: number | null = null;
+        let tokenAmountApprox: number | null = null;
 
-          // Approximate SOL volume + token amount (used by our local PnL calc)
-          if (isSell) {
-            if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
-              tokenAmountApprox = amountNum;
-              const approxSolPerToken = tokenPriceUsd / solPriceUsd;
-              volumeSol = amountNum * approxSolPerToken;
-            }
-          } else {
-            volumeSol = amountNum;
-            if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
-              tokenAmountApprox = (amountNum * solPriceUsd) / tokenPriceUsd;
-            }
+        if (isSell) {
+          if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
+            tokenAmountApprox = amountNum;
+            const approxSolPerToken = tokenPriceUsd / solPriceUsd;
+            volumeSol = amountNum * approxSolPerToken;
           }
-
-          if (volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0) {
-            const key = `siren-volume-${publicKey.toBase58()}`;
-            const raw = window.localStorage.getItem(key);
-            let entries: Array<{ ts: number; mint: string; side: "buy" | "sell"; volumeSol: number }> = [];
-            if (raw) {
-              try {
-                entries = JSON.parse(raw);
-                if (!Array.isArray(entries)) entries = [];
-              } catch {
-                entries = [];
-              }
-            }
-            entries.push({
-              ts: Date.now(),
-              mint: selectedToken.mint,
-              side: isSell ? "sell" : "buy",
-              volumeSol,
-            });
-            // Keep only the most recent 500 entries to bound storage
-            if (entries.length > 500) {
-              entries = entries.slice(entries.length - 500);
-            }
-            window.localStorage.setItem(key, JSON.stringify(entries));
-
-            // Also log to API for admin volume stats
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-            fetch(`${apiUrl}/api/volume/log`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol }),
-            }).catch(() => {});
-          }
-
-          // Trade log for PnL / detailed stats (local)
-          if (
-            tokenAmountApprox != null &&
-            tokenAmountApprox > 0 &&
-            tokenPriceUsd != null &&
-            tokenPriceUsd > 0 &&
-            volumeSol != null
-          ) {
-            const tradesKey = `siren-trades-${publicKey.toBase58()}`;
-            const rawTrades = window.localStorage.getItem(tradesKey);
-            let trades: Array<{
-              ts: number;
-              mint: string;
-              side: "buy" | "sell";
-              solAmount: number;
-              tokenAmount: number;
-              priceUsd: number;
-            }> = [];
-            if (rawTrades) {
-              try {
-                trades = JSON.parse(rawTrades);
-                if (!Array.isArray(trades)) trades = [];
-              } catch {
-                trades = [];
-              }
-            }
-            trades.push({
-              ts: Date.now(),
-              mint: selectedToken.mint,
-              side: isSell ? "sell" : "buy",
-              solAmount: volumeSol ?? 0,
-              tokenAmount: tokenAmountApprox,
-              priceUsd: tokenPriceUsd,
-            });
-            if (trades.length > 1000) {
-              trades = trades.slice(trades.length - 1000);
-            }
-            window.localStorage.setItem(tradesKey, JSON.stringify(trades));
-          }
-
-          // Trade log (permanent) for future on-chain PnL/open positions
-          // Note: requires a Supabase table to exist (see docs).
-          try {
-            const tokenAmountForLog = isSell ? amountNum : tokenAmountApprox ?? null;
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-            fetch(`${apiUrl}/api/trades/log`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                wallet: publicKey.toBase58(),
-                mint: selectedToken.mint,
-                side: isSell ? "sell" : "buy",
-                tokenAmount: tokenAmountForLog,
-                priceUsd: tokenPriceUsd,
-                tokenName: tokenNameToLog,
-                tokenSymbol: tokenSymbolToLog,
-                txSignature: sig,
-                timestamp: Date.now(),
-              }),
-            }).catch(() => {});
-          } catch {
-            // ignore
+        } else {
+          volumeSol = amountNum;
+          if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
+            tokenAmountApprox = (amountNum * solPriceUsd) / tokenPriceUsd;
           }
         }
+
+        recordLocalTrade({
+          mint: selectedToken.mint,
+          side: isSell ? "sell" : "buy",
+          volumeSol,
+          tokenAmount: isSell ? amountNum : tokenAmountApprox,
+          priceUsd: tokenPriceUsd,
+          tokenName: tokenNameToLog,
+          tokenSymbol: tokenSymbolToLog,
+          txSignature: sig,
+        });
       } catch {
         // ignore volume tracking errors
       }
@@ -562,23 +716,19 @@ export function UnifiedBuyPanel() {
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
       setResultModal({
         type: "success",
-        title: "Swap complete",
+        title: data.executionMode === "async" ? "Trade submitted" : "Swap complete",
         message: isSell
           ? `Sold ${tokenDisplayName || selectedToken.name} (${amountNum.toLocaleString(undefined, { maximumFractionDigits: 6 })} tokens).`
-          : `Swap successful.`,
+          : data.executionMode === "async"
+            ? asyncStatus?.status === "closed"
+              ? "Trade confirmed and settled."
+              : "Transaction confirmed. Settlement is still being finalized by DFlow."
+            : "Swap successful.",
         txSignature: sig,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
-      const lower = msg.toLowerCase();
-      let friendly = "Swap failed. Please try again.";
-      if (msg.includes("0x1771") || lower.includes("slippage")) {
-        friendly = "Price moved. Try a smaller amount.";
-      } else if (lower.includes("simulation failed") || lower.includes("custom program error")) {
-        friendly = "Transaction simulation failed. Try a smaller amount or higher slippage.";
-      } else if (lower.includes("insufficient")) {
-        friendly = "Insufficient balance for this trade.";
-      }
+      const friendly = getFriendlyTradeError(msg, "Swap failed. Please try again.");
       setError(friendly);
       setResultModal({ type: "error", title: "Swap failed", message: friendly });
       addToast(friendly, "error");
@@ -587,9 +737,122 @@ export function UnifiedBuyPanel() {
     }
   };
 
-  const onBuyKalshi = () => {
+  const executePredictionMarketTrade = async () => {
+    hapticLight();
+    if (!connected || !publicKey || !selectedMarket || !selectedMarketMint || !signTransaction) {
+      setError("Connect your wallet to trade prediction markets.");
+      return;
+    }
+
+    const amountNum = parseFloat(solAmount?.trim() || "");
+    if (!solAmount.trim() || amountNum <= 0 || !Number.isFinite(amountNum)) {
+      setError("Enter a valid SOL amount (e.g. 0.05).");
+      return;
+    }
+
+    const marketPriceUsd = selectedMarketPriceUsd;
+    if (marketPriceUsd == null || marketPriceUsd <= 0) {
+      setError("This market does not have a usable YES/NO price yet.");
+      return;
+    }
+
     setError(null);
-    window.open(selectedMarket?.kalshi_url || "https://kalshi.com", "_blank");
+    setSuccess(null);
+    setLoading(true);
+    try {
+      const amount = String(Math.floor(amountNum * LAMPORTS_PER_SOL));
+      const outcomeLabel = marketSide.toUpperCase();
+      const outcomeSymbol = `${outcomeLabel} ${selectedMarket.ticker}`;
+      const outcomeName = `${selectedMarket.title} · ${outcomeLabel}`;
+
+      const res = await fetch(`${API_URL}/api/swap/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inputMint: NATIVE_SOL_MINT,
+          outputMint: selectedMarketMint,
+          amount,
+          userPublicKey: publicKey.toBase58(),
+          slippageBps,
+          tryDflowFirst: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Prediction trade failed");
+      }
+
+      const txB64 = data.transaction;
+      if (!txB64) throw new Error("No transaction returned");
+      const tx = VersionedTransaction.deserialize(base64ToUint8Array(txB64));
+      const signed = await signTransaction(tx);
+      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      await connection.confirmTransaction(sig, "confirmed");
+
+      const asyncStatus =
+        data.provider === "dflow" && data.executionMode === "async"
+          ? await waitForDflowSettlement(sig, data.lastValidBlockHeight)
+          : null;
+      if (asyncStatus?.status === "failed" || asyncStatus?.status === "expired") {
+        throw new Error(`DFlow order ${asyncStatus.status}.`);
+      }
+
+      const tokenAmountApprox = solPriceUsd > 0 ? (amountNum * solPriceUsd) / marketPriceUsd : null;
+      recordLocalTrade({
+        mint: selectedMarketMint,
+        side: "buy",
+        volumeSol: amountNum,
+        tokenAmount: tokenAmountApprox,
+        priceUsd: marketPriceUsd,
+        tokenName: outcomeName,
+        tokenSymbol: outcomeSymbol,
+        txSignature: sig,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
+
+      if (tokenAmountApprox != null && tokenAmountApprox > 0 && solPriceUsd > 0) {
+        setTradePnLData({
+          token: {
+            name: outcomeName,
+            symbol: outcomeSymbol,
+          },
+          profitUsd: 0,
+          percent: 0,
+          kalshiMarket: selectedMarket.title,
+          wallet: publicKey.toBase58(),
+          executedAt: Date.now(),
+        });
+        setTradePnLModalOpen(true);
+        setBuyPanelOpen(false);
+        setResultModal(null);
+        setSuccess(null);
+        return;
+      }
+
+      setResultModal({
+        type: "success",
+        title: data.executionMode === "async" ? "Trade submitted" : "Trade complete",
+        message:
+          data.executionMode === "async"
+            ? asyncStatus?.status === "closed"
+              ? `Bought ${outcomeLabel} and DFlow marked the order settled.`
+              : `Bought ${outcomeLabel}. Transaction confirmed and settlement is still finalizing.`
+            : `Bought ${outcomeLabel}.`,
+        txSignature: sig,
+      });
+      setSuccess(`Bought ${outcomeLabel} on ${selectedMarket.ticker}.`);
+      setSolAmount("");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Prediction trade failed";
+      const friendly = getFriendlyTradeError(msg, "Prediction market trade failed. Please try again.");
+      setError(friendly);
+      setResultModal({ type: "error", title: "Trade failed", message: friendly });
+      addToast(friendly, "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -629,53 +892,214 @@ export function UnifiedBuyPanel() {
             <div className="p-4 overflow-y-auto flex-1 min-h-0">
               <div className="flex flex-col gap-4">
                 {buyPanelMode === "market" && selectedMarket && (
-                  <div className="rounded-lg border p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
+                  <div className="rounded-xl border p-4 md:p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction market</p>
-                    <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-2">{selectedMarket.title}</p>
-                    <p className="font-body text-[var(--accent-kalshi)] mt-2">{selectedMarket.probability.toFixed(0)}% YES</p>
-                    <p className="text-[var(--text-secondary)] text-xs mt-2 mb-3">Market trading is on Kalshi. Use the link below to trade.</p>
+                    <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-3">{selectedMarket.title}</p>
+                    {selectedMarket.subtitle && (
+                      <p className="font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
+                        {selectedMarket.subtitle}
+                      </p>
+                    )}
+
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          setMarketSide("yes");
+                        }}
+                        disabled={!selectedMarket.yes_mint}
+                        className="rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-40"
+                        style={{
+                          background: marketSide === "yes" ? "color-mix(in srgb, var(--up) 12%, var(--bg-surface))" : "var(--bg-surface)",
+                          borderColor: marketSide === "yes" ? "color-mix(in srgb, var(--up) 40%, transparent)" : "var(--border-subtle)",
+                        }}
+                      >
+                        <p className="font-heading text-xs font-semibold uppercase tracking-wide" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--text-2)" }}>
+                          YES
+                        </p>
+                        <p className="font-mono text-lg tabular-nums mt-1" style={{ color: "var(--text-1)" }}>
+                          {marketYesPriceUsd != null ? `${(marketYesPriceUsd * 100).toFixed(1)}c` : "—"}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          setMarketSide("no");
+                        }}
+                        disabled={!selectedMarket.no_mint}
+                        className="rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-40"
+                        style={{
+                          background: marketSide === "no" ? "color-mix(in srgb, var(--down) 10%, var(--bg-surface))" : "var(--bg-surface)",
+                          borderColor: marketSide === "no" ? "color-mix(in srgb, var(--down) 35%, transparent)" : "var(--border-subtle)",
+                        }}
+                      >
+                        <p className="font-heading text-xs font-semibold uppercase tracking-wide" style={{ color: marketSide === "no" ? "var(--down)" : "var(--text-2)" }}>
+                          NO
+                        </p>
+                        <p className="font-mono text-lg tabular-nums mt-1" style={{ color: "var(--text-1)" }}>
+                          {marketNoPriceUsd != null ? `${(marketNoPriceUsd * 100).toFixed(1)}c` : "—"}
+                        </p>
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>YES</p>
+                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--kalshi)" }}>
+                          {selectedMarket.probability.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Velocity</p>
+                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: selectedMarket.velocity_1h >= 0 ? "var(--up)" : "var(--down)" }}>
+                          {selectedMarket.velocity_1h >= 0 ? "+" : ""}{selectedMarket.velocity_1h.toFixed(1)}%/h
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Volume</p>
+                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {formatCompactNumber(selectedMarket.volume, 1)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="text-xs text-[var(--text-secondary)] block mb-1">SOL amount</label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0.001"
+                        placeholder="0.05"
+                        value={solAmount}
+                        onChange={(e) => setSolAmount(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                        style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+                      />
+                    </div>
+
+                    <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[11px]" style={{ color: "var(--text-3)" }}>Current outcome price</span>
+                        <span className="font-mono text-sm tabular-nums" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--down)" }}>
+                          {formatUsd(selectedMarketPriceUsd, 3)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 mt-2">
+                        <span className="text-[11px]" style={{ color: "var(--text-3)" }}>Estimated shares</span>
+                        <span className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {estimatedContracts != null ? estimatedContracts.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-3">
+                      <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
+                        DFlow async
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--bg-surface)", color: "var(--text-3)", border: "1px solid var(--border-subtle)" }}>
+                        Proof required
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={executePredictionMarketTrade}
+                      disabled={loading || !selectedMarketMint}
+                      className="mt-4 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{
+                        background: marketSide === "yes" ? "var(--accent-bags)" : "var(--down)",
+                        color: "var(--bg-base)",
+                        height: "36px",
+                      }}
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Routing...
+                        </>
+                      ) : (
+                        `Buy ${marketSide.toUpperCase()}`
+                      )}
+                    </button>
+
                     <a
                       href={selectedMarket.kalshi_url || "https://kalshi.com"}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 flex items-center justify-center gap-2"
-                      style={{ background: "var(--accent-kalshi)", color: "var(--bg-base)", height: "36px" }}
+                      className="mt-3 w-full py-2.5 rounded-md font-body font-medium text-[13px] transition-all duration-100 hover:brightness-110 flex items-center justify-center gap-2 border"
+                      style={{ background: "var(--bg-surface)", color: "var(--text-2)", borderColor: "var(--border-subtle)" }}
                     >
                       Trade on Kalshi
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
+
+                    <p className="text-[11px] mt-3 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                      DFlow docs note that prediction-market orders settle asynchronously and can require Proof/KYC checks depending on market eligibility.
+                    </p>
                   </div>
                 )}
                 {buyPanelMode === "token" && selectedToken && (
                   <>
                   <div className="rounded-xl border p-4 md:p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
-                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Solana Token</p>
+                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">{isPredictionToken ? "Prediction position" : "Solana Token"}</p>
                     <div className="flex gap-2 mb-2">
-                      <button
-                        type="button"
-                        onClick={() => setSellMode(false)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${!sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-                        style={!sellMode ? { background: "var(--accent-bags)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
-                      >
-                        Buy
-                      </button>
+                      {!isPredictionToken && (
+                        <button
+                          type="button"
+                          onClick={() => setSellMode(false)}
+                          className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${!sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                          style={!sellMode ? { background: "var(--accent-bags)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                        >
+                          Buy
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setSellMode(true)}
                         className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
                         style={sellMode ? { background: "var(--accent-bags)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
                       >
-                        Sell
+                        {isPredictionToken ? "Close" : "Sell"}
                       </button>
                     </div>
                     <p className="font-heading font-bold text-[var(--text-primary)]">{tokenDisplayName}</p>
                     <p className="font-body text-[var(--accent-primary)] text-sm mt-1 tabular-nums">
-                      {tokenPriceFetchState === "loading" ? "Fetching price..." : selectedToken.price != null ? `~$${selectedToken.price.toFixed(4)} USD` : `Price unavailable${tokenPriceFetchReason ? `: ${tokenPriceFetchReason}` : ""}`}
+                      {tokenPriceFetchState === "loading"
+                        ? "Fetching price..."
+                        : selectedToken.price != null
+                          ? `${isPredictionToken ? "Mark" : "~"} ${formatUsd(selectedToken.price, isPredictionToken ? 3 : 4)}`
+                          : `Price unavailable${tokenPriceFetchReason ? `: ${tokenPriceFetchReason}` : ""}`}
                     </p>
-                    <p className="font-body text-[var(--text-1)] mt-2 text-sm tabular-nums">
-                      Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} USD
-                    </p>
-                    {riskScore > 0 && (
+                    {isPredictionToken ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedToken.marketSide && (
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded"
+                            style={{
+                              background: selectedToken.marketSide === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
+                              color: selectedToken.marketSide === "yes" ? "var(--bags)" : "var(--down)",
+                            }}
+                          >
+                            {selectedToken.marketSide.toUpperCase()}
+                          </span>
+                        )}
+                        {selectedToken.marketTicker && (
+                          <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--bg-surface)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>
+                            {selectedToken.marketTicker}
+                          </span>
+                        )}
+                        {selectedToken.marketProbability != null && (
+                          <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
+                            YES {selectedToken.marketProbability.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="font-body text-[var(--text-1)] mt-2 text-sm tabular-nums">
+                        Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} USD
+                      </p>
+                    )}
+                    {!isPredictionToken && riskScore > 0 && (
                       <div
                         className="mt-3 rounded-lg border px-3 py-2"
                         style={{
@@ -704,7 +1128,7 @@ export function UnifiedBuyPanel() {
                     )}
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
-                        MEV protected
+                        {isPredictionToken ? "DFlow async" : "MEV protected"}
                       </span>
                       <span className="text-[10px] text-[var(--text-3)]">Slippage:</span>
                       {[100, 200, 500].map((bps) => (
@@ -720,35 +1144,55 @@ export function UnifiedBuyPanel() {
                     </div>
                     {!sellMode ? (
                       <>
-                        <div className="mt-3">
-                          <label className="text-xs text-[var(--text-secondary)] block mb-1">SOL amount (enter for each buy)</label>
-                          <input
-                            type="number"
-                            step="0.001"
-                            min="0.001"
-                            placeholder="0.01"
-                            value={solAmount}
-                            onChange={(e) => setSolAmount(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
-                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
-                          />
-                        </div>
-                        <button
-                          onClick={executeSwap}
-                          disabled={loading || buyBlocked}
-                          className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
-                          style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
-                        >
-                          {loading ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" /> Swapping…
-                            </>
-                          ) : buyBlocked ? (
-                            "Blocked by risk analysis"
-                          ) : (
-                            `Buy ${tokenDisplayName}`
-                          )}
-                        </button>
+                        {isPredictionToken ? (
+                          <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                            <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              Add to this position from the market panel so you can choose YES or NO without clutter.
+                            </p>
+                            <a
+                              href={selectedToken.kalshiUrl || selectedMarket?.kalshi_url || "https://kalshi.com"}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-3 inline-flex items-center gap-2 text-xs"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              Open market reference
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mt-3">
+                              <label className="text-xs text-[var(--text-secondary)] block mb-1">SOL amount (enter for each buy)</label>
+                              <input
+                                type="number"
+                                step="0.001"
+                                min="0.001"
+                                placeholder="0.01"
+                                value={solAmount}
+                                onChange={(e) => setSolAmount(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                                style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+                              />
+                            </div>
+                            <button
+                              onClick={executeSwap}
+                              disabled={loading || buyBlocked}
+                              className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+                              style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
+                            >
+                              {loading ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" /> Swapping…
+                                </>
+                              ) : buyBlocked ? (
+                                "Blocked by risk analysis"
+                              ) : (
+                                `Buy ${tokenDisplayName}`
+                              )}
+                            </button>
+                          </>
+                        )}
                       </>
                     ) : (
                       <>
@@ -797,66 +1241,151 @@ export function UnifiedBuyPanel() {
                               <Loader2 className="w-4 h-4 animate-spin" /> Selling...
                             </>
                           ) : (
-                            `Sell ${tokenDisplayName} → SOL`
+                            `${isPredictionToken ? "Close" : "Sell"} ${tokenDisplayName} → SOL`
                           )}
                         </button>
                       </>
                     )}
                     <div className="mt-3 md:mt-4 pt-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-                      <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">24h price sketch</p>
-                      <div className="h-20 md:h-28 rounded-lg overflow-hidden" style={{ background: "var(--bg-surface)" }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={MOCK_CHART_DATA}>
-                            <defs>
-                              <linearGradient id="priceGradPanel" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#00FF85" stopOpacity={0.35} />
-                                <stop offset="100%" stopColor="#00FF85" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <Area type="monotone" dataKey="v" stroke="#00FF85" strokeWidth={2} fill="url(#priceGradPanel)" />
-                            <XAxis dataKey="t" tick={{ fontSize: 9 }} stroke="var(--text-3)" />
-                            <YAxis hide domain={["dataMin", "dataMax"]} />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
+                      <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">{isPredictionToken ? "Marking guide" : "24h price sketch"}</p>
+                      {isPredictionToken ? (
+                        <div className="rounded-lg border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                          <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            Prediction positions are marked from the live YES probability. Closing routes the outcome token back to SOL through DFlow.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="h-20 md:h-28 rounded-lg overflow-hidden" style={{ background: "var(--bg-surface)" }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={MOCK_CHART_DATA}>
+                              <defs>
+                                <linearGradient id="priceGradPanel" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#00FF85" stopOpacity={0.35} />
+                                  <stop offset="100%" stopColor="#00FF85" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <Area type="monotone" dataKey="v" stroke="#00FF85" strokeWidth={2} fill="url(#priceGradPanel)" />
+                              <XAxis dataKey="t" tick={{ fontSize: 9 }} stroke="var(--text-3)" />
+                              <YAxis hide domain={["dataMin", "dataMax"]} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
                       <CopyCAButton mint={selectedToken.mint} />
                     </div>
                   </div>
                   <div className="rounded-xl border p-4 flex flex-col" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
-                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-3">Token info</p>
+                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-3">{isPredictionToken ? "Position info" : "Token info"}</p>
                     <div className="space-y-2 text-sm">
                       <p className="flex justify-between">
-                        <span className="text-[var(--text-3)]">Price (est.)</span>
+                        <span className="text-[var(--text-3)]">{isPredictionToken ? "Mark price" : "Price (est.)"}</span>
                         <span className="font-body text-[var(--accent-primary)] tabular-nums">
                           {selectedToken.price != null ? `$${selectedToken.price.toFixed(6)}` : "—"}
                         </span>
                       </p>
+                      {isPredictionToken ? (
+                        <>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Side</span>
+                            <span className="font-body text-[var(--text-2)]">{selectedToken.marketSide?.toUpperCase() ?? "—"}</span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Market</span>
+                            <span className="font-body text-[var(--text-2)] truncate pl-4" title={selectedToken.marketTitle ?? selectedMarket?.title}>
+                              {selectedToken.marketTicker ?? selectedMarket?.ticker ?? "—"}
+                            </span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Reference YES</span>
+                            <span className="font-body text-[var(--accent-bags)] tabular-nums">
+                              {selectedToken.marketProbability != null ? `${selectedToken.marketProbability.toFixed(1)}%` : "—"}
+                            </span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Routing</span>
+                            <span className="text-[var(--text-2)]">DFlow</span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Settlement</span>
+                            <span className="text-[var(--text-2)]">Async</span>
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">24h volume</span>
+                            <span className="font-body text-[var(--accent-bags)] tabular-nums">
+                              {selectedToken.volume24h != null ? `${selectedToken.volume24h.toLocaleString()} USD` : "—"}
+                            </span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Liquidity</span>
+                            <span className="font-body text-[var(--text-2)] tabular-nums">
+                              {selectedToken.liquidityUsd != null ? `$${formatCompactNumber(selectedToken.liquidityUsd)}` : "—"}
+                            </span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">FDV</span>
+                            <span className="font-body text-[var(--text-2)] tabular-nums">
+                              {selectedToken.fdvUsd != null ? `$${formatCompactNumber(selectedToken.fdvUsd)}` : "—"}
+                            </span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Holders</span>
+                            <span className="font-body text-[var(--text-2)] tabular-nums">
+                              {selectedToken.holders != null ? formatCompactNumber(selectedToken.holders, 0) : "—"}
+                            </span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Curve</span>
+                            <span className="text-[var(--text-2)]">
+                              {selectedToken.bondingCurveStatus === "bonded"
+                                ? "Bonded"
+                                : selectedToken.bondingCurveStatus === "bonding"
+                                  ? "On curve"
+                                  : "—"}
+                            </span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Rugcheck</span>
+                            <span style={{ color: selectedToken.safe === false ? "var(--down)" : "var(--bags)" }}>
+                              {selectedToken.rugcheckScore != null
+                                ? `${selectedToken.rugcheckScore}${selectedToken.safe === false ? " · watch" : ""}`
+                                : selectedToken.safe === false
+                                  ? "Watch"
+                                  : "Safe"}
+                            </span>
+                          </p>
+                        </>
+                      )}
                       <p className="flex justify-between">
-                        <span className="text-[var(--text-3)]">24h volume</span>
-                        <span className="font-body text-[var(--accent-bags)] tabular-nums">
-                          {selectedToken.volume24h != null ? `${selectedToken.volume24h.toLocaleString()} USD` : "—"}
-                        </span>
-                      </p>
-                      <p className="flex justify-between">
-                        <span className="text-[var(--text-3)]">Swap</span>
-                        <span className="text-[var(--text-2)]">DFlow / Jupiter</span>
+                        <span className="text-[var(--text-3)]">{isPredictionToken ? "Reference" : "Swap"}</span>
+                        <span className="text-[var(--text-2)]">{isPredictionToken ? "Kalshi / DFlow" : "DFlow / Jupiter"}</span>
                       </p>
                     </div>
                     <p className="text-[10px] text-[var(--text-3)] mt-3 leading-relaxed">
-                      Chart is illustrative. Execute swaps via Jupiter; confirm in your wallet.
+                      {isPredictionToken
+                        ? "Prediction positions are marked from live market probability and closed through DFlow outcome-token routing."
+                        : "Chart is illustrative. Execute swaps via Jupiter; confirm in your wallet."}
                     </p>
                   </div>
-                  <TokenSignalSection
+                  {!isPredictionToken && (
+                    <>
+                      <TokenSignalSection
                         volume24h={selectedToken.volume24h}
                         matchedMarketTitle={selectedMarket?.title}
                       />
-                  <TokenTweetsSection mint={selectedToken.mint} />
+                      <TokenTweetsSection mint={selectedToken.mint} />
+                    </>
+                  )}
                   </>
                 )}
               </div>
               {!resultModal && error && <p className="text-sm mt-3" style={{ color: "var(--down)" }}>{error}</p>}
               {!resultModal && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
-              <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">Connect wallet. Markets: Kalshi. Swaps: DFlow (market tokens) or Jupiter (fallback). MEV protected.</p>
+              <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">
+                Connect wallet. Markets use Kalshi data with DFlow outcome-token routing; spot swaps fall back to Jupiter. Prediction orders may require Proof verification.
+              </p>
             </div>
           </motion.div>
         </>

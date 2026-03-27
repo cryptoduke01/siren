@@ -3,7 +3,7 @@ import bs58 from "bs58";
 import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
 import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats, getBagsPools, getBagsPoolByTokenMint, getTokenLifetimeFees, getClaimablePositions, getClaimTransactionsV3, getBagsTradeQuote, createBagsSwapTransaction } from "./services/bags.js";
-import { getDflowOrder } from "./services/dflow.js";
+import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
@@ -549,6 +549,10 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.send({
         success: true,
         transaction: result.transaction,
+        executionMode: result.executionMode,
+        lastValidBlockHeight: result.lastValidBlockHeight,
+        inAmount: result.inAmount,
+        outAmount: result.outAmount,
       });
     } catch (e) {
       app.log.error(e);
@@ -559,13 +563,33 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get<{ Querystring: { signature: string; lastValidBlockHeight?: string } }>("/api/dflow/order-status", async (req, reply) => {
+    const { signature, lastValidBlockHeight } = req.query;
+    if (!signature?.trim()) {
+      return reply.status(400).send({ success: false, error: "signature required" });
+    }
+    try {
+      const result = await getDflowOrderStatus(
+        signature.trim(),
+        lastValidBlockHeight ? Number(lastValidBlockHeight) : undefined
+      );
+      if (result.error) {
+        return reply.status(503).send({ success: false, error: result.error });
+      }
+      return reply.send({ success: true, data: result });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "DFlow order status failed" });
+    }
+  });
+
   app.get("/api/markets", async (_req, reply) => {
     try {
       const markets = await getMarketsWithVelocity();
       return reply.send({ success: true, data: markets });
     } catch (e) {
       app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch markets" });
+      return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch markets" });
     }
   });
 
@@ -606,16 +630,35 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.status(503).send({ success: false, error: "X API not configured. Set TWITTER_BEARER_TOKEN." });
     }
     try {
-      const q = encodeURIComponent(`"${mint.trim()}"`);
-      const url = `https://api.twitter.com/2/tweets/search/recent?query=${q}&max_results=10&tweet.fields=created_at,author_id,text,public_metrics`;
+      const cleanMint = mint.trim();
+      const info = await getTokenInfoByMint(cleanMint).catch(() => null);
+      const symbol = info?.symbol?.trim();
+      const safeSymbol =
+        symbol && symbol.length >= 2 && symbol.length <= 10 && !["token", "unknown"].includes(symbol.toLowerCase())
+          ? symbol
+          : null;
+      const queryParts = [`"${cleanMint}"`];
+      if (safeSymbol) queryParts.push(`$${safeSymbol}`);
+      const query = `(${queryParts.join(" OR ")}) lang:en -is:retweet`;
+      const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(query)}&max_results=10&tweet.fields=created_at,author_id,text,public_metrics`;
+      req.log.info(
+        { mint: cleanMint, query, bearerConfigured: Boolean(process.env.TWITTER_BEARER_TOKEN?.trim()) },
+        "token-tweets query"
+      );
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${bearer}`, Accept: "application/json" },
       });
-      const data = (await res.json()) as { data?: Array<{ id: string; text: string; created_at?: string; author_id?: string }>; error?: { message?: string } };
+      const data = (await res.json()) as {
+        data?: Array<{ id: string; text: string; created_at?: string; author_id?: string }>;
+        error?: { message?: string };
+        title?: string;
+        detail?: string;
+        errors?: Array<{ message?: string }>;
+      };
       if (!res.ok) {
         return reply.status(res.status >= 500 ? 503 : res.status).send({
           success: false,
-          error: data.error?.message ?? "X API error",
+          error: data.detail ?? data.errors?.[0]?.message ?? data.error?.message ?? data.title ?? "X API error",
         });
       }
       const tweets = data.data ?? [];
@@ -958,7 +1001,15 @@ export function registerRoutes(app: FastifyInstance) {
           return reply.status(500).send({ success: false, error: "Invalid transaction format" });
         }
       }
-      return reply.send({ success: true, provider: result.provider, transaction: txBase64 });
+      return reply.send({
+        success: true,
+        provider: result.provider,
+        transaction: txBase64,
+        executionMode: result.executionMode,
+        lastValidBlockHeight: result.lastValidBlockHeight,
+        inAmount: result.inAmount,
+        outAmount: result.outAmount,
+      });
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: (e as Error).message || "Swap failed" });

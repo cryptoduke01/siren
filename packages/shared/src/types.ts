@@ -32,6 +32,12 @@ export interface BagsToken {
   imageUrl?: string;
   price?: number;
   volume24h?: number;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
+  rugcheckScore?: number;
+  safe?: boolean;
   ctMentions?: number;
   score?: number;
   launchedAt?: number;

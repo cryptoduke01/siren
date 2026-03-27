@@ -62,6 +62,14 @@ function getTokenCardTopBorder(token: SurfacedToken): string {
   return "var(--border-subtle)";
 }
 
+function formatCompactNumber(value?: number, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
 export function TokenSurface() {
   const { selectedMarket, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
   const { publicKey } = useSirenWallet();
@@ -142,9 +150,9 @@ export function TokenSurface() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hidden">
           {[
             { id: "all", label: "All", logoUrl: "", fallback: "A" },
-            { id: "bags", label: "Bags", logoUrl: "/brand/mark.svg", fallback: "B" },
+            { id: "bags", label: "Bags", logoUrl: "https://bags.fm/assets/images/bags-icon.png", fallback: "B" },
             { id: "pump", label: "Pump", logoUrl: "https://pump.fun/favicon.ico", fallback: "P" },
-            { id: "bonk", label: "Bonk", logoUrl: "https://bonkbot.io/favicon.ico", fallback: "B" },
+            { id: "bonk", label: "Bonk", logoUrl: "https://brand.bonkcoin.com/_next/image?url=%2Fimages%2Flogo.png&w=640&q=75", fallback: "B" },
             { id: "moonshot", label: "Moonshot", logoUrl: "https://moonshot.money/favicon.ico", fallback: "M" },
           ].map((item) => {
             const isActive = launchpadFilter === item.id;
@@ -206,7 +214,7 @@ export function TokenSurface() {
                   color: "var(--text-1)",
                 }}
               >
-                View on Kalshi
+                Trade on Kalshi
               </button>
               <button
                 type="button"
@@ -235,7 +243,7 @@ export function TokenSurface() {
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
       <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
-          ? "Tokens matched by keywords from the market title (DexScreener search). View on Kalshi to trade the market."
+          ? "Tokens ranked by onchain activity first, then boosted by keyword overlap with the selected market."
           : "New uprising tokens (DexScreener latest boosted)."}
       </p>
       {riskyTokens.length > 0 && (
@@ -306,6 +314,12 @@ export function TokenSurface() {
                     symbol: t.symbol,
                     price: t.price,
                     volume24h: t.volume24h,
+                    liquidityUsd: t.liquidityUsd,
+                    fdvUsd: t.fdvUsd,
+                    holders: t.holders,
+                    bondingCurveStatus: t.bondingCurveStatus,
+                    rugcheckScore: t.rugcheckScore,
+                    safe: t.safe,
                     riskScore: t.riskScore,
                     riskLabel: t.riskLabel,
                     riskReasons: t.riskReasons,
@@ -349,6 +363,29 @@ export function TokenSurface() {
                         Vol ${t.volume24h?.toLocaleString() ?? "—"}
                       </span>
                     </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                        {t.bondingCurveStatus === "bonded" ? "Bonded" : t.bondingCurveStatus === "bonding" ? "Curve" : "Status —"}
+                      </span>
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                        Holders {formatCompactNumber(t.holders, 0)}
+                      </span>
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                        Liq ${formatCompactNumber(t.liquidityUsd)}
+                      </span>
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                        FDV ${formatCompactNumber(t.fdvUsd)}
+                      </span>
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[10px] font-body"
+                        style={{
+                          borderColor: t.safe === false ? "color-mix(in srgb, var(--down) 35%, var(--border-subtle))" : "var(--border-subtle)",
+                          color: t.safe === false ? "var(--down)" : "var(--bags)",
+                        }}
+                      >
+                        {t.rugcheckScore != null ? `Rug ${t.rugcheckScore}` : t.safe === false ? "Watch" : "Safe"}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -365,6 +402,12 @@ export function TokenSurface() {
                           symbol: t.symbol,
                           price: t.price,
                           volume24h: t.volume24h,
+                          liquidityUsd: t.liquidityUsd,
+                          fdvUsd: t.fdvUsd,
+                          holders: t.holders,
+                          bondingCurveStatus: t.bondingCurveStatus,
+                          rugcheckScore: t.rugcheckScore,
+                          safe: t.safe,
                           riskScore: t.riskScore,
                           riskLabel: t.riskLabel,
                           riskReasons: t.riskReasons,

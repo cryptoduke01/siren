@@ -20,13 +20,25 @@ export interface SelectedToken {
   mint: string;
   name: string;
   symbol: string;
+  assetType?: "spot" | "prediction";
   price?: number;
   volume24h?: number;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
+  rugcheckScore?: number;
+  safe?: boolean;
   ctMentions?: number;
   riskScore?: number;
   riskLabel?: "low" | "moderate" | "high" | "critical";
   riskReasons?: string[];
   riskBlocked?: boolean;
+  marketTicker?: string;
+  marketTitle?: string;
+  marketSide?: "yes" | "no";
+  marketProbability?: number;
+  kalshiUrl?: string;
 }
 
 type BuyPanelMode = "market" | "token";

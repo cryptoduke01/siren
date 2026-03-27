@@ -62,6 +62,10 @@ export interface SwapOrderResult {
   provider: SwapProvider;
   transaction: string;
   error?: string;
+  executionMode?: "sync" | "async";
+  lastValidBlockHeight?: number;
+  inAmount?: string;
+  outAmount?: string;
 }
 
 export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderResult> {
@@ -83,7 +87,14 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
       predictionMarketSlippageBps: 500,
     });
     if (dflow.transaction) {
-      return { provider: "dflow", transaction: dflow.transaction };
+      return {
+        provider: "dflow",
+        transaction: dflow.transaction,
+        executionMode: dflow.executionMode,
+        lastValidBlockHeight: dflow.lastValidBlockHeight,
+        inAmount: dflow.inAmount,
+        outAmount: dflow.outAmount,
+      };
     }
   }
 

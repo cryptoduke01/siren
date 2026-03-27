@@ -21,6 +21,12 @@ async function fetchTokenInfo(
   symbol: string;
   imageUrl?: string;
   priceUsd?: number;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
+  rugcheckScore?: number;
+  safe?: boolean;
   riskScore?: number;
   riskLabel?: "low" | "moderate" | "high" | "critical";
   riskReasons?: string[];
@@ -168,6 +174,12 @@ export default function WatchlistPage() {
                           symbol: info?.symbol ?? "???",
                           price: info?.priceUsd,
                           volume24h: undefined,
+                          liquidityUsd: info?.liquidityUsd,
+                          fdvUsd: info?.fdvUsd,
+                          holders: info?.holders,
+                          bondingCurveStatus: info?.bondingCurveStatus,
+                          rugcheckScore: info?.rugcheckScore,
+                          safe: info?.safe,
                           ctMentions: undefined,
                           riskScore: info?.riskScore,
                           riskLabel: info?.riskLabel,

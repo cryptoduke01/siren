@@ -117,6 +117,12 @@ export function HomeInner() {
              symbol: d.symbol ?? "???",
              price: d.priceUsd,
              volume24h: undefined,
+             liquidityUsd: d.liquidityUsd,
+             fdvUsd: d.fdvUsd,
+             holders: d.holders,
+             bondingCurveStatus: d.bondingCurveStatus,
+             rugcheckScore: d.rugcheckScore,
+             safe: d.safe,
              ctMentions: undefined,
             riskScore: d.riskScore,
             riskLabel: d.riskLabel,
@@ -198,4 +204,3 @@ export function HomeInner() {
      </div>
    );
  }
-

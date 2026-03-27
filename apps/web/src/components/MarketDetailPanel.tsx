@@ -18,13 +18,14 @@ function VelocityBadge({ v }: { v: number }) {
 }
 
 export function MarketDetailPanel() {
-  const { selectedMarket, setSelectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
+  const { selectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
   const isOpen = !!selectedMarket && detailPanelOpen;
 
   if (!selectedMarket || !detailPanelOpen) return null;
 
   const yesPct = Math.min(100, Math.max(0, selectedMarket.probability));
   const noPct = 100 - yesPct;
+  const canTradeInApp = !!(selectedMarket.yes_mint || selectedMarket.no_mint);
 
   return (
     <AnimatePresence>
@@ -96,19 +97,38 @@ export function MarketDetailPanel() {
                 </div>
               </div>
 
-              {(selectedMarket.yes_mint || selectedMarket.no_mint) ? (
+              {canTradeInApp ? (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticLight();
+                      setDetailPanelOpen(false);
+                      setBuyPanelOpen(true, "market");
+                    }}
+                    className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2"
+                    style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                  >
+                    Trade In Siren
+                  </button>
                   <a
                     href={selectedMarket.kalshi_url || "https://kalshi.com"}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
-                    className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2"
-                    style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                    className="w-full py-3 rounded-[6px] font-body font-medium text-sm transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2 border"
+                    style={{
+                      background: "var(--bg-elevated)",
+                      color: "var(--text-2)",
+                      borderColor: "var(--border-subtle)",
+                    }}
                   >
                     Trade on Kalshi
                     <ExternalLink className="w-4 h-4" />
                   </a>
+                  <p className="text-center font-body text-xs" style={{ color: "var(--text-3)" }}>
+                    Outcome-token trades route through DFlow and may settle asynchronously.
+                  </p>
                 </>
               ) : (
                 <>

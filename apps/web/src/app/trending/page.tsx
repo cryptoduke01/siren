@@ -10,6 +10,14 @@ import type { SurfacedToken } from "@siren/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
+function formatCompactNumber(value?: number, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
 function fetchTrendingTokens(): Promise<SurfacedToken[]> {
   return fetch(`${API_URL}/api/tokens`, { credentials: "omit" })
     .then((r) => {
@@ -78,6 +86,12 @@ export default function TrendingPage() {
                     symbol: t.symbol,
                     price: t.price,
                     volume24h: t.volume24h,
+                    liquidityUsd: t.liquidityUsd,
+                    fdvUsd: t.fdvUsd,
+                    holders: t.holders,
+                    bondingCurveStatus: t.bondingCurveStatus,
+                    rugcheckScore: t.rugcheckScore,
+                    safe: t.safe,
                     ctMentions: t.ctMentions,
                   })
                 }
@@ -112,6 +126,26 @@ export default function TrendingPage() {
                     {t.ctMentions ?? "-"}
                   </span>
                 </div>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                    {t.bondingCurveStatus === "bonded" ? "Bonded" : t.bondingCurveStatus === "bonding" ? "Curve" : "Status —"}
+                  </span>
+                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                    Holders {formatCompactNumber(t.holders, 0)}
+                  </span>
+                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                    Liq ${formatCompactNumber(t.liquidityUsd)}
+                  </span>
+                  <span
+                    className="rounded-full border px-2 py-0.5 text-[10px] font-body"
+                    style={{
+                      borderColor: t.safe === false ? "color-mix(in srgb, var(--down) 35%, var(--border-subtle))" : "var(--border-subtle)",
+                      color: t.safe === false ? "var(--down)" : "var(--bags)",
+                    }}
+                  >
+                    {t.rugcheckScore != null ? `Rug ${t.rugcheckScore}` : t.safe === false ? "Watch" : "Safe"}
+                  </span>
+                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -121,6 +155,12 @@ export default function TrendingPage() {
                       symbol: t.symbol,
                       price: t.price,
                       volume24h: t.volume24h,
+                      liquidityUsd: t.liquidityUsd,
+                      fdvUsd: t.fdvUsd,
+                      holders: t.holders,
+                      bondingCurveStatus: t.bondingCurveStatus,
+                      rugcheckScore: t.rugcheckScore,
+                      safe: t.safe,
                       ctMentions: t.ctMentions,
                     });
                   }}

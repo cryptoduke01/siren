@@ -45,15 +45,25 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
       setWalletType(type);
       setErrorMessage(null);
       try {
-        if (wallet.adapter.name) select(wallet.adapter.name);
-        await connect();
+        if (wallet.adapter.name) {
+          select(wallet.adapter.name);
+          await new Promise((resolve) => window.setTimeout(resolve, 0));
+        }
+        const adapterConnect = (wallet.adapter as { connect?: () => Promise<void> }).connect;
+        if (typeof adapterConnect === "function") {
+          await adapterConnect.call(wallet.adapter);
+        } else {
+          await connect();
+        }
         onClose();
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Unable to connect wallet.";
         setErrorMessage(
           isMobile
             ? "Could not connect in this browser. Open Siren from your wallet browser and try again."
-            : msg
+            : /walletnotselected|wallet not selected/i.test(msg)
+              ? "Wallet selection did not finish before connect. Try the wallet again."
+              : msg
         );
       }
     },

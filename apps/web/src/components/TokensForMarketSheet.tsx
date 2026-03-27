@@ -106,7 +106,7 @@ export function TokensForMarketSheet({
                         color: "var(--text-1)",
                       }}
                     >
-                      View on Kalshi
+                      Trade on Kalshi
                     </button>
                   </div>
                 </div>

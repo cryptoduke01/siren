@@ -9,6 +9,7 @@ import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
 import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
@@ -26,13 +27,45 @@ async function fetchSolPrice(): Promise<number> {
   return j.usd ?? 0;
 }
 
-async function fetchTokenInfo(mint: string): Promise<{ name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null> {
+async function fetchTokenInfo(mint: string): Promise<TokenInfoSnapshot | null> {
   const res = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
   if (!res.ok) return null;
   const j = await res.json();
   const d = j.data;
   if (!d) return null;
-  return { name: d.name, symbol: d.symbol, imageUrl: d.imageUrl, priceUsd: d.priceUsd };
+  return {
+    name: d.name,
+    symbol: d.symbol,
+    imageUrl: d.imageUrl,
+    priceUsd: d.priceUsd,
+    volume24h: d.volume24h,
+    liquidityUsd: d.liquidityUsd,
+    fdvUsd: d.fdvUsd,
+    holders: d.holders,
+    bondingCurveStatus: d.bondingCurveStatus,
+    rugcheckScore: d.rugcheckScore,
+    safe: d.safe,
+  };
+}
+
+function hasUsableLabel(value?: string | null): value is string {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  return !["-", "—", "unknown", "token", "to"].includes(lower);
+}
+
+function getDisplayName(name?: string | null, symbol?: string | null, mint?: string): string {
+  if (hasUsableLabel(name)) return name.trim();
+  if (hasUsableLabel(symbol)) return symbol.trim();
+  return mint ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : "Token";
+}
+
+function getDisplaySymbol(symbol?: string | null, name?: string | null, mint?: string): string {
+  if (hasUsableLabel(symbol)) return symbol.trim();
+  if (hasUsableLabel(name)) return name.trim();
+  return mint ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : "Token";
 }
 
 async function fetchBalances(publicKey: string) {
@@ -56,6 +89,20 @@ interface TokenHolding {
   name: string;
   balance: number;
   decimals: number;
+}
+
+interface TokenInfoSnapshot {
+  name: string;
+  symbol: string;
+  imageUrl?: string;
+  priceUsd?: number;
+  volume24h?: number;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
+  rugcheckScore?: number;
+  safe?: boolean;
 }
 
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -95,6 +142,7 @@ interface PredictionPosition {
   side: "yes" | "no";
   balance: number;
   probability?: number;
+  kalshiUrl?: string;
 }
 
 async function fetchMarkets(): Promise<MarketWithVelocity[]> {
@@ -227,7 +275,7 @@ function FeeEarningsSection({
   signTransaction: ((tx: Transaction | VersionedTransaction) => Promise<Transaction | VersionedTransaction>) | undefined;
   connection: Connection;
   solPriceUsd: number;
-  tokenInfoByMint: Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>;
+  tokenInfoByMint: Map<string, TokenInfoSnapshot | null>;
   queryClient: ReturnType<typeof import("@tanstack/react-query").useQueryClient>;
 }) {
   const [claimingMint, setClaimingMint] = useState<string | null>(null);
@@ -328,7 +376,8 @@ function FeeEarningsSection({
             {claimable.map((p: { baseMint: string; totalClaimableLamportsUserShare: number }) => {
               const sol = p.totalClaimableLamportsUserShare / LAMPORTS_PER_SOL;
               const info = tokenInfoByMint.get(p.baseMint);
-              const sym = info?.symbol ?? p.baseMint.slice(0, 6);
+              const sym = getDisplaySymbol(info?.symbol, info?.name, p.baseMint);
+              const name = getDisplayName(info?.name, info?.symbol, p.baseMint);
               const isClaiming = claimingMint === p.baseMint;
               return (
                 <li
@@ -337,7 +386,8 @@ function FeeEarningsSection({
                   style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
                 >
                   <div className="min-w-0">
-                    <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{sym}</p>
+                    <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{name}</p>
+                    <p className="font-body text-[11px] truncate mt-0.5" style={{ color: "var(--text-3)" }}>{sym}</p>
                     <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--accent)" }}>
                       {sol.toFixed(6)} SOL
                       {solPriceUsd > 0 && (
@@ -483,13 +533,25 @@ function SendSolModal({
 
 function buildMintToMarket(
   markets: MarketWithVelocity[]
-): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number }> {
-  const map = new Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number }>();
+): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string }> {
+  const map = new Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string }>();
   for (const m of markets) {
-    if (m.yes_mint) map.set(m.yes_mint, { ticker: m.ticker, title: m.title, side: "yes", probability: m.probability });
-    if (m.no_mint) map.set(m.no_mint, { ticker: m.ticker, title: m.title, side: "no", probability: m.probability });
+    if (m.yes_mint) map.set(m.yes_mint, { ticker: m.ticker, title: m.title, side: "yes", probability: m.probability, kalshiUrl: m.kalshi_url });
+    if (m.no_mint) map.set(m.no_mint, { ticker: m.ticker, title: m.title, side: "no", probability: m.probability, kalshiUrl: m.kalshi_url });
   }
   return map;
+}
+
+function buildPredictionTokenInfo(
+  market: { ticker: string; title: string; side: "yes" | "no"; probability?: number }
+): TokenInfoSnapshot {
+  const yesProbability = Math.min(100, Math.max(0, market.probability ?? 50));
+  const priceUsd = market.side === "yes" ? yesProbability / 100 : (100 - yesProbability) / 100;
+  return {
+    name: `${market.title} · ${market.side.toUpperCase()}`,
+    symbol: `${market.side.toUpperCase()} ${market.ticker}`,
+    priceUsd,
+  };
 }
 
 export default function PortfolioPage() {
@@ -567,6 +629,15 @@ export default function PortfolioPage() {
     refetchOnMount: "always",
   });
 
+  const { data: markets = [], isLoading: marketsLoading, isError: marketsError } = useQuery({
+    queryKey: ["markets"],
+    queryFn: fetchMarkets,
+    enabled: !!connected,
+    staleTime: 60_000,
+  });
+
+  const mintToMarket = buildMintToMarket(markets);
+
   const tokenMints = tokenHoldings.map((t) => t.mint);
   const { data: tokenInfosList } = useQuery({
     queryKey: ["portfolio-token-infos", tokenMints],
@@ -574,9 +645,27 @@ export default function PortfolioPage() {
     enabled: tokenMints.length > 0,
     staleTime: 60_000,
   });
-  const tokenInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
+  const syntheticTokenInfoByMint = new Map<string, TokenInfoSnapshot>();
+  tokenMints.forEach((mint) => {
+    const market = mintToMarket.get(mint);
+    if (market) syntheticTokenInfoByMint.set(mint, buildPredictionTokenInfo(market));
+  });
+  const tokenInfoByMint = new Map<string, TokenInfoSnapshot | null>();
   tokenMints.forEach((mint, i) => {
-    tokenInfoByMint.set(mint, tokenInfosList?.[i] ?? null);
+    const fetched = tokenInfosList?.[i] ?? null;
+    const synthetic = syntheticTokenInfoByMint.get(mint);
+    if (synthetic) {
+      tokenInfoByMint.set(mint, {
+        ...synthetic,
+        ...(fetched ?? {}),
+        name: hasUsableLabel(fetched?.name) ? fetched!.name : synthetic.name,
+        symbol: hasUsableLabel(fetched?.symbol) ? fetched!.symbol : synthetic.symbol,
+        imageUrl: fetched?.imageUrl ?? synthetic.imageUrl,
+        priceUsd: fetched?.priceUsd ?? synthetic.priceUsd,
+      });
+      return;
+    }
+    tokenInfoByMint.set(mint, fetched);
   });
 
   useEffect(() => {
@@ -614,7 +703,7 @@ export default function PortfolioPage() {
       const tradesKey = `siren-trades-${publicKey.toBase58()}`;
       const rawTrades = window.localStorage.getItem(tradesKey);
       const nextPnl: Record<string, { pnlUsd: number; pnlPercent: number }> = {};
-      if (rawTrades && tokenInfosList && tokenMints.length > 0) {
+      if (rawTrades && tokenMints.length > 0) {
         try {
           const trades: Array<{
             ts?: number;
@@ -666,7 +755,7 @@ export default function PortfolioPage() {
       setWalletVolumeSol(0);
       setPnlByMint({});
     }
-  }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings]);
+  }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings, markets]);
 
   const { data: bagsLaunchInfos } = useQuery({
     queryKey: ["bags-launch-infos", bagsLaunches],
@@ -674,7 +763,7 @@ export default function PortfolioPage() {
     enabled: bagsLaunches.length > 0,
     staleTime: 60_000,
   });
-  const bagsLaunchInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
+  const bagsLaunchInfoByMint = new Map<string, TokenInfoSnapshot | null>();
   bagsLaunches.forEach((mint, i) => {
     bagsLaunchInfoByMint.set(mint, bagsLaunchInfos?.[i] ?? null);
   });
@@ -710,14 +799,6 @@ export default function PortfolioPage() {
       0
     );
 
-  const { data: markets = [], isLoading: marketsLoading, isError: marketsError } = useQuery({
-    queryKey: ["markets"],
-    queryFn: fetchMarkets,
-    enabled: !!connected,
-    staleTime: 60_000,
-  });
-
-  const mintToMarket = buildMintToMarket(markets);
   const predictionPositions: PredictionPosition[] = tokenHoldings
     .filter((t) => mintToMarket.has(t.mint))
     .map((t) => {
@@ -729,13 +810,91 @@ export default function PortfolioPage() {
         side: info.side,
         balance: t.balance,
         probability: info.probability,
+        kalshiUrl: info.kalshiUrl,
       };
     });
+  const spotTokenHoldings = tokenHoldings.filter((t) => !mintToMarket.has(t.mint));
+  const predictionPnlPositions: PnlPosition[] = predictionPositions.map((position) => {
+    const info = tokenInfoByMint.get(position.mint);
+    const displayName = getDisplayName(info?.name, position.title, position.mint);
+    const displaySymbol = getDisplaySymbol(info?.symbol, position.ticker, position.mint);
+    const valueUsd = position.balance * (info?.priceUsd ?? 0);
+    const pnl = pnlByMint[position.mint];
+    return {
+      mint: position.mint,
+      ticker: displaySymbol,
+      title: displayName,
+      side: position.side,
+      kalshiMarket: position.ticker,
+      valueUsd,
+      pnlUsd: pnl?.pnlUsd ?? null,
+      pnlPercent: pnl?.pnlPercent ?? null,
+    };
+  });
+  const predictionTrackedPositions = predictionPnlPositions.filter((position) => position.pnlUsd != null);
+  const predictionTotalPnlUsd = predictionTrackedPositions.length
+    ? predictionTrackedPositions.reduce((sum, position) => sum + (position.pnlUsd ?? 0), 0)
+    : null;
+  const predictionCostBasisUsd = predictionTrackedPositions.reduce(
+    (sum, position) => sum + Math.max(0, position.valueUsd - (position.pnlUsd ?? 0)),
+    0
+  );
+  const predictionTotalPnlPercent =
+    predictionTotalPnlUsd != null && predictionCostBasisUsd > 0
+      ? (predictionTotalPnlUsd / predictionCostBasisUsd) * 100
+      : null;
 
-  const openSellPanel = (mint: string, symbol: string, name: string) => {
-    const price = tokenInfoByMint.get(mint)?.priceUsd;
-    setSelectedToken({ mint, symbol, name, price: price ?? undefined }, { openForSell: true });
-    setBuyPanelOpen(true);
+  const openSellPanel = ({
+    mint,
+    symbol,
+    name,
+    assetType = "spot",
+    marketTicker,
+    marketTitle,
+    marketSide,
+    marketProbability,
+    kalshiUrl,
+  }: {
+    mint: string;
+    symbol: string;
+    name: string;
+    assetType?: "spot" | "prediction";
+    marketTicker?: string;
+    marketTitle?: string;
+    marketSide?: "yes" | "no";
+    marketProbability?: number;
+    kalshiUrl?: string;
+  }) => {
+    const info = tokenInfoByMint.get(mint);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[Portfolio] opening sell panel", {
+        mint,
+        priceUsd: info?.priceUsd,
+      });
+    }
+    setSelectedToken(
+      {
+        mint,
+        symbol,
+        name,
+        assetType,
+        price: info?.priceUsd ?? undefined,
+        volume24h: info?.volume24h,
+        liquidityUsd: info?.liquidityUsd,
+        fdvUsd: info?.fdvUsd,
+        holders: info?.holders,
+        bondingCurveStatus: info?.bondingCurveStatus,
+        rugcheckScore: info?.rugcheckScore,
+        safe: info?.safe,
+        marketTicker,
+        marketTitle,
+        marketSide,
+        marketProbability,
+        kalshiUrl,
+      },
+      { openForSell: true }
+    );
+    setBuyPanelOpen(true, "token");
   };
 
   return (
@@ -865,8 +1024,8 @@ export default function PortfolioPage() {
                         <ul className="space-y-2 max-h-64 overflow-y-auto overflow-x-hidden">
                           {tokenHoldings.map((t) => {
                             const info = tokenInfoByMint.get(t.mint);
-                            const sym = info?.symbol ?? (t.symbol !== "—" ? t.symbol : t.mint.slice(0, 6));
-                            const name = info?.name ?? t.name;
+                            const sym = getDisplaySymbol(info?.symbol, t.symbol, t.mint);
+                            const name = getDisplayName(info?.name, sym, t.mint);
                             return (
                               <li key={t.mint} className="flex items-center gap-3 rounded-xl border p-3 min-w-0" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                                 <div className="min-w-0 flex-1">
@@ -878,7 +1037,19 @@ export default function PortfolioPage() {
                                   onClick={() => {
                                     hapticLight();
                                     setSelectedToken(
-                                      { mint: t.mint, name, symbol: sym, price: info?.priceUsd ?? undefined },
+                                      {
+                                        mint: t.mint,
+                                        name,
+                                        symbol: sym,
+                                        price: info?.priceUsd ?? undefined,
+                                        volume24h: info?.volume24h,
+                                        liquidityUsd: info?.liquidityUsd,
+                                        fdvUsd: info?.fdvUsd,
+                                        holders: info?.holders,
+                                        bondingCurveStatus: info?.bondingCurveStatus,
+                                        rugcheckScore: info?.rugcheckScore,
+                                        safe: info?.safe,
+                                      },
                                       { openForSell: true }
                                     );
                                     setBuyPanelOpen(true, "token");
@@ -1105,6 +1276,49 @@ export default function PortfolioPage() {
                 </div>
               </div>
               <div className="p-5">
+              {predictionPositions.length > 0 && (
+                <div
+                  className="mb-5 rounded-2xl border p-4 md:p-5"
+                  style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-surface) 100%)" }}
+                >
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="max-w-md">
+                      <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                        Prediction PnL
+                      </p>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        Positions are marked from live YES probability, with YES and NO shares repriced to their current market odds.
+                      </p>
+                      <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        Sells route back through DFlow, while the card below gives you a clean shareable snapshot without mixing these positions into generic token PnL.
+                      </p>
+                    </div>
+                    <PnlCard
+                      totalPnlUsd={predictionTotalPnlUsd}
+                      totalPnlPercent={predictionTotalPnlPercent}
+                      positions={predictionPnlPositions}
+                      walletAddress={publicKey?.toBase58() ?? null}
+                      isLoading={marketsLoading || tokensLoading}
+                      onSell={(position) => {
+                        const info = tokenInfoByMint.get(position.mint ?? "");
+                        const marketMeta = position.mint ? mintToMarket.get(position.mint) : undefined;
+                        if (!position.mint || !marketMeta) return;
+                        openSellPanel({
+                          mint: position.mint,
+                          symbol: getDisplaySymbol(info?.symbol, marketMeta.ticker, position.mint),
+                          name: getDisplayName(info?.name, marketMeta.title, position.mint),
+                          assetType: "prediction",
+                          marketTicker: marketMeta.ticker,
+                          marketTitle: marketMeta.title,
+                          marketSide: marketMeta.side,
+                          marketProbability: marketMeta.probability,
+                          kalshiUrl: marketMeta.kalshiUrl,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
               {marketsError ? (
                 <div className="py-8 text-center">
                   <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
@@ -1146,8 +1360,8 @@ export default function PortfolioPage() {
                   <ul className="space-y-3">
                     {predictionPositions.map((p) => {
                       const info = tokenInfoByMint.get(p.mint);
-                      const displayName = info?.name ?? p.title;
-                      const displaySymbol = info?.symbol ?? p.ticker;
+                      const displaySymbol = getDisplaySymbol(info?.symbol, p.ticker, p.mint);
+                      const displayName = getDisplayName(info?.name, p.title, p.mint);
                       const mintPnl = pnlByMint[p.mint];
                       return (
                       <li
@@ -1220,7 +1434,17 @@ export default function PortfolioPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               hapticLight();
-                              openSellPanel(p.mint, displaySymbol, displayName);
+                              openSellPanel({
+                                mint: p.mint,
+                                symbol: displaySymbol,
+                                name: displayName,
+                                assetType: "prediction",
+                                marketTicker: p.ticker,
+                                marketTitle: p.title,
+                                marketSide: p.side,
+                                marketProbability: p.probability,
+                                kalshiUrl: p.kalshiUrl,
+                              });
                             }}
                             className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
                             style={{ background: "var(--bags)", color: "var(--accent-text)" }}
@@ -1278,14 +1502,14 @@ export default function PortfolioPage() {
                       <div key={i} className="h-16 rounded-xl bg-[var(--border-subtle)] animate-pulse" />
                     ))}
                   </div>
-                ) : tokenHoldings.length === 0 ? (
+                ) : spotTokenHoldings.length === 0 ? (
                   <div className="py-8 text-center">
                     <Coins className="w-10 h-10 mx-auto mb-3 opacity-40" style={{ color: "var(--text-3)" }} />
                     <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
-                      No tokens yet
+                      No spot tokens yet
                     </p>
                     <p className="font-body text-xs mb-4" style={{ color: "var(--text-3)" }}>
-                      Buy from the Terminal or Trending to see holdings here.
+                      Meme tokens and other SPL assets will show up here separately from prediction positions.
                     </p>
                     <Link
                       href="/"
@@ -1299,16 +1523,10 @@ export default function PortfolioPage() {
                   </div>
                 ) : (
                   <ul className="space-y-3">
-                    {tokenHoldings.map((t) => {
+                    {spotTokenHoldings.map((t) => {
                       const info = tokenInfoByMint.get(t.mint);
-                      const displayName = info?.name ?? t.name;
-                      const rawSymbol = info?.symbol ?? t.symbol;
-                      const displaySymbol =
-                        rawSymbol && rawSymbol !== "-" && rawSymbol !== "—"
-                          ? rawSymbol
-                          : displayName && displayName !== "Unknown"
-                            ? displayName
-                            : "Token";
+                      const displaySymbol = getDisplaySymbol(info?.symbol, t.symbol, t.mint);
+                      const displayName = getDisplayName(info?.name, t.name, t.mint);
                       const valueUsd = info?.priceUsd != null ? t.balance * info.priceUsd : undefined;
                       const mintPnl = pnlByMint[t.mint];
                       return (
@@ -1322,7 +1540,14 @@ export default function PortfolioPage() {
                         >
                           <div
                             className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                            onClick={() => { hapticLight(); openSellPanel(t.mint, displaySymbol, displayName); }}
+                            onClick={() => {
+                              hapticLight();
+                              openSellPanel({
+                                mint: t.mint,
+                                symbol: displaySymbol,
+                                name: displayName,
+                              });
+                            }}
                             title={t.mint}
                           >
                             {info?.imageUrl ? (
@@ -1366,7 +1591,15 @@ export default function PortfolioPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); hapticLight(); openSellPanel(t.mint, displaySymbol, displayName); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                hapticLight();
+                                openSellPanel({
+                                  mint: t.mint,
+                                  symbol: displaySymbol,
+                                  name: displayName,
+                                });
+                              }}
                               className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
                               style={{ background: "var(--bags)", color: "var(--accent-text)" }}
                             >
@@ -1487,6 +1720,8 @@ export default function PortfolioPage() {
                 <ul className="space-y-3">
                   {bagsLaunches.map((mint) => {
                     const info = bagsLaunchInfoByMint.get(mint);
+                    const displaySymbol = getDisplaySymbol(info?.symbol, info?.name, mint);
+                    const displayName = getDisplayName(info?.name, info?.symbol, mint);
                     const claimedRaw = myClaimedByMint.get(mint);
                     const claimedLamports = claimedRaw ? Number(claimedRaw) : 0;
                     const claimedSol = claimedLamports / LAMPORTS_PER_SOL;
@@ -1505,15 +1740,15 @@ export default function PortfolioPage() {
                               className="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center font-mono text-xs font-semibold"
                               style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
                             >
-                              {(info?.symbol ?? mint).slice(0, 2)}
+                              {displaySymbol.slice(0, 2)}
                             </div>
                           )}
                           <div className="min-w-0">
                             <p className="font-heading font-semibold truncate" style={{ color: "var(--text-1)" }}>
-                              {info?.symbol ?? mint.slice(0, 4)}
+                              {displayName}
                             </p>
                             <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
-                              Launched on Bags
+                              {displaySymbol} · Launched on Bags
                             </p>
                           </div>
                         </div>
