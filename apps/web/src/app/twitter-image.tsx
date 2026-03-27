@@ -1,7 +1,8 @@
 import { ImageResponse } from "next/og";
 import { SocialCard } from "./social-card";
+import { getSocialCardFonts } from "./social-card-fonts";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const alt = "Siren X card preview";
 export const size = {
   width: 1200,
@@ -9,15 +10,19 @@ export const size = {
 };
 export const contentType = "image/png";
 
-export default function TwitterImage() {
+export default async function TwitterImage() {
+  const fonts = await getSocialCardFonts();
   return new ImageResponse(
     (
       <SocialCard
-        eyebrow="Prediction x Solana"
-        title="One terminal for markets and memes."
-        subtitle="From Kalshi signal to token execution, Siren keeps the trade path fast, visual, and uncluttered."
+        eyebrow="Builder grant x hackathon"
+        title="Kalshi signals. Token execution. One terminal."
+        subtitle="Siren turns prediction market moves into tradable Solana token flow with a faster, cleaner trading screen."
       />
     ),
-    size
+    {
+      ...size,
+      fonts,
+    }
   );
 }

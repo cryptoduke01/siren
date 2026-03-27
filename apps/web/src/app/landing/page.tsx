@@ -1,9 +1,9 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Siren — Event-Driven Meme Token Terminal",
+  title: "Siren | Prediction Markets x Meme Tokens",
   description:
-    "Siren is an event-driven meme token terminal. Watch Kalshi prediction markets, surface Bags tokens tied to real-world events, and trade with MEV-safe swaps.",
+    "Siren turns Kalshi prediction markets into token trading flow. Watch markets, surface narratives, and trade from one terminal.",
 };
 
 export default function LandingPage() {

@@ -5,12 +5,12 @@ import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://onsiren.xyz";
-const ogImage = "/opengraph-image";
-const twitterImage = "/twitter-image";
+const ogImage = new URL("/opengraph-image", siteUrl).toString();
+const twitterImage = new URL("/twitter-image", siteUrl).toString();
 
 export const metadata: Metadata = {
-  title: "Siren — Event-Driven Meme Token Terminal",
-  description: "Watch Kalshi markets, surface Bags tokens, trade both from one terminal.",
+  title: "Siren | Prediction Markets x Meme Tokens",
+  description: "Track Kalshi markets, surface token narratives, and trade both from one terminal.",
   metadataBase: new URL(siteUrl),
   manifest: "/manifest.json",
   alternates: {
@@ -24,8 +24,8 @@ export const metadata: Metadata = {
     type: "website",
     url: "/",
     siteName: "Siren",
-    title: "Siren — Event-Driven Meme Token Terminal",
-    description: "Watch Kalshi markets, surface Bags tokens, trade both from one terminal.",
+    title: "Siren | Prediction Markets x Meme Tokens",
+    description: "Track Kalshi markets, surface token narratives, and trade both from one terminal.",
     images: [
       {
         url: ogImage,
@@ -37,8 +37,10 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Siren — Event-Driven Meme Token Terminal",
-    description: "Watch Kalshi markets, surface Bags tokens, trade both from one terminal.",
+    site: "@sirentracker",
+    creator: "@sirentracker",
+    title: "Siren | Prediction Markets x Meme Tokens",
+    description: "Track Kalshi markets, surface token narratives, and trade both from one terminal.",
     images: [twitterImage],
   },
   appleWebApp: { capable: true, title: "Siren" },

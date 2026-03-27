@@ -1,7 +1,8 @@
 import { ImageResponse } from "next/og";
 import { SocialCard } from "./social-card";
+import { getSocialCardFonts } from "./social-card-fonts";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const alt = "Siren trading terminal social preview";
 export const size = {
   width: 1200,
@@ -9,15 +10,19 @@ export const size = {
 };
 export const contentType = "image/png";
 
-export default function OpenGraphImage() {
+export default async function OpenGraphImage() {
+  const fonts = await getSocialCardFonts();
   return new ImageResponse(
     (
       <SocialCard
-        eyebrow="Event-driven terminal"
-        title="Trade signals, not noise."
-        subtitle="Watch live Kalshi markets, route into Solana meme flow, and manage prediction positions from one screen."
+        eyebrow="Kalshi x Bags"
+        title="Prediction markets meet meme token flow."
+        subtitle="Track live Kalshi signals, surface token narratives, and trade both from one Siren screen."
       />
     ),
-    size
+    {
+      ...size,
+      fonts,
+    }
   );
 }
