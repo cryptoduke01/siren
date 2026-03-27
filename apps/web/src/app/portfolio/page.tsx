@@ -143,6 +143,18 @@ interface PredictionPosition {
   balance: number;
   probability?: number;
   kalshiUrl?: string;
+  status: MarketWithVelocity["status"];
+}
+
+interface TradeMetrics {
+  trackedShares: number;
+  costBasisUsd: number;
+  avgEntryUsd: number | null;
+  currentPriceUsd: number | null;
+  currentValueUsd: number | null;
+  pnlUsd: number | null;
+  pnlPercent: number | null;
+  lastTradeTs: number | null;
 }
 
 async function fetchMarkets(): Promise<MarketWithVelocity[]> {
@@ -533,11 +545,11 @@ function SendSolModal({
 
 function buildMintToMarket(
   markets: MarketWithVelocity[]
-): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string }> {
-  const map = new Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string }>();
+): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string; status: MarketWithVelocity["status"] }> {
+  const map = new Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string; status: MarketWithVelocity["status"] }>();
   for (const m of markets) {
-    if (m.yes_mint) map.set(m.yes_mint, { ticker: m.ticker, title: m.title, side: "yes", probability: m.probability, kalshiUrl: m.kalshi_url });
-    if (m.no_mint) map.set(m.no_mint, { ticker: m.ticker, title: m.title, side: "no", probability: m.probability, kalshiUrl: m.kalshi_url });
+    if (m.yes_mint) map.set(m.yes_mint, { ticker: m.ticker, title: m.title, side: "yes", probability: m.probability, kalshiUrl: m.kalshi_url, status: m.status });
+    if (m.no_mint) map.set(m.no_mint, { ticker: m.ticker, title: m.title, side: "no", probability: m.probability, kalshiUrl: m.kalshi_url, status: m.status });
   }
   return map;
 }
@@ -566,7 +578,7 @@ export default function PortfolioPage() {
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
-  const [pnlByMint, setPnlByMint] = useState<Record<string, { pnlUsd: number; pnlPercent: number }>>({});
+  const [tradeMetricsByMint, setTradeMetricsByMint] = useState<Record<string, TradeMetrics>>({});
 
   const loadBagsLaunches = () => {
     if (!publicKey) return;
@@ -677,7 +689,7 @@ export default function PortfolioPage() {
 
       if (!publicKey) {
         setWalletVolumeSol(0);
-        setPnlByMint({});
+        setTradeMetricsByMint({});
         return;
       }
 
@@ -702,7 +714,7 @@ export default function PortfolioPage() {
       // PnL (approximate, cost basis from buys/sells)
       const tradesKey = `siren-trades-${publicKey.toBase58()}`;
       const rawTrades = window.localStorage.getItem(tradesKey);
-      const nextPnl: Record<string, { pnlUsd: number; pnlPercent: number }> = {};
+      const nextMetrics: Record<string, TradeMetrics> = {};
       if (rawTrades && tokenMints.length > 0) {
         try {
           const trades: Array<{
@@ -714,12 +726,12 @@ export default function PortfolioPage() {
           }> = JSON.parse(rawTrades);
           if (Array.isArray(trades)) {
             const sorted = [...trades].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
-            const agg = new Map<string, { tokens: number; costUsd: number }>();
+            const agg = new Map<string, { tokens: number; costUsd: number; lastTradeTs: number | null }>();
             for (const t of sorted) {
               if (!t?.mint || typeof t.tokenAmount !== "number" || typeof t.priceUsd !== "number") continue;
               if (!Number.isFinite(t.tokenAmount) || t.tokenAmount <= 0 || !Number.isFinite(t.priceUsd) || t.priceUsd <= 0)
                 continue;
-              const cur = agg.get(t.mint) || { tokens: 0, costUsd: 0 };
+              const cur = agg.get(t.mint) || { tokens: 0, costUsd: 0, lastTradeTs: null };
               if (t.side === "buy") {
                 cur.tokens += t.tokenAmount;
                 cur.costUsd += t.tokenAmount * t.priceUsd;
@@ -730,6 +742,7 @@ export default function PortfolioPage() {
                   cur.tokens -= sell;
                 }
               }
+              cur.lastTradeTs = typeof t.ts === "number" && Number.isFinite(t.ts) ? t.ts : cur.lastTradeTs;
               agg.set(t.mint, cur);
             }
             for (const mint of tokenMints) {
@@ -737,23 +750,35 @@ export default function PortfolioPage() {
               const info = tokenInfoByMint.get(mint);
               const priceUsd = info?.priceUsd;
               const lot = agg.get(mint);
-              if (!holding || !priceUsd || !lot || lot.tokens <= 0) continue;
-              const balance = holding.balance;
-              const costBasis = (lot.costUsd / lot.tokens) * Math.min(balance, lot.tokens);
-              const pnlUsd = balance * priceUsd - costBasis;
-              const pnlPercent = costBasis > 0 ? ((balance * priceUsd) / costBasis - 1) * 100 : 0;
-              if (!Number.isFinite(pnlUsd) || !Number.isFinite(pnlPercent)) continue;
-              nextPnl[mint] = { pnlUsd, pnlPercent };
+              if (!holding || !lot || lot.tokens <= 0) continue;
+              const trackedShares = Math.min(holding.balance, lot.tokens);
+              if (!Number.isFinite(trackedShares) || trackedShares <= 0) continue;
+              const avgEntryUsd = lot.tokens > 0 ? lot.costUsd / lot.tokens : null;
+              const costBasisUsd = avgEntryUsd != null ? avgEntryUsd * trackedShares : 0;
+              const currentValueUsd = priceUsd && Number.isFinite(priceUsd) ? trackedShares * priceUsd : null;
+              const pnlUsd = currentValueUsd != null ? currentValueUsd - costBasisUsd : null;
+              const pnlPercent = pnlUsd != null && costBasisUsd > 0 ? (pnlUsd / costBasisUsd) * 100 : null;
+
+              nextMetrics[mint] = {
+                trackedShares,
+                costBasisUsd,
+                avgEntryUsd,
+                currentPriceUsd: priceUsd ?? null,
+                currentValueUsd,
+                pnlUsd,
+                pnlPercent,
+                lastTradeTs: lot.lastTradeTs ?? null,
+              };
             }
           }
         } catch {
           // ignore
         }
       }
-      setPnlByMint(nextPnl);
+      setTradeMetricsByMint(nextMetrics);
     } catch {
       setWalletVolumeSol(0);
-      setPnlByMint({});
+      setTradeMetricsByMint({});
     }
   }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings, markets]);
 
@@ -811,6 +836,7 @@ export default function PortfolioPage() {
         balance: t.balance,
         probability: info.probability,
         kalshiUrl: info.kalshiUrl,
+        status: info.status,
       };
     });
   const spotTokenHoldings = tokenHoldings.filter((t) => !mintToMarket.has(t.mint));
@@ -818,17 +844,16 @@ export default function PortfolioPage() {
     const info = tokenInfoByMint.get(position.mint);
     const displayName = getDisplayName(info?.name, position.title, position.mint);
     const displaySymbol = getDisplaySymbol(info?.symbol, position.ticker, position.mint);
-    const valueUsd = position.balance * (info?.priceUsd ?? 0);
-    const pnl = pnlByMint[position.mint];
+    const metrics = tradeMetricsByMint[position.mint];
     return {
       mint: position.mint,
       ticker: displaySymbol,
       title: displayName,
       side: position.side,
       kalshiMarket: position.ticker,
-      valueUsd,
-      pnlUsd: pnl?.pnlUsd ?? null,
-      pnlPercent: pnl?.pnlPercent ?? null,
+      valueUsd: metrics?.currentValueUsd ?? position.balance * (info?.priceUsd ?? 0),
+      pnlUsd: metrics?.pnlUsd ?? null,
+      pnlPercent: metrics?.pnlPercent ?? null,
     };
   });
   const predictionTrackedPositions = predictionPnlPositions.filter((position) => position.pnlUsd != null);
@@ -843,6 +868,38 @@ export default function PortfolioPage() {
     predictionTotalPnlUsd != null && predictionCostBasisUsd > 0
       ? (predictionTotalPnlUsd / predictionCostBasisUsd) * 100
       : null;
+
+  const predictionLifecyclePositions = predictionPositions.map((position) => {
+    const info = tokenInfoByMint.get(position.mint);
+    const metrics = tradeMetricsByMint[position.mint];
+    const displayName = getDisplayName(info?.name, position.title, position.mint);
+    const displaySymbol = getDisplaySymbol(info?.symbol, position.ticker, position.mint);
+    const shares = metrics?.trackedShares && metrics.trackedShares > 0 ? metrics.trackedShares : position.balance;
+    const currentPriceUsd = metrics?.currentPriceUsd ?? info?.priceUsd ?? null;
+    const currentValueUsd = currentPriceUsd != null ? shares * currentPriceUsd : null;
+    const settlementPayoutUsd = shares > 0 ? shares : null;
+    const costBasisUsd = metrics?.costBasisUsd ?? null;
+    const settlementNetIfCorrectUsd =
+      settlementPayoutUsd != null && costBasisUsd != null ? settlementPayoutUsd - costBasisUsd : null;
+    const settlementNetIfWrongUsd = costBasisUsd != null ? -costBasisUsd : null;
+
+    return {
+      ...position,
+      displayName,
+      displaySymbol,
+      shares,
+      avgEntryUsd: metrics?.avgEntryUsd ?? null,
+      costBasisUsd,
+      currentPriceUsd,
+      currentValueUsd,
+      pnlUsd: metrics?.pnlUsd ?? null,
+      pnlPercent: metrics?.pnlPercent ?? null,
+      lastTradeTs: metrics?.lastTradeTs ?? null,
+      settlementPayoutUsd,
+      settlementNetIfCorrectUsd,
+      settlementNetIfWrongUsd,
+    };
+  });
 
   const openSellPanel = ({
     mint,
@@ -1357,102 +1414,214 @@ export default function PortfolioPage() {
                     </Link>
                   </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {predictionPositions.map((p) => {
-                      const info = tokenInfoByMint.get(p.mint);
-                      const displaySymbol = getDisplaySymbol(info?.symbol, p.ticker, p.mint);
-                      const displayName = getDisplayName(info?.name, p.title, p.mint);
-                      const mintPnl = pnlByMint[p.mint];
+                  <ul className="space-y-4">
+                    {predictionLifecyclePositions.map((position) => {
+                      const info = tokenInfoByMint.get(position.mint);
+                      const marketNoProbability = position.probability != null ? 100 - position.probability : null;
+                      const liveColor =
+                        position.pnlUsd == null ? "var(--text-2)" : position.pnlUsd >= 0 ? "var(--up)" : "var(--down)";
                       return (
-                      <li
-                        key={`${p.ticker}-${p.side}`}
-                        className="rounded-xl border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
-                        style={{
-                          borderColor: "var(--border-subtle)",
-                          background: "var(--bg-elevated)",
-                        }}
-                      >
-                        <div className="flex items-center gap-3 min-w-0 mb-3">
-                          {info?.imageUrl ? (
-                            <img src={info.imageUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
-                          ) : (
-                            <div
-                              className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center font-mono text-sm font-semibold"
-                              style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
-                            >
-                              {displaySymbol.slice(0, 2)}
+                        <li
+                          key={`${position.ticker}-${position.side}`}
+                          className="rounded-2xl border p-4 md:p-5"
+                          style={{
+                            borderColor: "var(--border-subtle)",
+                            background: "linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-surface) 100%)",
+                          }}
+                        >
+                          <div className="flex flex-col gap-4 border-b pb-4 md:flex-row md:items-start md:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              {info?.imageUrl ? (
+                                <img src={info.imageUrl} alt="" className="h-12 w-12 rounded-2xl object-cover shrink-0" />
+                              ) : (
+                                <div
+                                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-mono text-sm font-semibold"
+                                  style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
+                                >
+                                  {position.displaySymbol.slice(0, 2)}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span
+                                    className="rounded-lg px-2.5 py-1 text-[11px] font-body font-semibold"
+                                    style={{
+                                      background: position.side === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
+                                      color: position.side === "yes" ? "var(--bags)" : "var(--down)",
+                                    }}
+                                  >
+                                    {position.side.toUpperCase()}
+                                  </span>
+                                  <span className="rounded-lg border px-2.5 py-1 text-[11px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+                                    {position.status === "open" ? "Live market" : position.status}
+                                  </span>
+                                </div>
+                                <p className="mt-2 font-heading text-base font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
+                                  {position.displayName}
+                                </p>
+                                <p className="mt-1 font-mono text-[11px] truncate" style={{ color: "var(--text-3)" }} title={position.mint}>
+                                  {position.displaySymbol} · {position.ticker}
+                                </p>
+                              </div>
                             </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="font-heading font-medium text-sm line-clamp-2" style={{ color: "var(--text-1)" }}>
-                              {displayName}
-                            </p>
-                            <p className="font-mono text-[11px] mt-0.5 truncate" style={{ color: "var(--text-3)" }} title={p.mint}>
-                              {displaySymbol}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span
-                            className="text-[11px] font-body font-semibold px-2.5 py-1 rounded-lg"
-                            style={{
-                              background: p.side === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
-                              color: p.side === "yes" ? "var(--bags)" : "var(--down)",
-                            }}
-                          >
-                            {p.side.toUpperCase()}
-                          </span>
-                          <div className="text-right">
-                            <p className="font-mono text-sm tabular-nums font-medium" style={{ color: "var(--kalshi)" }}>
-                              {p.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                            </p>
-                            {p.probability != null && (
-                              <p className="font-mono text-[11px] tabular-nums mt-0.5" style={{ color: "var(--text-3)" }}>
-                                Market {p.probability.toFixed(0)}% YES
+
+                            <div className="text-left md:text-right">
+                              <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                Shares
                               </p>
-                            )}
-                            {mintPnl && (
-                              <p
-                                className="font-mono text-[11px] tabular-nums mt-1"
-                                style={{ color: mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)" }}
-                                title="Approximate PnL from Siren trades"
+                              <p className="mt-1 font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--kalshi)" }}>
+                                {position.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                              </p>
+                              {position.probability != null && (
+                                <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                                  YES {position.probability.toFixed(1)}% · NO {marketNoProbability?.toFixed(1)}%
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                            <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                                Entry
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Average entry</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.avgEntryUsd != null
+                                      ? `$${position.avgEntryUsd.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Tracked cost basis</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.costBasisUsd != null
+                                      ? `$${position.costBasisUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: liveColor }}>
+                                Live mark
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Current mark</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.currentPriceUsd != null
+                                      ? `$${position.currentPriceUsd.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Current value</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.currentValueUsd != null
+                                      ? `$${position.currentValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Unrealized PnL</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: liveColor }}>
+                                    {position.pnlUsd != null
+                                      ? `${position.pnlUsd >= 0 ? "+" : "-"}$${Math.abs(position.pnlUsd).toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}${position.pnlPercent != null ? ` (${position.pnlPercent.toFixed(1)}%)` : ""}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--kalshi)" }}>
+                                Settlement
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>If you are right</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.settlementPayoutUsd != null
+                                      ? `$${position.settlementPayoutUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} payout`
+                                      : "—"}
+                                  </p>
+                                  <p className="font-mono text-[11px] tabular-nums" style={{ color: position.settlementNetIfCorrectUsd != null && position.settlementNetIfCorrectUsd >= 0 ? "var(--up)" : "var(--text-3)" }}>
+                                    {position.settlementNetIfCorrectUsd != null
+                                      ? `Net ${position.settlementNetIfCorrectUsd >= 0 ? "+" : "-"}$${Math.abs(position.settlementNetIfCorrectUsd).toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}`
+                                      : "Net —"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>If you are wrong</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    $0.00 payout
+                                  </p>
+                                  <p className="font-mono text-[11px] tabular-nums" style={{ color: "var(--down)" }}>
+                                    {position.settlementNetIfWrongUsd != null
+                                      ? `Net -$${Math.abs(position.settlementNetIfWrongUsd).toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}`
+                                      : "Net —"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                            <p className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                              Standard event-contract math: each winning share pays $1.00 at settlement and each losing share pays $0.00.
+                            </p>
+                            <div className="flex gap-2">
+                              {position.kalshiUrl && (
+                                <a
+                                  href={position.kalshiUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => hapticLight()}
+                                  className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-body"
+                                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                                >
+                                  Open market
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  hapticLight();
+                                  openSellPanel({
+                                    mint: position.mint,
+                                    symbol: position.displaySymbol,
+                                    name: position.displayName,
+                                    assetType: "prediction",
+                                    marketTicker: position.ticker,
+                                    marketTitle: position.title,
+                                    marketSide: position.side,
+                                    marketProbability: position.probability,
+                                    kalshiUrl: position.kalshiUrl,
+                                  });
+                                }}
+                                className="rounded-lg px-4 py-2 font-heading text-xs font-semibold uppercase tracking-wide transition-all hover:brightness-110"
+                                style={{ background: "var(--bags)", color: "var(--accent-text)" }}
                               >
-                                PnL:{" "}
-                                {mintPnl.pnlUsd >= 0 ? "+" : "-"}$
-                                {Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}{" "}
-                                ({mintPnl.pnlPercent.toFixed(1)}%)
-                              </p>
-                            )}
+                                Sell
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              hapticLight();
-                              openSellPanel({
-                                mint: p.mint,
-                                symbol: displaySymbol,
-                                name: displayName,
-                                assetType: "prediction",
-                                marketTicker: p.ticker,
-                                marketTitle: p.title,
-                                marketSide: p.side,
-                                marketProbability: p.probability,
-                                kalshiUrl: p.kalshiUrl,
-                              });
-                            }}
-                            className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
-                            style={{ background: "var(--bags)", color: "var(--accent-text)" }}
-                          >
-                            Sell
-                          </button>
-                        </div>
-                      </li>
+                        </li>
                       );
                     })}
                   </ul>
@@ -1528,7 +1697,7 @@ export default function PortfolioPage() {
                       const displaySymbol = getDisplaySymbol(info?.symbol, t.symbol, t.mint);
                       const displayName = getDisplayName(info?.name, t.name, t.mint);
                       const valueUsd = info?.priceUsd != null ? t.balance * info.priceUsd : undefined;
-                      const mintPnl = pnlByMint[t.mint];
+                      const mintPnl = tradeMetricsByMint[t.mint];
                       return (
                         <li
                           key={t.mint}

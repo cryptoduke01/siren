@@ -74,10 +74,27 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
   const mints = await getMarketMints();
   const inputIsMarket = isMarketMint(inputMint, mints);
   const outputIsMarket = isMarketMint(outputMint, mints);
+  const involvesPredictionMarket = inputIsMarket || outputIsMarket;
   const dflowBlocked = shouldBlockByCountry(countryCode);
-  const canUseDflow = (inputIsMarket || outputIsMarket) && tryDflowFirst && !dflowBlocked;
+  const canUseDflow = involvesPredictionMarket && tryDflowFirst && !dflowBlocked;
 
-  if (canUseDflow) {
+  if (involvesPredictionMarket) {
+    if (dflowBlocked) {
+      return {
+        provider: "dflow",
+        transaction: "",
+        error: "Prediction market trading is not available in your jurisdiction.",
+      };
+    }
+
+    if (!tryDflowFirst) {
+      return {
+        provider: "dflow",
+        transaction: "",
+        error: "Prediction market routing requires DFlow.",
+      };
+    }
+
     const dflow = await getDflowOrder({
       inputMint,
       outputMint,
@@ -96,6 +113,12 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
         outAmount: dflow.outAmount,
       };
     }
+
+    return {
+      provider: "dflow",
+      transaction: "",
+      error: dflow.error || "Prediction market routing is unavailable right now.",
+    };
   }
 
   const inputIsBags = isBagsMint(inputMint);

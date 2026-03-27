@@ -913,14 +913,22 @@ export function registerRoutes(app: FastifyInstance) {
       });
 
       if (error) {
-        app.log.error({ err: error }, "siren_trades insert failed");
-        return reply.status(503).send({ success: false, error: error.message || "Trade log failed" });
+        app.log.warn({ err: error, wallet: wallet.slice(0, 8), mint: mint.slice(0, 8) }, "siren_trades insert skipped");
+        return reply.status(202).send({
+          success: true,
+          persisted: false,
+          warning: error.message || "Trade log skipped",
+        });
       }
 
-      return reply.send({ success: true });
+      return reply.send({ success: true, persisted: true });
     } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: (e as Error).message || "Trade log failed" });
+      app.log.warn(e, "siren_trades insert skipped with exception");
+      return reply.status(202).send({
+        success: true,
+        persisted: false,
+        warning: (e as Error).message || "Trade log skipped",
+      });
     }
   });
 

@@ -3,9 +3,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, ArrowUpRight, ExternalLink, Activity } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
-import { useSirenStore } from "@/store/useSirenStore";
+import { useSirenStore, type SelectedMarket } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
 import { StarButton } from "./StarButton";
@@ -70,6 +70,159 @@ function formatCompactNumber(value?: number, digits = 1): string {
   }).format(value);
 }
 
+function formatPercent(value?: number | null, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(digits)}%`;
+}
+
+function formatCentsFromProbability(probability?: number | null, side: "yes" | "no" = "yes"): string {
+  if (probability == null || !Number.isFinite(probability)) return "—";
+  const yes = Math.min(100, Math.max(0, probability));
+  const cents = side === "yes" ? yes : 100 - yes;
+  return `${cents.toFixed(1)}c`;
+}
+
+function PredictionMarketFocusPanel({
+  market,
+  onTrade,
+  onOpenKalshi,
+  onOpenDetails,
+}: {
+  market: SelectedMarket;
+  onTrade: () => void;
+  onOpenKalshi: () => void;
+  onOpenDetails: () => void;
+}) {
+  return (
+    <section
+      className="mb-5 overflow-hidden rounded-[22px] border"
+      style={{
+        borderColor: "color-mix(in srgb, var(--accent) 22%, var(--border-subtle))",
+        background:
+          "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+      }}
+    >
+      <div className="border-b px-5 py-4" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+              Prediction Market Focus
+            </p>
+            <h2 className="mt-2 font-heading text-2xl font-bold leading-tight md:text-[2rem]" style={{ color: "var(--text-1)" }}>
+              {market.title}
+            </h2>
+            {market.subtitle && (
+              <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                {market.subtitle}
+              </p>
+            )}
+            <p className="mt-3 max-w-2xl font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Winning shares settle to $1.00. Losing shares settle to $0.00. Siren marks YES and NO to the live market while the trade is open.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onTrade}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
+              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+            >
+              Trade In Siren
+              <ArrowUpRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenKalshi}
+              className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+            >
+              Trade on Kalshi
+              <ExternalLink className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenDetails}
+              className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+              style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+            >
+              Market details
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            YES price
+          </p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--bags)" }}>
+            {formatCentsFromProbability(market.probability, "yes")}
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Implied YES probability {formatPercent(market.probability)}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            NO price
+          </p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--down)" }}>
+            {formatCentsFromProbability(market.probability, "no")}
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Implied NO probability {formatPercent(100 - market.probability)}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            1h velocity
+          </p>
+          <p
+            className="mt-2 font-mono text-2xl font-semibold tabular-nums"
+            style={{ color: market.velocity_1h >= 0 ? "var(--up)" : "var(--down)" }}
+          >
+            {market.velocity_1h >= 0 ? "+" : ""}{market.velocity_1h.toFixed(1)}%
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Directional move across the last hour
+          </p>
+        </div>
+
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            Volume
+          </p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+            {formatCompactNumber(market.volume, 1)}
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Filled contracts in this market
+          </p>
+        </div>
+
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Open interest
+            </p>
+            <Activity className="h-4 w-4" style={{ color: "var(--text-3)" }} />
+          </div>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+            {formatCompactNumber(market.open_interest, 1)}
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Open contracts still exposed to resolution
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function TokenSurface() {
   const { selectedMarket, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
   const { publicKey } = useSirenWallet();
@@ -129,10 +282,44 @@ export function TokenSurface() {
       className="flex flex-col h-full min-h-0 min-w-0 p-4 md:p-6 overflow-y-auto overflow-x-hidden"
       style={{ background: "var(--bg-void)" }}
     >
+      {selectedMarket ? (
+        <PredictionMarketFocusPanel
+          market={selectedMarket}
+          onTrade={() => {
+            hapticLight();
+            setBuyPanelOpen(true, "market");
+          }}
+          onOpenKalshi={() => {
+            hapticLight();
+            if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank", "noopener,noreferrer");
+            else setBuyPanelOpen(true, "market");
+          }}
+          onOpenDetails={() => {
+            hapticLight();
+            setDetailPanelOpen(true);
+          }}
+        />
+      ) : (
+        <div
+          className="mb-5 rounded-[20px] border px-5 py-5"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+        >
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+            Prediction Markets First
+          </p>
+          <h2 className="mt-2 font-heading text-2xl font-bold" style={{ color: "var(--text-1)" }}>
+            Pick a market to center the terminal.
+          </h2>
+          <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+            Siren is built around live prediction markets. Select one from the left rail and we will map the relevant YES/NO trade plus the surrounding token flow underneath it.
+          </p>
+        </div>
+      )}
+
       <div className="mb-3">
         <input
           type="text"
-          placeholder="Search by name, symbol, or contract address"
+          placeholder={selectedMarket ? "Search linked tokens by name, symbol, or contract address" : "Search tokens by name, symbol, or contract address"}
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           className="w-full font-body text-xs h-[36px] px-4 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
@@ -193,37 +380,13 @@ export function TokenSurface() {
           className="font-heading font-semibold text-sm truncate max-w-[200px] md:max-w-none"
           style={{ color: "var(--text-2)" }}
         >
-          {selectedMarket ? `${selectedMarket.title.slice(0, 60)}${selectedMarket.title.length > 60 ? "…" : ""}` : "Surfaced tokens"}
+          {selectedMarket ? "Tokens exposed to this market" : "Surfaced tokens"}
         </h2>
         <div className="flex items-center gap-2">
           {selectedMarket && (
             <>
               <MarketAlertButton ticker={selectedMarket.ticker} probability={selectedMarket.probability} />
               <StarButton type="market" id={selectedMarket.ticker} />
-              <button
-                type="button"
-                onClick={() => {
-                  hapticLight();
-                  if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank");
-                  else setBuyPanelOpen(true, "market");
-                }}
-                className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
-                style={{
-                  background: "var(--bg-elevated)",
-                  borderColor: "var(--border-default)",
-                  color: "var(--text-1)",
-                }}
-              >
-                Trade on Kalshi
-              </button>
-              <button
-                type="button"
-                onClick={() => { hapticLight(); setDetailPanelOpen(true); }}
-                className="text-[11px] text-[var(--text-2)] hover:text-[var(--text-1)] transition-colors"
-                title="Market details"
-              >
-                &#9432;
-              </button>
             </>
           )}
           <button
@@ -243,7 +406,7 @@ export function TokenSurface() {
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
       <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
-          ? "Tokens ranked by onchain activity first, then boosted by keyword overlap with the selected market."
+          ? "Tokens are ranked by onchain activity, then boosted by how tightly they map onto the selected prediction market."
           : "New uprising tokens (DexScreener latest boosted)."}
       </p>
       {riskyTokens.length > 0 && (
