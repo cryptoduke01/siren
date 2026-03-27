@@ -171,6 +171,25 @@ function DispatchSummary({ result, accentLabel }: { result: DispatchResult | nul
   );
 }
 
+function InlineDispatchStatus({ result, label }: { result: DispatchResult | null; label: string }) {
+  if (!result) return null;
+
+  return (
+    <div
+      aria-live="polite"
+      className="mt-4 rounded-2xl border px-4 py-3"
+      style={{ borderColor: PANEL_BORDER, background: BADGE_BG }}
+    >
+      <p className="font-heading text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+        {label}
+      </p>
+      <p className="mt-1 font-body text-sm" style={{ color: "var(--text-1)" }}>
+        Sent {result.sent}, failed {result.failed}, skipped {result.skipped} of {result.total}.
+      </p>
+    </div>
+  );
+}
+
 function MetricCard({
   label,
   value,
@@ -1188,6 +1207,7 @@ export default function AdminPage() {
                           {launchEmailLoading ? "Sending…" : "Send to all waitlist emails"}
                         </button>
                       </div>
+                      <InlineDispatchStatus result={launchEmailResult} label="Launch email result" />
                     </div>
                   </div>
                 </div>
@@ -1244,6 +1264,7 @@ export default function AdminPage() {
                       {sendAllLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
                       {sendAllLoading ? "Sending…" : "Send access codes to all"}
                     </button>
+                    <InlineDispatchStatus result={codeEmailResult} label="Access code email result" />
                   </div>
 
                   <DispatchSummary result={codeEmailResult} accentLabel="Access code email" />
