@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Siren Timeline Headline Frame</title>
+  <style>
+    :root {
+      --bg: #060609;
+      --surface: #0f0f18;
+      --surface-2: #141421;
+      --text: #f0f0f5;
+      --muted: #8a8aa7;
+      --accent: #00ff85;
+      --border: rgba(240, 240, 245, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #030406;
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .page {
+      width: fit-content;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toolbar-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .button,
+    .upload-label {
+      appearance: none;
+      border: 1px solid rgba(0, 255, 133, 0.24);
+      background: linear-gradient(180deg, rgba(15, 15, 24, 0.96), rgba(8, 8, 14, 0.96));
+      color: var(--text);
+      padding: 11px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+      text-transform: uppercase;
+    }
+
+    .button:hover,
+    .upload-label:hover {
+      transform: translateY(-1px);
+      border-color: rgba(0, 255, 133, 0.45);
+      box-shadow: 0 8px 28px rgba(0, 255, 133, 0.1);
+    }
+
+    .button.primary {
+      background: linear-gradient(180deg, rgba(0, 255, 133, 0.16), rgba(0, 255, 133, 0.08));
+    }
+
+    .upload-label input {
+      display: none;
+    }
+
+    .sliders {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .slider {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(15, 15, 24, 0.86);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .slider input {
+      width: 120px;
+      accent-color: var(--accent);
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    .frame-shell {
+      width: 1600px;
+      height: 900px;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: var(--bg);
+      transition: box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease;
+    }
+
+    .frame-shell.dragover {
+      border-color: rgba(0, 255, 133, 0.42);
+      box-shadow: 0 32px 100px rgba(0, 255, 133, 0.16);
+      transform: translateY(-1px);
+    }
+
+    svg {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <label class="upload-label">
+          Upload Image
+          <input id="imageInput" type="file" accept="image/*" />
+        </label>
+        <button class="button" id="resetView" type="button">Reset View</button>
+      </div>
+      <div class="toolbar-group">
+        <button class="button" id="downloadSvg" type="button">SVG Master</button>
+        <button class="button primary" id="downloadPng" type="button">3x PNG</button>
+      </div>
+    </div>
+
+    <div class="sliders">
+      <label class="slider">Zoom <input id="zoom" type="range" min="1" max="2.8" step="0.01" value="1" /></label>
+      <label class="slider">Pan X <input id="panX" type="range" min="-420" max="420" step="1" value="0" /></label>
+      <label class="slider">Pan Y <input id="panY" type="range" min="-260" max="260" step="1" value="0" /></label>
+    </div>
+
+    <div class="hint">Drop, upload, or paste an image. This frame is tuned for timeline headline art and exports at 1600x900 or 4800x2700.</div>
+
+    <div class="frame-shell" id="frameShell">
+      <svg id="frameSvg" xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none" role="img" aria-label="Siren timeline headline frame">
+        <defs>
+          <pattern id="meander" x="0" y="0" width="92" height="92" patternUnits="userSpaceOnUse">
+            <path d="M6 24H34V52H62V24H86" stroke="#F0F0F5" stroke-width="2" stroke-opacity="0.34"/>
+            <path d="M6 70H52V36H24V8H86" stroke="#F0F0F5" stroke-width="2" stroke-opacity="0.34"/>
+          </pattern>
+
+          <radialGradient id="bottomGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(800 960) rotate(90) scale(360 760)">
+            <stop offset="0" stop-color="#00FF85" stop-opacity="0.34"/>
+            <stop offset="0.42" stop-color="#00FF85" stop-opacity="0.11"/>
+            <stop offset="0.78" stop-color="#00FF85" stop-opacity="0.02"/>
+            <stop offset="1" stop-color="#00FF85" stop-opacity="0"/>
+          </radialGradient>
+
+          <clipPath id="mediaClip">
+            <rect x="184" y="150" width="1232" height="612" rx="34"/>
+          </clipPath>
+
+          <filter id="grainFilter" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="2" seed="9" stitchTiles="stitch"/>
+            <feColorMatrix type="saturate" values="0"/>
+            <feComponentTransfer>
+              <feFuncA type="table" tableValues="0 0.08"/>
+            </feComponentTransfer>
+          </filter>
+
+          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="18" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+
+        <rect width="1600" height="900" fill="#060609"/>
+        <rect width="1600" height="900" fill="url(#meander)" opacity="0.03"/>
+        <rect x="0" y="0" width="1600" height="2" fill="#00FF85"/>
+        <rect x="0" y="0" width="1600" height="2" fill="#00FF85" filter="url(#softGlow)" opacity="0.55"/>
+        <rect x="0" y="520" width="1600" height="380" fill="url(#bottomGlow)"/>
+
+        <g opacity="0.05" stroke="#F0F0F5" stroke-width="1.4">
+          <path d="M1218 96H1338"/>
+          <path d="M1230 96V324"/>
+          <path d="M1326 96V324"/>
+          <path d="M1206 128H1350"/>
+          <path d="M1210 292H1346"/>
+          <path d="M1254 128V292"/>
+          <path d="M1278 128V292"/>
+          <path d="M1302 128V292"/>
+          <path d="M1198 324H1358"/>
+          <path d="M116 710C178 674 264 668 360 692"/>
+          <path d="M1196 650C1280 624 1378 628 1484 666"/>
+        </g>
+
+        <g opacity="0.08" stroke="#F0F0F5" stroke-width="1.1" stroke-linecap="round">
+          <path d="M82 138C142 172 226 224 322 296"/>
+          <path d="M428 84C476 138 500 196 502 252"/>
+          <path d="M992 710C1100 664 1202 642 1310 646"/>
+          <path d="M608 786C718 734 836 712 976 714"/>
+        </g>
+
+        <g transform="translate(88 74)">
+          <g transform="scale(1.02)">
+            <path fill="#00FF85" d="M138.255 28.125C146.69 52.8488 146.54 80.9945 135.804 106.958C125.069 132.921 105.742 151.88 83.0315 161.683C74.5968 136.959 74.7473 108.813 85.4826 82.8504C96.2179 56.8873 115.544 37.9281 138.255 28.125Z"/>
+            <path fill="#00FF85" d="M18.7512 28.125C10.6135 52.8488 10.7587 80.9945 21.116 106.958C31.4733 132.921 50.1194 151.88 72.0306 161.683C80.1683 136.959 80.0232 108.813 69.6659 82.8503C59.3086 56.8873 40.6625 37.9281 18.7512 28.125Z"/>
+            <path fill="#00FF85" d="M0 68.8211C0 82.6017 2.03399 96.2473 5.98584 108.979C9.93769 121.71 15.73 133.279 23.0321 143.023C30.3341 152.767 39.003 160.497 48.5436 165.771C58.0842 171.044 68.3097 173.758 78.6364 173.758C88.9631 173.758 99.1887 171.044 108.729 165.771C118.27 160.497 126.939 152.767 134.241 143.023C141.543 133.279 147.335 121.71 151.287 108.979C155.239 96.2473 157.273 82.6016 157.273 68.8211L125.818 68.8211C125.818 77.0894 124.598 85.2768 122.227 92.9157C119.856 100.555 116.38 107.496 111.999 113.342C107.618 119.189 102.416 123.827 96.6921 126.991C90.9678 130.155 84.8324 131.783 78.6364 131.783C72.4404 131.783 66.3051 130.155 60.5807 126.991C54.8563 123.827 49.6551 119.189 45.2738 113.342C40.8926 107.496 37.4172 100.555 35.0461 92.9158C32.675 85.2768 31.4546 77.0894 31.4546 68.8211H0Z"/>
+          </g>
+          <text x="192" y="90" fill="#F0F0F5" font-size="46" font-weight="800" letter-spacing="0.08em">SIREN</text>
+          <text x="192" y="124" fill="#8888A8" font-size="16" font-weight="600" letter-spacing="0.18em">ONSIREN.XYZ</text>
+        </g>
+
+        <g transform="translate(1264 78)">
+          <rect width="242" height="48" rx="24" fill="#0F0F18" stroke="rgba(0,255,133,0.32)"/>
+          <rect x="14" y="15" width="12" height="12" rx="6" fill="#00FF85"/>
+          <text x="42" y="31" fill="#F0F0F5" font-size="16" font-weight="800" letter-spacing="0.12em">SIREN WIRE</text>
+        </g>
+
+        <rect x="148" y="114" width="1304" height="684" rx="42" fill="rgba(15,15,24,0.94)" stroke="rgba(240,240,245,0.06)"/>
+        <rect x="160" y="126" width="1280" height="660" rx="38" fill="rgba(6,6,9,0.7)" stroke="rgba(0,255,133,0.18)"/>
+        <rect x="184" y="150" width="1232" height="612" rx="34" fill="#0C0C13"/>
+
+        <g clip-path="url(#mediaClip)">
+          <image id="mediaImage" visibility="hidden" />
+        </g>
+
+        <g id="placeholderGroup">
+          <rect x="184" y="150" width="1232" height="612" rx="34" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.07)" stroke-dasharray="12 12"/>
+          <text x="800" y="418" fill="#F0F0F5" font-size="36" font-weight="700" text-anchor="middle">Drop A Headline Image Here</text>
+          <text x="800" y="456" fill="#8A8AA7" font-size="18" font-weight="500" letter-spacing="0.08em" text-anchor="middle">UPLOAD, DRAG, OR PASTE FROM CLIPBOARD</text>
+        </g>
+
+        <g transform="translate(184 810)">
+          <rect width="258" height="42" rx="21" fill="rgba(0,255,133,0.08)" stroke="rgba(0,255,133,0.18)"/>
+          <text x="24" y="27" fill="#00FF85" font-size="15" font-weight="800" letter-spacing="0.12em">PREDICTION MARKETS X TOKENS</text>
+        </g>
+
+        <text x="1416" y="838" fill="#F0F0F5" font-size="20" font-weight="700" text-anchor="end">onsiren.xyz</text>
+        <text x="1416" y="864" fill="#8888A8" font-size="13" font-weight="600" text-anchor="end" letter-spacing="0.12em">SIREN NEWS FRAME</text>
+
+        <rect width="1600" height="900" filter="url(#grainFilter)" opacity="0.07"/>
+        <rect x="0.5" y="0.5" width="1599" height="899" stroke="#F0F0F5" stroke-opacity="0.05"/>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    const svg = document.getElementById('frameSvg');
+    const frameShell = document.getElementById('frameShell');
+    const input = document.getElementById('imageInput');
+    const mediaImage = document.getElementById('mediaImage');
+    const placeholder = document.getElementById('placeholderGroup');
+    const zoomInput = document.getElementById('zoom');
+    const panXInput = document.getElementById('panX');
+    const panYInput = document.getElementById('panY');
+
+    const layout = { x: 184, y: 150, width: 1232, height: 612 };
+    const state = {
+      href: '',
+      naturalWidth: layout.width,
+      naturalHeight: layout.height,
+      zoom: 1,
+      panX: 0,
+      panY: 0
+    };
+
+    function updateImage() {
+      if (!state.href) {
+        mediaImage.setAttribute('visibility', 'hidden');
+        placeholder.setAttribute('visibility', 'visible');
+        return;
+      }
+
+      const baseScale = Math.max(layout.width / state.naturalWidth, layout.height / state.naturalHeight);
+      const width = state.naturalWidth * baseScale * state.zoom;
+      const height = state.naturalHeight * baseScale * state.zoom;
+      const x = layout.x + (layout.width - width) / 2 + state.panX;
+      const y = layout.y + (layout.height - height) / 2 + state.panY;
+
+      mediaImage.setAttribute('href', state.href);
+      mediaImage.setAttribute('x', String(x));
+      mediaImage.setAttribute('y', String(y));
+      mediaImage.setAttribute('width', String(width));
+      mediaImage.setAttribute('height', String(height));
+      mediaImage.setAttribute('preserveAspectRatio', 'none');
+      mediaImage.setAttribute('visibility', 'visible');
+      placeholder.setAttribute('visibility', 'hidden');
+    }
+
+    function readFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function () {
+        const img = new Image();
+        img.onload = function () {
+          state.href = reader.result;
+          state.naturalWidth = img.naturalWidth;
+          state.naturalHeight = img.naturalHeight;
+          updateImage();
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function serializeSvg() {
+      return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(svg);
+    }
+
+    function triggerDownload(blob, fileName) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(function () {
+        URL.revokeObjectURL(url);
+      }, 1000);
+    }
+
+    function exportPng(scale) {
+      const svgBlob = new Blob([serializeSvg()], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = function () {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1600 * scale;
+        canvas.height = 900 * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        ctx.drawImage(img, 0, 0, 1600, 900);
+        canvas.toBlob(function (blob) {
+          if (blob) {
+            triggerDownload(blob, 'siren-timeline-headline-frame-3x.png');
+          }
+          URL.revokeObjectURL(url);
+        }, 'image/png', 1);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        alert('PNG export failed. Try the SVG master instead.');
+      };
+      img.src = url;
+    }
+
+    input.addEventListener('change', function (event) {
+      readFile(event.target.files && event.target.files[0]);
+    });
+
+    zoomInput.addEventListener('input', function () {
+      state.zoom = Number(zoomInput.value);
+      updateImage();
+    });
+
+    panXInput.addEventListener('input', function () {
+      state.panX = Number(panXInput.value);
+      updateImage();
+    });
+
+    panYInput.addEventListener('input', function () {
+      state.panY = Number(panYInput.value);
+      updateImage();
+    });
+
+    document.getElementById('resetView').addEventListener('click', function () {
+      state.zoom = 1;
+      state.panX = 0;
+      state.panY = 0;
+      zoomInput.value = '1';
+      panXInput.value = '0';
+      panYInput.value = '0';
+      updateImage();
+    });
+
+    document.getElementById('downloadSvg').addEventListener('click', function () {
+      triggerDownload(new Blob([serializeSvg()], { type: 'image/svg+xml;charset=utf-8' }), 'siren-timeline-headline-frame.svg');
+    });
+
+    document.getElementById('downloadPng').addEventListener('click', function () {
+      exportPng(3);
+    });
+
+    ['dragenter', 'dragover'].forEach(function (type) {
+      frameShell.addEventListener(type, function (event) {
+        event.preventDefault();
+        frameShell.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(function (type) {
+      frameShell.addEventListener(type, function (event) {
+        event.preventDefault();
+        frameShell.classList.remove('dragover');
+      });
+    });
+
+    frameShell.addEventListener('drop', function (event) {
+      const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+      readFile(file);
+    });
+
+    window.addEventListener('paste', function (event) {
+      const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
+      const imageItem = items.find(function (item) {
+        return item.type.indexOf('image/') === 0;
+      });
+      if (imageItem) {
+        readFile(imageItem.getAsFile());
+      }
+    });
+  </script>
+</body>
+</html>

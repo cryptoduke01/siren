@@ -7,7 +7,7 @@ import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
-import { sendWelcomeWithAccessCode, sendVolumeCompetitionEmail, canSendEmail } from "./services/email.js";
+import { sendWelcomeWithAccessCode, sendLaunchThreadEmail, canSendEmail } from "./services/email.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -272,8 +272,8 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  /** Admin: send volume competition email to all waitlist signups with email. */
-  app.post("/api/admin/waitlist/send-volume-email", async (_req, reply) => {
+  /** Admin: send launch-thread email to all waitlist signups with email. */
+  app.post("/api/admin/waitlist/send-launch-thread-email", async (_req, reply) => {
     try {
       const supabase = getSupabaseAdminClient();
       const { data: rows, error: listError } = await supabase
@@ -300,23 +300,23 @@ export function registerRoutes(app: FastifyInstance) {
           skippedEmails.push(row.email);
           continue;
         }
-        const result = await sendVolumeCompetitionEmail({ to: row.email, name: row.name });
+        const result = await sendLaunchThreadEmail({ to: row.email, name: row.name });
         if (result.ok) sent++;
         else {
           failed++;
           failedEmails.push(row.email);
-          app.log.warn({ email: row.email, err: result.error }, "Failed to send volume email");
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send launch thread email");
         }
       }
       return reply.send({ success: true, sent, failed, skipped, total: entries.length, failedEmails, skippedEmails });
     } catch (e) {
       app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to send volume emails" });
+      return reply.status(500).send({ success: false, error: "Failed to send launch thread emails" });
     }
   });
 
-  /** Admin: send volume competition email to a specific list of emails (pasted manually). */
-  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-volume-email-by-email", async (req, reply) => {
+  /** Admin: send launch-thread email to a specific list of emails (pasted manually). */
+  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-launch-thread-email-by-email", async (req, reply) => {
     try {
       const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
       const normalized = Array.from(
@@ -362,19 +362,19 @@ export function registerRoutes(app: FastifyInstance) {
           skippedEmails.push(email);
           continue;
         }
-        const result = await sendVolumeCompetitionEmail({ to: row.email, name: row.name });
+        const result = await sendLaunchThreadEmail({ to: row.email, name: row.name });
         if (result.ok) sent++;
         else {
           failed++;
           failedEmails.push(row.email);
-          app.log.warn({ email: row.email, err: result.error }, "Failed to send volume email (manual)");
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send launch thread email (manual)");
         }
       }
 
       return reply.send({ success: true, sent, failed, skipped, total: normalized.length, failedEmails, skippedEmails });
     } catch (e) {
       app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to send volume emails (manual)" });
+      return reply.status(500).send({ success: false, error: "Failed to send launch thread emails (manual)" });
     }
   });
 
