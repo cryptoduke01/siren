@@ -26,6 +26,13 @@ export interface MarketWithVelocity extends KalshiMarket {
   kalshi_url?: string;
 }
 
+export interface MarketTradeActivity {
+  ticker: string;
+  recent_trades_1h?: number;
+  recent_trades_24h: number;
+  last_trade_at?: string;
+}
+
 export interface BagsToken {
   mint: string;
   name: string;

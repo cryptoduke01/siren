@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
+import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { ExternalLink } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 
@@ -19,6 +20,7 @@ function VelocityBadge({ v }: { v: number }) {
 
 export function MarketDetailPanel() {
   const { selectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
+  const { data: marketActivity } = useMarketActivity(selectedMarket?.ticker);
   const isOpen = !!selectedMarket && detailPanelOpen;
 
   if (!selectedMarket || !detailPanelOpen) return null;
@@ -88,6 +90,10 @@ export function MarketDetailPanel() {
                   <VelocityBadge v={selectedMarket.velocity_1h} />
                 </div>
                 <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Trades (24h)</p>
+                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{marketActivity?.recent_trades_24h?.toLocaleString() ?? "—"}</p>
+                </div>
+                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Volume (24h)</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.volume_24h?.toLocaleString() ?? "—"}</p>
                 </div>
@@ -99,9 +105,13 @@ export function MarketDetailPanel() {
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Open interest</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.open_interest?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4 col-span-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Liquidity</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.liquidity?.toLocaleString() ?? "—"}</p>
+                </div>
+                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Last trade</p>
+                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{marketActivity?.last_trade_at ? new Date(marketActivity.last_trade_at).toLocaleTimeString() : "—"}</p>
                 </div>
               </div>
 

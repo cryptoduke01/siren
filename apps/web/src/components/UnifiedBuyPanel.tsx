@@ -12,6 +12,7 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { ResultModal } from "./ResultModal";
 import { TradePnLCard, type TradePnLToken } from "./TradePnLCard";
 import { useToastStore } from "@/store/useToastStore";
+import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { hapticLight } from "@/lib/haptics";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 
@@ -337,6 +338,7 @@ export function UnifiedBuyPanel() {
     staleTime: 5 * 60_000,
     retry: 1,
   });
+  const { data: marketActivity } = useMarketActivity(selectedMarket?.ticker);
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
@@ -1032,6 +1034,12 @@ export function UnifiedBuyPanel() {
                         <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>24h volume</p>
                         <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
                           {formatCompactNumber(selectedMarket.volume_24h, 1)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Trades 24h</p>
+                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {formatCompactNumber(marketActivity?.recent_trades_24h, 0)}
                         </p>
                       </div>
                       <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>

@@ -1,7 +1,8 @@
-import type { MarketWithVelocity } from "@siren/shared";
+import type { MarketTradeActivity, MarketWithVelocity } from "@siren/shared";
 
 const DFLOW_METADATA_URL = process.env.DFLOW_METADATA_API_URL || "https://dev-prediction-markets-api.dflow.net";
 const DFLOW_API_KEY = process.env.DFLOW_API_KEY || "";
+const KALSHI_API_BASE = process.env.KALSHI_API_BASE_URL || "https://api.elections.kalshi.com/trade-api/v2";
 
 interface DFlowAccountInfo {
   yesMint?: string;
@@ -57,11 +58,25 @@ interface DFlowCandlestickResponse {
   candlesticks?: DFlowCandlestick[];
 }
 
+interface KalshiTrade {
+  created_time?: string;
+}
+
+interface KalshiTradesResponse {
+  cursor?: string;
+  trades?: KalshiTrade[];
+}
+
 const MARKETS_CACHE_MS = 60 * 1000;
 const EVENT_PAGE_LIMIT = 200;
 const VELOCITY_FETCH_LIMIT = 24;
+const MARKET_ACTIVITY_CACHE_MS = 60 * 1000;
+const KALSHI_TRADES_PAGE_LIMIT = 1000;
+const KALSHI_TRADES_MAX_PAGES = 12;
 let marketsCache: { expiresAt: number; value: MarketWithVelocity[] } | null = null;
 let marketsInFlight: Promise<MarketWithVelocity[]> | null = null;
+const marketTradeActivityCache = new Map<string, { expiresAt: number; value: MarketTradeActivity }>();
+const marketTradeActivityInFlight = new Map<string, Promise<MarketTradeActivity>>();
 
 function parseDollarPrice(value?: string): number | undefined {
   if (!value) return undefined;
@@ -73,6 +88,12 @@ function parseFiniteNumber(value?: string | number | null): number | undefined {
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
   if (typeof value !== "string" || !value.trim()) return undefined;
   const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseTimestamp(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -129,6 +150,90 @@ async function fetchMarketVelocity1h(ticker: string): Promise<number> {
 
   if (!current || !previous || previous <= 0) return 0;
   return ((current - previous) / previous) * 100;
+}
+
+export async function getMarketTradeActivity(ticker: string): Promise<MarketTradeActivity> {
+  const normalizedTicker = ticker.trim().toUpperCase();
+  if (!normalizedTicker) {
+    throw new Error("ticker required");
+  }
+
+  const cached = marketTradeActivityCache.get(normalizedTicker);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const inFlight = marketTradeActivityInFlight.get(normalizedTicker);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    try {
+      const nowMs = Date.now();
+      const cutoff24hMs = nowMs - 24 * 60 * 60 * 1000;
+      const cutoff1hMs = nowMs - 60 * 60 * 1000;
+      let cursor: string | undefined;
+      let recentTrades24h = 0;
+      let recentTrades1h = 0;
+      let lastTradeAt: string | undefined;
+
+      for (let page = 0; page < KALSHI_TRADES_MAX_PAGES; page += 1) {
+        const qs = new URLSearchParams({
+          ticker: normalizedTicker,
+          limit: String(KALSHI_TRADES_PAGE_LIMIT),
+          min_ts: String(Math.floor(cutoff24hMs / 1000)),
+        });
+        if (cursor) qs.set("cursor", cursor);
+
+        const res = await fetch(`${KALSHI_API_BASE}/markets/trades?${qs.toString()}`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) {
+          if (res.status === 429) throw new Error("Kalshi trades API rate limited");
+          throw new Error(`Kalshi trades API error: ${res.status}`);
+        }
+
+        const json = (await res.json()) as KalshiTradesResponse;
+        const trades = json.trades ?? [];
+        if (!trades.length) break;
+
+        if (!lastTradeAt) {
+          lastTradeAt = trades[0]?.created_time;
+        }
+
+        for (const trade of trades) {
+          const createdAtMs = parseTimestamp(trade.created_time);
+          if (!createdAtMs) continue;
+          if (createdAtMs >= cutoff24hMs) recentTrades24h += 1;
+          if (createdAtMs >= cutoff1hMs) recentTrades1h += 1;
+        }
+
+        cursor = json.cursor?.trim() || undefined;
+        if (!cursor) break;
+
+        const oldestTradeMs = parseTimestamp(trades.at(-1)?.created_time);
+        if (oldestTradeMs && oldestTradeMs < cutoff24hMs) break;
+      }
+
+      const value: MarketTradeActivity = {
+        ticker: normalizedTicker,
+        recent_trades_1h: recentTrades1h,
+        recent_trades_24h: recentTrades24h,
+        last_trade_at: lastTradeAt,
+      };
+      marketTradeActivityCache.set(normalizedTicker, {
+        expiresAt: Date.now() + MARKET_ACTIVITY_CACHE_MS,
+        value,
+      });
+      return value;
+    } catch (error) {
+      const stale = marketTradeActivityCache.get(normalizedTicker);
+      if (stale?.value) return stale.value;
+      throw error;
+    } finally {
+      marketTradeActivityInFlight.delete(normalizedTicker);
+    }
+  })();
+
+  marketTradeActivityInFlight.set(normalizedTicker, promise);
+  return promise;
 }
 
 /** Fetch markets from DFlow Metadata API and compute real 1h movement. */

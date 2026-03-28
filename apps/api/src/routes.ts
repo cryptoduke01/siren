@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import bs58 from "bs58";
-import { getMarketsWithVelocity } from "./services/markets.js";
+import { getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
 import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats, getBagsPools, getBagsPoolByTokenMint, getTokenLifetimeFees, getClaimablePositions, getClaimTransactionsV3, getBagsTradeQuote, createBagsSwapTransaction } from "./services/bags.js";
 import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
@@ -652,6 +652,20 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch markets" });
+    }
+  });
+
+  app.get<{ Params: { ticker: string } }>("/api/markets/:ticker/activity", async (req, reply) => {
+    const ticker = req.params.ticker?.trim();
+    if (!ticker) {
+      return reply.status(400).send({ success: false, error: "ticker required" });
+    }
+    try {
+      const activity = await getMarketTradeActivity(ticker);
+      return reply.send({ success: true, data: activity });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch market activity" });
     }
   });
 

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Copy, Check, ArrowUpRight, ExternalLink, Activity } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { useSirenStore, type SelectedMarket } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
 import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
@@ -93,6 +94,7 @@ function PredictionMarketFocusPanel({
   onOpenKalshi: () => void;
   onOpenDetails: () => void;
 }) {
+  const { data: marketActivity } = useMarketActivity(market.ticker);
   return (
     <section
       className="mb-5 overflow-hidden rounded-[22px] border"
@@ -213,6 +215,18 @@ function PredictionMarketFocusPanel({
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
             Contracts filled across the last 24 hours
+          </p>
+        </div>
+
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            Trades 24h
+          </p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+            {formatCompactNumber(marketActivity?.recent_trades_24h, 0)}
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Public fills, not unique traders
           </p>
         </div>
 
