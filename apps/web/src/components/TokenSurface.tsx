@@ -152,7 +152,7 @@ function PredictionMarketFocusPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-6">
         <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
             YES price
@@ -200,7 +200,31 @@ function PredictionMarketFocusPanel({
             {formatCompactNumber(market.volume, 1)}
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Filled contracts in this market
+            Lifetime filled contracts in this market
+          </p>
+        </div>
+
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            Volume 24h
+          </p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+            {formatCompactNumber(market.volume_24h, 1)}
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Contracts filled across the last 24 hours
+          </p>
+        </div>
+
+        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            Liquidity
+          </p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+            {formatCompactNumber(market.liquidity, 1)}
+          </p>
+          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Event liquidity available in the current book
           </p>
         </div>
 
@@ -407,7 +431,7 @@ export function TokenSurface() {
       <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
           ? "Tokens are ranked by onchain activity, then boosted by how tightly they map onto the selected prediction market."
-          : "New uprising tokens (DexScreener latest boosted)."}
+          : "Cross-market discovery mix from Bags, boosted DexScreener names, and broader search themes."}
       </p>
       {riskyTokens.length > 0 && (
         <div

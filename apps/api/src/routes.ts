@@ -546,6 +546,24 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   /** DFlow prediction market order: get quote + transaction. Geo-fenced for US/restricted. */
+  app.get<{ Querystring: { countryCode?: string } }>("/api/prediction-markets/eligibility", async (req, reply) => {
+    const countryCode =
+      (req.query.countryCode as string) ||
+      (req.headers["cf-ipcountry"] as string) ||
+      (req.headers["x-country-code"] as string) ||
+      null;
+    const blocked = shouldBlockByCountry(countryCode);
+    return reply.send({
+      success: true,
+      data: {
+        blocked,
+        countryCode,
+        reason: blocked ? "Prediction market trading is not available in your jurisdiction." : null,
+      },
+    });
+  });
+
+  /** DFlow prediction market order: get quote + transaction. Geo-fenced for US/restricted. */
   app.get<{
     Querystring: { outputMint: string; amount: string; userPublicKey: string; inputMint?: string; slippageBps?: string; countryCode?: string };
   }>("/api/dflow/order", async (req, reply) => {

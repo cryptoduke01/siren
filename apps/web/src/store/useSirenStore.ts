@@ -6,7 +6,11 @@ export interface SelectedMarket {
   probability: number;
   velocity_1h: number;
   volume?: number;
+  volume_24h?: number;
+  liquidity?: number;
   open_interest?: number;
+  close_time?: number;
+  open_time?: number;
   event_ticker?: string;
   series_ticker?: string;
   subtitle?: string;

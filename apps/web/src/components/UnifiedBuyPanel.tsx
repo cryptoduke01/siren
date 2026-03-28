@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
@@ -50,6 +50,20 @@ function formatUsd(value?: number | null, digits = 2): string {
   }).format(value);
 }
 
+function formatTokenAmount(value?: number | null, digits = 4): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return value.toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+function parsePositiveNumber(value: string): number | null {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function isBagsMint(mint?: string | null): boolean {
+  return !!mint && mint.toLowerCase().endsWith("bags");
+}
+
 function getFriendlyTradeError(message: string, fallback: string): string {
   const lower = message.toLowerCase();
   if (message.includes("0x1771") || lower.includes("slippage")) {
@@ -70,6 +84,9 @@ function getFriendlyTradeError(message: string, fallback: string): string {
   }
   if (lower.includes("rate limited") || lower.includes("429")) {
     return "Routing is being rate limited upstream right now. Wait a few seconds and try again.";
+  }
+  if (lower.includes("jurisdiction")) {
+    return "Prediction market trading is not available in your jurisdiction right now. Use the Kalshi link instead.";
   }
   return fallback;
 }
@@ -298,6 +315,28 @@ export function UnifiedBuyPanel() {
   };
   const [tradePnLModalOpen, setTradePnLModalOpen] = useState(false);
   const [tradePnLData, setTradePnLData] = useState<TradePnLCardModel | null>(null);
+  const isPredictionToken = selectedToken?.assetType === "prediction";
+  const deferredSolAmount = useDeferredValue(solAmount);
+  const deferredSellAmount = useDeferredValue(sellAmount);
+
+  const { data: predictionEligibility } = useQuery({
+    queryKey: ["prediction-market-eligibility", buyPanelMode, selectedMarket?.ticker, selectedToken?.marketTicker],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/api/prediction-markets/eligibility`, { credentials: "omit" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Unable to determine prediction market eligibility.");
+      }
+      return (json?.data ?? {}) as {
+        blocked?: boolean;
+        countryCode?: string | null;
+        reason?: string | null;
+      };
+    },
+    enabled: buyPanelOpen && (buyPanelMode === "market" || isPredictionToken),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
@@ -333,15 +372,40 @@ export function UnifiedBuyPanel() {
     selectedToken?.name && selectedToken.name !== "-" && selectedToken.name !== "Unknown" ? selectedToken.name : selectedToken?.symbol ?? "";
   const tokenDisplaySymbol =
     selectedToken?.symbol && selectedToken.symbol !== "-" && selectedToken.symbol !== "—" ? selectedToken.symbol : selectedToken?.name ?? "";
-  const isPredictionToken = selectedToken?.assetType === "prediction";
   const marketYesPriceUsd = selectedMarket ? Math.min(1, Math.max(0, selectedMarket.probability / 100)) : null;
   const marketNoPriceUsd = selectedMarket ? Math.min(1, Math.max(0, 1 - selectedMarket.probability / 100)) : null;
   const selectedMarketPriceUsd = marketSide === "yes" ? marketYesPriceUsd : marketNoPriceUsd;
   const selectedMarketMint = marketSide === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
+  const parsedBuySolAmount = parsePositiveNumber(deferredSolAmount);
+  const parsedSellTokenAmount = parsePositiveNumber(deferredSellAmount);
+  const predictionTradeBlocked = !!predictionEligibility?.blocked;
+  const predictionTradeBlockReason =
+    predictionEligibility?.reason ?? "Prediction market trading is not available in your jurisdiction right now.";
+  const selectedTokenPriceUsd =
+    typeof selectedToken?.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
+  const tradeNotionalUsd =
+    parsedBuySolAmount != null && solPriceUsd > 0 ? parsedBuySolAmount * solPriceUsd : null;
   const estimatedContracts =
-    selectedMarketPriceUsd && solPriceUsd > 0 && Number.parseFloat(solAmount || "0") > 0
-      ? (Number.parseFloat(solAmount || "0") * solPriceUsd) / selectedMarketPriceUsd
+    selectedMarketPriceUsd && tradeNotionalUsd != null && tradeNotionalUsd > 0
+      ? tradeNotionalUsd / selectedMarketPriceUsd
       : null;
+  const marketMaxPayoutUsd = estimatedContracts != null ? estimatedContracts : null;
+  const marketNetIfCorrectUsd =
+    marketMaxPayoutUsd != null && tradeNotionalUsd != null ? marketMaxPayoutUsd - tradeNotionalUsd : null;
+  const marketBreakEvenPct = selectedMarketPriceUsd != null ? selectedMarketPriceUsd * 100 : null;
+  const tokenBuyApproxReceive =
+    !sellMode && !isPredictionToken && tradeNotionalUsd != null && selectedTokenPriceUsd != null && selectedTokenPriceUsd > 0
+      ? tradeNotionalUsd / selectedTokenPriceUsd
+      : null;
+  const tokenBuyMinReceive =
+    tokenBuyApproxReceive != null ? tokenBuyApproxReceive * (1 - slippageBps / 10_000) : null;
+  const tokenSellApproxUsd =
+    sellMode && parsedSellTokenAmount != null && selectedTokenPriceUsd != null ? parsedSellTokenAmount * selectedTokenPriceUsd : null;
+  const tokenSellApproxSol =
+    tokenSellApproxUsd != null && solPriceUsd > 0 ? tokenSellApproxUsd / solPriceUsd : null;
+  const tokenSellMinReceiveSol =
+    tokenSellApproxSol != null ? tokenSellApproxSol * (1 - slippageBps / 10_000) : null;
+  const tokenRouteLabel = isPredictionToken ? "DFlow" : isBagsMint(selectedToken?.mint) ? "Bags" : "Jupiter";
 
   useEffect(() => {
     let cancelled = false;
@@ -740,6 +804,12 @@ export function UnifiedBuyPanel() {
 
   const executePredictionMarketTrade = async () => {
     hapticLight();
+    if (predictionTradeBlocked) {
+      setError(predictionTradeBlockReason);
+      setResultModal({ type: "error", title: "Trade unavailable", message: predictionTradeBlockReason });
+      addToast(predictionTradeBlockReason, "error");
+      return;
+    }
     if (!connected || !publicKey || !selectedMarket || !selectedMarketMint || !signTransaction) {
       setError("Connect your wallet to trade prediction markets.");
       return;
@@ -945,9 +1015,9 @@ export function UnifiedBuyPanel() {
                       </button>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="mt-4 grid grid-cols-2 gap-2">
                       <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>YES</p>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Implied YES</p>
                         <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--kalshi)" }}>
                           {selectedMarket.probability.toFixed(1)}%
                         </p>
@@ -959,7 +1029,25 @@ export function UnifiedBuyPanel() {
                         </p>
                       </div>
                       <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Volume</p>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>24h volume</p>
+                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {formatCompactNumber(selectedMarket.volume_24h, 1)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Open interest</p>
+                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {formatCompactNumber(selectedMarket.open_interest, 1)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Liquidity</p>
+                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {formatCompactNumber(selectedMarket.liquidity, 1)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Lifetime volume</p>
                         <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
                           {formatCompactNumber(selectedMarket.volume, 1)}
                         </p>
@@ -981,18 +1069,51 @@ export function UnifiedBuyPanel() {
                     </div>
 
                     <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[11px]" style={{ color: "var(--text-3)" }}>Current outcome price</span>
-                        <span className="font-mono text-sm tabular-nums" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--down)" }}>
-                          {formatUsd(selectedMarketPriceUsd, 3)}
-                        </span>
+                      <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>Trade preview</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Current {marketSide.toUpperCase()} price</p>
+                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--down)" }}>
+                            {formatUsd(selectedMarketPriceUsd, 3)}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>You pay</p>
+                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                            {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
+                          </p>
+                          <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
+                            {parsedBuySolAmount != null ? `${formatTokenAmount(parsedBuySolAmount, 4)} SOL` : "Enter a SOL amount"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated {marketSide.toUpperCase()} shares</p>
+                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                            {estimatedContracts != null ? formatTokenAmount(estimatedContracts, 2) : "—"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Max payout if {marketSide.toUpperCase()}</p>
+                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--up)" }}>
+                            {marketMaxPayoutUsd != null ? formatUsd(marketMaxPayoutUsd, 2) : "—"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Net if correct</p>
+                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: marketNetIfCorrectUsd != null && marketNetIfCorrectUsd >= 0 ? "var(--up)" : "var(--down)" }}>
+                            {marketNetIfCorrectUsd != null ? formatUsd(marketNetIfCorrectUsd, 2) : "—"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Break-even odds</p>
+                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                            {marketBreakEvenPct != null ? `${marketBreakEvenPct.toFixed(1)}%` : "—"}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between gap-3 mt-2">
-                        <span className="text-[11px]" style={{ color: "var(--text-3)" }}>Estimated shares</span>
-                        <span className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
-                          {estimatedContracts != null ? estimatedContracts.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}
-                        </span>
-                      </div>
+                      <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        Approximate preview only. Winning shares settle near $1.00, losing shares settle near $0.00.
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-2 mt-3">
@@ -1004,9 +1125,26 @@ export function UnifiedBuyPanel() {
                       </span>
                     </div>
 
+                    {predictionTradeBlocked && (
+                      <div
+                        className="mt-3 rounded-xl border px-3 py-3"
+                        style={{
+                          background: "color-mix(in srgb, var(--down) 10%, var(--bg-surface))",
+                          borderColor: "color-mix(in srgb, var(--down) 30%, var(--border-subtle))",
+                        }}
+                      >
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--down)" }}>
+                          Trade unavailable
+                        </p>
+                        <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-2)" }}>
+                          {predictionTradeBlockReason}
+                        </p>
+                      </div>
+                    )}
+
                     <button
                       onClick={executePredictionMarketTrade}
-                      disabled={loading || !selectedMarketMint}
+                      disabled={loading || !selectedMarketMint || predictionTradeBlocked}
                       className="mt-4 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
                       style={{
                         background: marketSide === "yes" ? "var(--accent-bags)" : "var(--down)",
@@ -1018,6 +1156,8 @@ export function UnifiedBuyPanel() {
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" /> Routing...
                         </>
+                      ) : predictionTradeBlocked ? (
+                        "Unavailable in your region"
                       ) : (
                         `Buy ${marketSide.toUpperCase()}`
                       )}
@@ -1176,6 +1316,41 @@ export function UnifiedBuyPanel() {
                                 style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                               />
                             </div>
+                            <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                              <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>Buy preview</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Spend</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
+                                  </p>
+                                  <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
+                                    {parsedBuySolAmount != null ? `${formatTokenAmount(parsedBuySolAmount, 4)} SOL` : "Enter a SOL amount"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated receive</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {tokenBuyApproxReceive != null ? `${formatTokenAmount(tokenBuyApproxReceive, 4)} ${tokenDisplaySymbol}` : "—"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Min receive @ slippage</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {tokenBuyMinReceive != null ? `${formatTokenAmount(tokenBuyMinReceive, 4)} ${tokenDisplaySymbol}` : "—"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Route</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--accent)" }}>
+                                    {tokenRouteLabel}
+                                  </p>
+                                </div>
+                              </div>
+                              <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                                Approximate preview from the latest token price. Final route quote is built at submit time.
+                              </p>
+                            </div>
                             <button
                               onClick={executeSwap}
                               disabled={loading || buyBlocked}
@@ -1230,6 +1405,41 @@ export function UnifiedBuyPanel() {
                             className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
                             style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                           />
+                        </div>
+                        <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                          <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>Sell preview</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Tokens in</p>
+                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                {parsedSellTokenAmount != null ? `${formatTokenAmount(parsedSellTokenAmount, 4)} ${tokenDisplaySymbol}` : "—"}
+                              </p>
+                            </div>
+                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated receive</p>
+                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                {tokenSellApproxSol != null ? `${formatTokenAmount(tokenSellApproxSol, 4)} SOL` : "—"}
+                              </p>
+                              <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
+                                {tokenSellApproxUsd != null ? formatUsd(tokenSellApproxUsd, 2) : "—"}
+                              </p>
+                            </div>
+                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Min receive @ slippage</p>
+                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                {tokenSellMinReceiveSol != null ? `${formatTokenAmount(tokenSellMinReceiveSol, 4)} SOL` : "—"}
+                              </p>
+                            </div>
+                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Route</p>
+                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--accent)" }}>
+                                {tokenRouteLabel}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Approximate preview from the latest token price. Final route quote is built at submit time.
+                          </p>
                         </div>
                         <button
                           onClick={executeSwap}

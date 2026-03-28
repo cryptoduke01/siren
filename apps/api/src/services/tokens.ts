@@ -293,6 +293,7 @@ async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Prom
 }
 
 const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
+const DEFAULT_DISCOVERY_TERMS = ["bitcoin", "solana", "ethereum", "election", "sports"];
 
 function parseKeywordsParam(param?: string): string[] {
   if (!param?.trim()) return [];
@@ -365,9 +366,10 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
     console.warn("[tokens] DexScreener boosted failed:", e);
   }
 
-  if (keywords.length > 0) {
+  const shouldRunDiscoverySearch = keywords.length > 0 || !marketId;
+  if (shouldRunDiscoverySearch) {
     try {
-      const searchTerms = keywords.slice(0, 5);
+      const searchTerms = (keywords.length > 0 ? keywords : DEFAULT_DISCOVERY_TERMS).slice(0, 5);
       const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
       const keywordPairs: DexPair[] = searchResults.flat();
       for (const pair of keywordPairs) {
@@ -387,7 +389,7 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
       if (keywords.length > 0) return b.relevanceScore - a.relevanceScore;
       return (b.volume24h ?? 0) - (a.volume24h ?? 0);
     })
-    .slice(0, 24);
+    .slice(0, keywords.length > 0 ? 24 : 36);
   const hydrated = await hydrateSurfacedTokens(ranked);
   return hydrated.filter((token) => !token.riskBlocked);
 }

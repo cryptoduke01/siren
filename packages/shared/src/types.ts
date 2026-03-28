@@ -10,6 +10,8 @@ export interface KalshiMarket {
   no_ask?: number;
   last_price?: number;
   volume: number;
+  volume_24h?: number;
+  liquidity?: number;
   open_interest: number;
   close_time?: number;
   open_time?: number;

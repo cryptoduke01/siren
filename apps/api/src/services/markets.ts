@@ -12,6 +12,7 @@ interface DFlowAccountInfo {
 interface DFlowMarketResponse {
   ticker: string;
   eventTicker: string;
+  marketType?: string;
   title: string;
   subtitle?: string;
   yesBid?: string;
@@ -19,7 +20,10 @@ interface DFlowMarketResponse {
   noBid?: string;
   noAsk?: string;
   volume: number;
+  volume24hFp?: string;
   openInterest: number;
+  openTime?: number;
+  closeTime?: number;
   status: string;
   accounts?: Record<string, DFlowAccountInfo>;
 }
@@ -29,6 +33,8 @@ interface DFlowEventsResponse {
     ticker: string;
     seriesTicker?: string;
     title: string;
+    volume24h?: number;
+    liquidity?: number;
     markets?: DFlowMarketResponse[];
   }>;
   cursor?: number | null;
@@ -59,6 +65,13 @@ let marketsInFlight: Promise<MarketWithVelocity[]> | null = null;
 
 function parseDollarPrice(value?: string): number | undefined {
   if (!value) return undefined;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseFiniteNumber(value?: string | number | null): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "string" || !value.trim()) return undefined;
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -164,7 +177,11 @@ export async function getMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
             yes_bid: yesBid,
             yes_ask: yesAsk,
             volume: m.volume,
+            volume_24h: parseFiniteNumber(m.volume24hFp) ?? parseFiniteNumber(event.volume24h),
+            liquidity: parseFiniteNumber(event.liquidity),
             open_interest: m.openInterest,
+            close_time: m.closeTime,
+            open_time: m.openTime,
             probability: prob,
             velocity_1h: 0,
             yes_mint,

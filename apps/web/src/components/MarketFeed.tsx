@@ -44,6 +44,14 @@ function marketAvatar(title: string): string {
 const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election", "world", "cup", "georgia", "purdue", "uae", "icc", "t20", "sol", "eth", "jpow", "pepe", "bonk"];
 const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
 
+function formatCompactStat(value?: number): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 function extractKeywords(title: string): string[] {
   const lower = title.toLowerCase();
   const fromKnown = MARKET_KEYWORDS.filter((kw) => lower.includes(kw)).slice(0, 2);
@@ -57,6 +65,28 @@ function extractKeywords(title: string): string[] {
     }
   }
   return out;
+}
+
+function toSelectedMarket(m: MarketWithVelocity) {
+  return {
+    ticker: m.ticker,
+    title: m.title,
+    probability: m.probability,
+    velocity_1h: m.velocity_1h,
+    volume: m.volume,
+    volume_24h: m.volume_24h,
+    liquidity: m.liquidity,
+    open_interest: m.open_interest,
+    close_time: m.close_time,
+    open_time: m.open_time,
+    event_ticker: m.event_ticker,
+    series_ticker: m.series_ticker,
+    subtitle: m.subtitle,
+    keywords: extractKeywords(m.title),
+    yes_mint: m.yes_mint,
+    no_mint: m.no_mint,
+    kalshi_url: m.kalshi_url,
+  };
 }
 
 export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: MarketWithVelocity) => void } = {}) {
@@ -152,7 +182,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         />
       </div>
       <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-2">
-        {["All", "Politics", "Crypto", "Sports"].map((cat) => (
+        {CATEGORIES.map((cat) => (
           <button
             key={cat}
             type="button"
@@ -221,21 +251,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   }}
                   onClick={() => {
                     hapticLight();
-                    setSelectedMarket({
-                      ticker: m.ticker,
-                      title: m.title,
-                      probability: m.probability,
-                      velocity_1h: m.velocity_1h,
-                      volume: m.volume,
-                      open_interest: m.open_interest,
-                      event_ticker: m.event_ticker,
-                      series_ticker: m.series_ticker,
-                      subtitle: m.subtitle,
-                      keywords: extractKeywords(m.title),
-                      yes_mint: m.yes_mint,
-                      no_mint: m.no_mint,
-                      kalshi_url: m.kalshi_url,
-                    });
+                    setSelectedMarket(toSelectedMarket(m));
                     onAfterSelectMarket?.(m);
                   }}
                 >
@@ -271,28 +287,14 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>
-                      Vol {m.volume?.toLocaleString() ?? "—"}
+                      24h {formatCompactStat(m.volume_24h)} · OI {formatCompactStat(m.open_interest)}
                     </span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         hapticLight();
-                        setSelectedMarket({
-                          ticker: m.ticker,
-                          title: m.title,
-                          probability: m.probability,
-                          velocity_1h: m.velocity_1h,
-                          volume: m.volume,
-                          open_interest: m.open_interest,
-                          event_ticker: m.event_ticker,
-                          series_ticker: m.series_ticker,
-                          subtitle: m.subtitle,
-                          keywords: extractKeywords(m.title),
-                          yes_mint: m.yes_mint,
-                          no_mint: m.no_mint,
-                          kalshi_url: m.kalshi_url,
-                        });
+                        setSelectedMarket(toSelectedMarket(m));
                         onAfterSelectMarket?.(m);
                       }}
                       className="font-body text-[10px] font-medium hover:underline"

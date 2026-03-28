@@ -88,12 +88,20 @@ export function MarketDetailPanel() {
                   <VelocityBadge v={selectedMarket.velocity_1h} />
                 </div>
                 <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Volume (24h)</p>
+                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.volume_24h?.toLocaleString() ?? "—"}</p>
+                </div>
+                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Volume</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.volume?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4 col-span-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Open interest</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.open_interest?.toLocaleString() ?? "—"}</p>
+                </div>
+                <div className="rounded-[6px] border p-4 col-span-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Liquidity</p>
+                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.liquidity?.toLocaleString() ?? "—"}</p>
                 </div>
               </div>
 
