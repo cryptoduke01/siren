@@ -8,12 +8,16 @@ export function ResultModal({
   message,
   onClose,
   txSignature,
+  actionLabel,
+  actionHref,
 }: {
   type: "success" | "error";
   title: string;
   message: string;
   onClose: () => void;
   txSignature?: string;
+  actionLabel?: string;
+  actionHref?: string;
 }) {
   const Icon = type === "success" ? CheckCircle : XCircle;
   const color = type === "success" ? "var(--up)" : "var(--down)";
@@ -55,6 +59,22 @@ export function ResultModal({
             }}
           >
             View on Solscan
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        )}
+        {actionLabel && actionHref && (
+          <a
+            href={actionHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-body text-sm font-medium mb-3 transition-colors hover:opacity-90"
+            style={{
+              background: "var(--bg-elevated)",
+              color: "var(--text-1)",
+              border: "1px solid var(--border-subtle)",
+            }}
+          >
+            {actionLabel}
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         )}

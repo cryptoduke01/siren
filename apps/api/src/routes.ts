@@ -56,6 +56,31 @@ function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function getTradeErrorStatus(error?: string | null): number {
+  const lower = error?.toLowerCase().trim() ?? "";
+  if (!lower) return 503;
+  if (lower.includes("rate limited") || lower.includes("429")) return 429;
+  if (
+    lower.includes("wallet must be verified") ||
+    lower.includes("unverified_wallet_not_allowed") ||
+    lower.includes("dflow.net/proof") ||
+    lower.includes("proof verification") ||
+    lower.includes("jurisdiction")
+  ) {
+    return 403;
+  }
+  if (
+    lower.includes("not tradable") ||
+    lower.includes("validation error") ||
+    lower.includes("insufficient") ||
+    lower.includes("slippage") ||
+    lower.includes("400")
+  ) {
+    return 400;
+  }
+  return 503;
+}
+
 // In-memory volume store (resets on restart). For persistence, add Supabase/DB.
 const volumeStore = new Map<string, Array<{ ts: number; volumeSol: number }>>();
 function getVolumeStats(): {
@@ -602,7 +627,7 @@ export function registerRoutes(app: FastifyInstance) {
 
       if (result.error) {
         app.log.warn({ outputMint: outputMint?.slice(0, 8), amount, inputMint: effectiveInputMint }, result.error);
-        return reply.status(503).send({
+        return reply.status(getTradeErrorStatus(result.error)).send({
           success: false,
           error: result.error,
         });
@@ -1074,7 +1099,7 @@ export function registerRoutes(app: FastifyInstance) {
         forcePredictionMarket,
       });
       if (result.error || !result.transaction) {
-        return reply.status(503).send({ success: false, error: result.error || "Swap failed" });
+        return reply.status(getTradeErrorStatus(result.error)).send({ success: false, error: result.error || "Swap failed" });
       }
       let txBase64 = result.transaction;
       if (result.provider === "bags" || result.provider === "dflow") {

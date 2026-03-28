@@ -268,6 +268,7 @@ export function TokenSurface() {
   const [searchInput, setSearchInput] = useState("");
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [launchpadFilter, setLaunchpadFilter] = useState<"all" | "bags" | "pump" | "bonk" | "moonshot">("all");
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const tokenSectionRef = useRef<HTMLDivElement | null>(null);
 
   const searchQuery = searchInput.trim();
@@ -301,6 +302,11 @@ export function TokenSurface() {
     }
   }, [publicKey]);
 
+  useEffect(() => {
+    if (!selectedMarket?.ticker) return;
+    surfaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [selectedMarket?.ticker]);
+
   const filteredTokens = useMemo(() => {
     const launchpadScoped = launchpadFilter === "all" ? tokens : tokens.filter((t) => t.launchpad === launchpadFilter);
     if (!searchQuery) return launchpadScoped;
@@ -318,6 +324,7 @@ export function TokenSurface() {
 
   return (
     <div
+      ref={surfaceRef}
       className="flex flex-col h-full min-h-0 min-w-0 p-4 md:p-6 overflow-y-auto overflow-x-hidden"
       style={{ background: "var(--bg-void)" }}
     >
@@ -424,6 +431,21 @@ export function TokenSurface() {
         <div className="flex items-center gap-2">
           {selectedMarket && (
             <>
+              <button
+                type="button"
+                onClick={() => {
+                  hapticLight();
+                  setBuyPanelOpen(true, "market");
+                }}
+                className="font-heading font-bold text-[11px] uppercase h-8 px-4 rounded-[6px] transition-all duration-[120ms] ease hover:opacity-90"
+                style={{
+                  background: "var(--accent)",
+                  color: "var(--accent-text)",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Trade market
+              </button>
               <MarketAlertButton ticker={selectedMarket.ticker} probability={selectedMarket.probability} />
               <StarButton type="market" id={selectedMarket.ticker} />
             </>

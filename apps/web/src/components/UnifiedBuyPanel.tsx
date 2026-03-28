@@ -19,6 +19,7 @@ import { fetchSolPriceUsd } from "@/lib/pricing";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const LAMPORTS_PER_SOL = 1e9;
+const DFLOW_PROOF_URL = "https://dflow.net/proof";
 
 function formatCompactNumber(value?: number, digits = 1): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -65,6 +66,18 @@ function isBagsMint(mint?: string | null): boolean {
   return !!mint && mint.toLowerCase().endsWith("bags");
 }
 
+function isWalletVerificationError(message?: string | null): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("wallet must be verified") ||
+    lower.includes("unverified_wallet_not_allowed") ||
+    lower.includes("dflow.net/proof") ||
+    lower.includes("proof verification") ||
+    lower.includes("verify this wallet once on dflow")
+  );
+}
+
 function getFriendlyTradeError(message: string, fallback: string): string {
   const lower = message.toLowerCase();
   if (lower.includes("not tradable")) {
@@ -82,13 +95,8 @@ function getFriendlyTradeError(message: string, fallback: string): string {
   if (lower.includes("insufficient")) {
     return "Insufficient balance for this trade.";
   }
-  if (
-    lower.includes("wallet must be verified") ||
-    lower.includes("unverified_wallet_not_allowed") ||
-    lower.includes("dflow.net/proof") ||
-    lower.includes("proof")
-  ) {
-    return "This market requires wallet verification before it can trade.";
+  if (isWalletVerificationError(message) || lower.includes("proof")) {
+    return "Verify this wallet once on DFlow before you trade this market.";
   }
   if (lower.includes("rate limited") || lower.includes("429")) {
     return "Routing is being rate limited upstream right now. Wait a few seconds and try again.";
@@ -303,7 +311,14 @@ export function UnifiedBuyPanel() {
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [resultModal, setResultModal] = useState<{ type: "success" | "error"; title: string; message: string; txSignature?: string } | null>(null);
+  const [resultModal, setResultModal] = useState<{
+    type: "success" | "error";
+    title: string;
+    message: string;
+    txSignature?: string;
+    actionLabel?: string;
+    actionHref?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [solAmount, setSolAmount] = useState("");
   const [sellAmount, setSellAmount] = useState("");
@@ -415,6 +430,7 @@ export function UnifiedBuyPanel() {
   const tokenSellMinReceiveSol =
     tokenSellApproxSol != null ? tokenSellApproxSol * (1 - slippageBps / 10_000) : null;
   const tokenRouteLabel = isPredictionToken ? "DFlow" : isBagsMint(selectedToken?.mint) ? "Bags" : "Jupiter";
+  const verificationRequired = isWalletVerificationError(error);
 
   useEffect(() => {
     let cancelled = false;
@@ -804,8 +820,17 @@ export function UnifiedBuyPanel() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const friendly = getFriendlyTradeError(msg, "Swap failed. Please try again.");
+      const requiresVerification = isWalletVerificationError(msg);
       setError(friendly);
-      setResultModal({ type: "error", title: "Swap failed", message: friendly });
+      setResultModal({
+        type: "error",
+        title: requiresVerification ? "Verify wallet" : "Swap failed",
+        message: requiresVerification
+          ? "Verify this wallet once on DFlow, then come back and submit the trade again."
+          : friendly,
+        actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
+        actionHref: requiresVerification ? DFLOW_PROOF_URL : undefined,
+      });
       addToast(friendly, "error");
     } finally {
       setLoading(false);
@@ -924,8 +949,17 @@ export function UnifiedBuyPanel() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Prediction trade failed";
       const friendly = getFriendlyTradeError(msg, "Prediction market trade failed. Please try again.");
+      const requiresVerification = isWalletVerificationError(msg);
       setError(friendly);
-      setResultModal({ type: "error", title: "Trade failed", message: friendly });
+      setResultModal({
+        type: "error",
+        title: requiresVerification ? "Verify wallet" : "Trade failed",
+        message: requiresVerification
+          ? "Verify this wallet once on DFlow, then come back and buy YES or NO again."
+          : friendly,
+        actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
+        actionHref: requiresVerification ? DFLOW_PROOF_URL : undefined,
+      });
       addToast(friendly, "error");
     } finally {
       setLoading(false);
@@ -1156,6 +1190,25 @@ export function UnifiedBuyPanel() {
                       Trade on Kalshi
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
+
+                    <div
+                      className="mt-3 rounded-xl border px-3 py-3"
+                      style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                    >
+                      <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        First market trade on this wallet? DFlow can ask for a one-time verification before it lets you buy shares.
+                      </p>
+                      <a
+                        href={DFLOW_PROOF_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-2 text-xs font-medium"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        Verify wallet on DFlow
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
 
                     <p className="text-[11px] mt-3 leading-relaxed" style={{ color: "var(--text-3)" }}>
                       Orders can take a few seconds to finish after your wallet confirms.
@@ -1576,9 +1629,21 @@ export function UnifiedBuyPanel() {
                 )}
               </div>
               {!resultModal && error && <p className="text-sm mt-3" style={{ color: "var(--down)" }}>{error}</p>}
+              {!resultModal && verificationRequired && (
+                <a
+                  href={DFLOW_PROOF_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-medium"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Verify wallet on DFlow
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
               {!resultModal && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
               <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">
-                Connect wallet. Markets use Kalshi data with DFlow outcome-token routing; spot swaps fall back to Jupiter. Prediction orders may require Proof verification.
+                Use market mode for YES or NO shares and token mode for linked coins. Some market trades need a one-time wallet verification first.
               </p>
             </div>
           </motion.div>
@@ -1634,6 +1699,8 @@ export function UnifiedBuyPanel() {
           title={resultModal.title}
           message={resultModal.message}
           txSignature={resultModal.txSignature}
+          actionLabel={resultModal.actionLabel}
+          actionHref={resultModal.actionHref}
           onClose={() => setResultModal(null)}
         />
       )}
