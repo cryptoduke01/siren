@@ -300,7 +300,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                       className="font-body text-[10px] font-medium hover:underline"
                       style={{ color: "var(--accent)" }}
                     >
-                      View token surface
+                      Open market + tokens
                     </button>
                   </div>
                 </motion.li>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Copy, Check, ArrowUpRight, ExternalLink, Activity } from "lucide-react";
@@ -87,12 +87,12 @@ function PredictionMarketFocusPanel({
   market,
   onTrade,
   onOpenKalshi,
-  onOpenDetails,
+  onBrowseTokens,
 }: {
   market: SelectedMarket;
   onTrade: () => void;
   onOpenKalshi: () => void;
-  onOpenDetails: () => void;
+  onBrowseTokens: () => void;
 }) {
   const { data: marketActivity } = useMarketActivity(market.ticker);
   return (
@@ -108,7 +108,7 @@ function PredictionMarketFocusPanel({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
             <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-              Prediction Market Focus
+              Selected market
             </p>
             <h2 className="mt-2 font-heading text-2xl font-bold leading-tight md:text-[2rem]" style={{ color: "var(--text-1)" }}>
               {market.title}
@@ -119,7 +119,7 @@ function PredictionMarketFocusPanel({
               </p>
             )}
             <p className="mt-3 max-w-2xl font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Winning shares settle to $1.00. Losing shares settle to $0.00. Siren marks YES and NO to the live market while the trade is open.
+              Trade YES or NO here, then buy related tokens below.
             </p>
           </div>
 
@@ -130,25 +130,25 @@ function PredictionMarketFocusPanel({
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
               style={{ background: "var(--accent)", color: "var(--accent-text)" }}
             >
-              Trade In Siren
+              Trade market
               <ArrowUpRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onBrowseTokens}
+              className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+            >
+              Buy linked tokens
             </button>
             <button
               type="button"
               onClick={onOpenKalshi}
               className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+              style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
             >
               Trade on Kalshi
               <ExternalLink className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={onOpenDetails}
-              className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-              style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-            >
-              Market details
             </button>
           </div>
         </div>
@@ -268,6 +268,7 @@ export function TokenSurface() {
   const [searchInput, setSearchInput] = useState("");
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [launchpadFilter, setLaunchpadFilter] = useState<"all" | "bags" | "pump" | "bonk" | "moonshot">("all");
+  const tokenSectionRef = useRef<HTMLDivElement | null>(null);
 
   const searchQuery = searchInput.trim();
   const keywordsForApi = useMemo(() => (searchQuery ? [searchQuery] : selectedMarket?.keywords ?? []), [searchQuery, selectedMarket?.keywords]);
@@ -332,9 +333,9 @@ export function TokenSurface() {
             if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank", "noopener,noreferrer");
             else setBuyPanelOpen(true, "market");
           }}
-          onOpenDetails={() => {
+          onBrowseTokens={() => {
             hapticLight();
-            setDetailPanelOpen(true);
+            tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
         />
       ) : (
@@ -413,7 +414,7 @@ export function TokenSurface() {
           Token filters
         </button>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <div ref={tokenSectionRef} className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2
           className="font-heading font-semibold text-sm truncate max-w-[200px] md:max-w-none"
           style={{ color: "var(--text-2)" }}
@@ -444,7 +445,7 @@ export function TokenSurface() {
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
       <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
-          ? "Tokens are ranked by onchain activity, then boosted by how tightly they map onto the selected prediction market."
+          ? "These tokens are ranked by how closely they map to the selected market."
           : "Cross-market discovery mix from Bags, boosted DexScreener names, and broader search themes."}
       </p>
       {riskyTokens.length > 0 && (

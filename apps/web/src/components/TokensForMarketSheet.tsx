@@ -13,7 +13,7 @@ export function TokensForMarketSheet({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const { selectedMarket, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
+  const { selectedMarket, setBuyPanelOpen } = useSirenStore();
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
@@ -78,25 +78,31 @@ export function TokensForMarketSheet({
                     <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--accent)" }}>
                       {selectedMarket.probability.toFixed(0)}% YES
                     </p>
+                    <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
+                      Trade the market here or buy linked tokens below.
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       type="button"
                       onClick={() => {
                         hapticLight();
-                        setDetailPanelOpen(true);
+                        setBuyPanelOpen(true, "market");
                       }}
-                      className="p-2 rounded-[6px] transition-colors hover:bg-[var(--bg-elevated)]"
-                      style={{ color: "var(--text-2)" }}
-                      title="Market details"
+                      className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                      style={{
+                        background: "var(--accent)",
+                        borderColor: "var(--accent)",
+                        color: "var(--accent-text)",
+                      }}
                     >
-                      &#9432;
+                      Trade market
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         hapticLight();
-                        if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank");
+                        if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank", "noopener,noreferrer");
                         else setBuyPanelOpen(true, "market");
                       }}
                       className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"

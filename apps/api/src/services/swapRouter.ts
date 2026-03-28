@@ -56,6 +56,7 @@ export interface SwapOrderParams {
   slippageBps?: number;
   tryDflowFirst?: boolean;
   countryCode?: string | null;
+  forcePredictionMarket?: boolean;
 }
 
 export interface SwapOrderResult {
@@ -69,14 +70,13 @@ export interface SwapOrderResult {
 }
 
 export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderResult> {
-  const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true, countryCode } = params;
+  const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true, countryCode, forcePredictionMarket = false } = params;
 
   const mints = await getMarketMints();
   const inputIsMarket = isMarketMint(inputMint, mints);
   const outputIsMarket = isMarketMint(outputMint, mints);
-  const involvesPredictionMarket = inputIsMarket || outputIsMarket;
+  const involvesPredictionMarket = forcePredictionMarket || inputIsMarket || outputIsMarket;
   const dflowBlocked = shouldBlockByCountry(countryCode);
-  const canUseDflow = involvesPredictionMarket && tryDflowFirst && !dflowBlocked;
 
   if (involvesPredictionMarket) {
     if (dflowBlocked) {

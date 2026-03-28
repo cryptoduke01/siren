@@ -16,7 +16,7 @@ function VelocityBadge({ v }: { v: number }) {
 }
 
 export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => void }) {
-  const { selectedMarket } = useSirenStore();
+  const { selectedMarket, setBuyPanelOpen } = useSirenStore();
 
   if (!selectedMarket) return null;
 
@@ -40,15 +40,28 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
           <VelocityBadge v={selectedMarket.velocity_1h} />
         </div>
       </div>
-      <button
-        type="button"
-        onClick={() => { hapticLight(); onOpenMarkets(); }}
-        className="flex-shrink-0 p-2 rounded-[6px] transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
-        style={{ color: "var(--text-2)" }}
-        aria-label="Change market"
-      >
-        &#8593;
-      </button>
+      <div className="flex flex-shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            hapticLight();
+            setBuyPanelOpen(true, "market");
+          }}
+          className="h-9 rounded-[8px] px-3 text-[11px] font-heading font-semibold uppercase tracking-[0.08em]"
+          style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+        >
+          Trade
+        </button>
+        <button
+          type="button"
+          onClick={() => { hapticLight(); onOpenMarkets(); }}
+          className="p-2 rounded-[6px] transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
+          style={{ color: "var(--text-2)" }}
+          aria-label="Change market"
+        >
+          &#8593;
+        </button>
+      </div>
     </div>
   );
 }

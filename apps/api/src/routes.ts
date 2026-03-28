@@ -1054,10 +1054,10 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Unified swap: DFlow first for prediction market tokens, Jupiter fallback. */
   app.post<{
-    Body: { inputMint: string; outputMint: string; amount: string; userPublicKey: string; slippageBps?: number; tryDflowFirst?: boolean };
+    Body: { inputMint: string; outputMint: string; amount: string; userPublicKey: string; slippageBps?: number; tryDflowFirst?: boolean; forcePredictionMarket?: boolean };
     Querystring: { countryCode?: string };
   }>("/api/swap/order", async (req, reply) => {
-    const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true } = req.body || {};
+    const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true, forcePredictionMarket = false } = req.body || {};
     const countryCode = (req.body as { countryCode?: string })?.countryCode ?? req.query.countryCode ?? req.headers["cf-ipcountry"] ?? req.headers["x-country-code"];
     if (!inputMint || !outputMint || !amount || !userPublicKey) {
       return reply.status(400).send({ success: false, error: "inputMint, outputMint, amount, userPublicKey required" });
@@ -1071,6 +1071,7 @@ export function registerRoutes(app: FastifyInstance) {
         slippageBps: Number(slippageBps) || 200,
         tryDflowFirst,
         countryCode: countryCode as string | undefined,
+        forcePredictionMarket,
       });
       if (result.error || !result.transaction) {
         return reply.status(503).send({ success: false, error: result.error || "Swap failed" });

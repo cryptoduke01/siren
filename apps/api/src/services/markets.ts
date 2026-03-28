@@ -1,6 +1,10 @@
 import type { MarketTradeActivity, MarketWithVelocity } from "@siren/shared";
 
-const DFLOW_METADATA_URL = process.env.DFLOW_METADATA_API_URL || "https://dev-prediction-markets-api.dflow.net";
+const DFLOW_METADATA_URL =
+  process.env.DFLOW_METADATA_API_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://e.prediction-markets-api.dflow.net"
+    : "https://dev-prediction-markets-api.dflow.net");
 const DFLOW_API_KEY = process.env.DFLOW_API_KEY || "";
 const KALSHI_API_BASE = process.env.KALSHI_API_BASE_URL || "https://api.elections.kalshi.com/trade-api/v2";
 

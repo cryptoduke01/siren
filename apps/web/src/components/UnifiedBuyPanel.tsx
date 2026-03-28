@@ -67,6 +67,12 @@ function isBagsMint(mint?: string | null): boolean {
 
 function getFriendlyTradeError(message: string, fallback: string): string {
   const lower = message.toLowerCase();
+  if (lower.includes("not tradable")) {
+    return "This market is not routable right now. Refresh and try again in a moment.";
+  }
+  if (lower.includes("validation error") || lower.includes("400")) {
+    return "We could not get a live quote for this order right now. Please try again.";
+  }
   if (message.includes("0x1771") || lower.includes("slippage")) {
     return "Price moved. Try a smaller amount.";
   }
@@ -79,9 +85,10 @@ function getFriendlyTradeError(message: string, fallback: string): string {
   if (
     lower.includes("wallet must be verified") ||
     lower.includes("unverified_wallet_not_allowed") ||
-    lower.includes("dflow.net/proof")
+    lower.includes("dflow.net/proof") ||
+    lower.includes("proof")
   ) {
-    return "Prediction market trading currently requires DFlow Proof verification. Verify at dflow.net/proof and try again.";
+    return "This market requires wallet verification before it can trade.";
   }
   if (lower.includes("rate limited") || lower.includes("429")) {
     return "Routing is being rate limited upstream right now. Wait a few seconds and try again.";
@@ -688,6 +695,7 @@ export function UnifiedBuyPanel() {
           userPublicKey: publicKey.toBase58(),
           slippageBps,
           tryDflowFirst: true,
+          forcePredictionMarket: isPredictionToken,
         }),
       });
       const data = await res.json();
@@ -838,18 +846,14 @@ export function UnifiedBuyPanel() {
       const outcomeSymbol = `${outcomeLabel} ${selectedMarket.ticker}`;
       const outcomeName = `${selectedMarket.title} · ${outcomeLabel}`;
 
-      const res = await fetch(`${API_URL}/api/swap/order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inputMint: NATIVE_SOL_MINT,
-          outputMint: selectedMarketMint,
-          amount,
-          userPublicKey: publicKey.toBase58(),
-          slippageBps,
-          tryDflowFirst: true,
-        }),
+      const qs = new URLSearchParams({
+        inputMint: NATIVE_SOL_MINT,
+        outputMint: selectedMarketMint,
+        amount,
+        userPublicKey: publicKey.toBase58(),
+        slippageBps: String(slippageBps),
       });
+      const res = await fetch(`${API_URL}/api/dflow/order?${qs.toString()}`);
       const data = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.error || "Prediction trade failed");
@@ -966,13 +970,11 @@ export function UnifiedBuyPanel() {
               <div className="flex flex-col gap-4">
                 {buyPanelMode === "market" && selectedMarket && (
                   <div className="rounded-xl border p-4 md:p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
-                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction market</p>
+                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Trade market</p>
                     <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-3">{selectedMarket.title}</p>
-                    {selectedMarket.subtitle && (
-                      <p className="font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
-                        {selectedMarket.subtitle}
-                      </p>
-                    )}
+                    <p className="font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
+                      Pick YES or NO, enter SOL, and we will build the order for you.
+                    </p>
 
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       <button
@@ -1019,15 +1021,9 @@ export function UnifiedBuyPanel() {
 
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Implied YES</p>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>YES price</p>
                         <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--kalshi)" }}>
-                          {selectedMarket.probability.toFixed(1)}%
-                        </p>
-                      </div>
-                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Velocity</p>
-                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: selectedMarket.velocity_1h >= 0 ? "var(--up)" : "var(--down)" }}>
-                          {selectedMarket.velocity_1h >= 0 ? "+" : ""}{selectedMarket.velocity_1h.toFixed(1)}%/h
+                          {marketYesPriceUsd != null ? `${(marketYesPriceUsd * 100).toFixed(1)}c` : "—"}
                         </p>
                       </div>
                       <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
@@ -1048,22 +1044,10 @@ export function UnifiedBuyPanel() {
                           {formatCompactNumber(selectedMarket.open_interest, 1)}
                         </p>
                       </div>
-                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Liquidity</p>
-                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                          {formatCompactNumber(selectedMarket.liquidity, 1)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Lifetime volume</p>
-                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                          {formatCompactNumber(selectedMarket.volume, 1)}
-                        </p>
-                      </div>
                     </div>
 
                     <div className="mt-4">
-                      <label className="text-xs text-[var(--text-secondary)] block mb-1">SOL amount</label>
+                      <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount to spend (SOL)</label>
                       <input
                         type="number"
                         step="0.001"
@@ -1124,15 +1108,6 @@ export function UnifiedBuyPanel() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 mt-3">
-                      <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
-                        DFlow async
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--bg-surface)", color: "var(--text-3)", border: "1px solid var(--border-subtle)" }}>
-                        Proof required
-                      </span>
-                    </div>
-
                     {predictionTradeBlocked && (
                       <div
                         className="mt-3 rounded-xl border px-3 py-3"
@@ -1162,7 +1137,7 @@ export function UnifiedBuyPanel() {
                     >
                       {loading ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" /> Routing...
+                          <Loader2 className="w-4 h-4 animate-spin" /> Building order...
                         </>
                       ) : predictionTradeBlocked ? (
                         "Unavailable in your region"
@@ -1183,7 +1158,7 @@ export function UnifiedBuyPanel() {
                     </a>
 
                     <p className="text-[11px] mt-3 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                      DFlow docs note that prediction-market orders settle asynchronously and can require Proof/KYC checks depending on market eligibility.
+                      Orders can take a few seconds to finish after your wallet confirms.
                     </p>
                   </div>
                 )}
