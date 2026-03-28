@@ -11,6 +11,50 @@ import { sendWelcomeWithAccessCode, sendLaunchThreadEmail, canSendEmail } from "
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const STABLE_QUOTE_SYMBOLS = new Set(["USD", "USDC", "USDT", "USDS", "USDE"]);
+
+type SolPricePair = {
+  chainId?: string;
+  priceUsd?: string;
+  liquidity?: { usd?: number };
+  volume?: { h24?: number };
+  baseToken?: { address?: string; symbol?: string };
+  quoteToken?: { address?: string; symbol?: string };
+};
+
+function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
+  if (!pairs?.length) return 0;
+
+  const candidates = pairs.filter((pair) => {
+    if (pair.chainId !== "solana") return false;
+    const baseAddress = pair.baseToken?.address;
+    const quoteAddress = pair.quoteToken?.address;
+    const baseSymbol = pair.baseToken?.symbol?.toUpperCase();
+    const quoteSymbol = pair.quoteToken?.symbol?.toUpperCase();
+
+    const baseIsSol = baseAddress === SOL_MINT;
+    const quoteIsSol = quoteAddress === SOL_MINT;
+    const baseIsStable = !!baseSymbol && STABLE_QUOTE_SYMBOLS.has(baseSymbol);
+    const quoteIsStable = !!quoteSymbol && STABLE_QUOTE_SYMBOLS.has(quoteSymbol);
+
+    return (baseIsSol && quoteIsStable) || (quoteIsSol && baseIsStable);
+  });
+
+  const best = candidates.reduce<SolPricePair | null>((currentBest, pair) => {
+    if (!currentBest) return pair;
+    const pairLiquidity = pair.liquidity?.usd ?? 0;
+    const bestLiquidity = currentBest.liquidity?.usd ?? 0;
+    if (pairLiquidity !== bestLiquidity) {
+      return pairLiquidity > bestLiquidity ? pair : currentBest;
+    }
+    const pairVolume = pair.volume?.h24 ?? 0;
+    const bestVolume = currentBest.volume?.h24 ?? 0;
+    return pairVolume > bestVolume ? pair : currentBest;
+  }, null);
+
+  const parsed = best?.priceUsd ? parseFloat(best.priceUsd) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 // In-memory volume store (resets on restart). For persistence, add Supabase/DB.
 const volumeStore = new Map<string, Array<{ ts: number; volumeSol: number }>>();
@@ -687,9 +731,8 @@ export function registerRoutes(app: FastifyInstance) {
         try {
           const ds = await fetch("https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112");
           if (ds.ok) {
-            const j = (await ds.json()) as { pairs?: Array<{ priceUsd?: string }> };
-            const p = j.pairs?.[0]?.priceUsd;
-            if (p) usd = parseFloat(p) || 0;
+            const j = (await ds.json()) as { pairs?: SolPricePair[] };
+            usd = pickReliableSolUsdPrice(j.pairs);
           }
         } catch {
           /* fallback failed */
