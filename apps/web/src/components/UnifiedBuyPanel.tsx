@@ -13,6 +13,7 @@ import { ResultModal } from "./ResultModal";
 import { TradePnLCard, type TradePnLToken } from "./TradePnLCard";
 import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
+import { fetchSolPriceUsd } from "@/lib/pricing";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -272,7 +273,7 @@ export function UnifiedBuyPanel() {
   const queryClient = useQueryClient();
   const { data: solPriceUsd = 0 } = useQuery({
     queryKey: ["sol-price"],
-    queryFn: () => fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
+    queryFn: () => fetchSolPriceUsd(API_URL),
     staleTime: 60_000,
   });
   const [error, setError] = useState<string | null>(null);

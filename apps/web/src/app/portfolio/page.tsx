@@ -13,6 +13,7 @@ import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
+import { fetchSolPriceUsd, isFiniteNumber } from "@/lib/pricing";
 import type { MarketWithVelocity } from "@siren/shared";
 import bs58 from "bs58";
 
@@ -21,10 +22,7 @@ const LAMPORTS_PER_SOL = 1e9;
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 
 async function fetchSolPrice(): Promise<number> {
-  const res = await fetch(`${API_URL}/api/sol-price`, { credentials: "omit" });
-  if (!res.ok) return 0;
-  const j = await res.json();
-  return j.usd ?? 0;
+  return fetchSolPriceUsd(API_URL);
 }
 
 async function fetchTokenInfo(mint: string): Promise<TokenInfoSnapshot | null> {
@@ -66,6 +64,11 @@ function getDisplaySymbol(symbol?: string | null, name?: string | null, mint?: s
   if (hasUsableLabel(symbol)) return symbol.trim();
   if (hasUsableLabel(name)) return name.trim();
   return mint ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : "Token";
+}
+
+function getPnlTone(pnlUsd: number | null | undefined): string {
+  if (pnlUsd == null) return "var(--text-3)";
+  return pnlUsd >= 0 ? "var(--up)" : "var(--down)";
 }
 
 async function fetchBalances(publicKey: string) {
@@ -155,6 +158,19 @@ interface TradeMetrics {
   pnlUsd: number | null;
   pnlPercent: number | null;
   lastTradeTs: number | null;
+}
+
+function formatTradeMetricsPnl(metrics?: TradeMetrics | null): string {
+  if (!metrics) return "—";
+  if (metrics.pnlUsd == null) {
+    return metrics.costBasisUsd > 0 ? "Awaiting live price" : "—";
+  }
+
+  const percent = metrics.pnlPercent != null ? ` (${metrics.pnlPercent.toFixed(1)}%)` : "";
+  return `${metrics.pnlUsd >= 0 ? "+" : "-"}$${Math.abs(metrics.pnlUsd).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}${percent}`;
 }
 
 async function fetchMarkets(): Promise<MarketWithVelocity[]> {
@@ -755,7 +771,8 @@ export default function PortfolioPage() {
               if (!Number.isFinite(trackedShares) || trackedShares <= 0) continue;
               const avgEntryUsd = lot.tokens > 0 ? lot.costUsd / lot.tokens : null;
               const costBasisUsd = avgEntryUsd != null ? avgEntryUsd * trackedShares : 0;
-              const currentValueUsd = priceUsd && Number.isFinite(priceUsd) ? trackedShares * priceUsd : null;
+              const hasLivePrice = isFiniteNumber(priceUsd) && priceUsd >= 0;
+              const currentValueUsd = hasLivePrice ? trackedShares * priceUsd : null;
               const pnlUsd = currentValueUsd != null ? currentValueUsd - costBasisUsd : null;
               const pnlPercent = pnlUsd != null && costBasisUsd > 0 ? (pnlUsd / costBasisUsd) * 100 : null;
 
@@ -763,7 +780,7 @@ export default function PortfolioPage() {
                 trackedShares,
                 costBasisUsd,
                 avgEntryUsd,
-                currentPriceUsd: priceUsd ?? null,
+                currentPriceUsd: hasLivePrice ? priceUsd : null,
                 currentValueUsd,
                 pnlUsd,
                 pnlPercent,
@@ -1698,6 +1715,12 @@ export default function PortfolioPage() {
                       const displayName = getDisplayName(info?.name, t.name, t.mint);
                       const valueUsd = info?.priceUsd != null ? t.balance * info.priceUsd : undefined;
                       const mintPnl = tradeMetricsByMint[t.mint];
+                      const mintPnlColor = getPnlTone(mintPnl?.pnlUsd);
+                      const mintPnlLabel = formatTradeMetricsPnl(mintPnl);
+                      const mintPnlTitle =
+                        mintPnl?.pnlUsd == null && mintPnl?.costBasisUsd
+                          ? "Tracked entry found, but a live token quote is unavailable right now."
+                          : "Approximate PnL from Siren trades";
                       return (
                         <li
                           key={t.mint}
@@ -1748,14 +1771,8 @@ export default function PortfolioPage() {
                                   ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                                 </p>
                               )}
-                              <p className="font-mono text-[11px] mt-1" style={{ color: mintPnl ? (mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)") : "var(--text-3)" }} title="Approximate PnL from Siren trades">
-                                PnL:{" "}
-                                {mintPnl
-                                  ? `${mintPnl.pnlUsd >= 0 ? "+" : "-"}$${Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })} (${mintPnl.pnlPercent.toFixed(1)}%)`
-                                  : "—"}
+                              <p className="font-mono text-[11px] mt-1" style={{ color: mintPnlColor }} title={mintPnlTitle}>
+                                PnL: {mintPnlLabel}
                               </p>
                             </div>
                             <button

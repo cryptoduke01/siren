@@ -3,13 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Activity, Wallet2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { fetchSolPriceUsd, formatUsd } from "@/lib/pricing";
 import { SignalHistoryPanel } from "./SignalHistoryPanel";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-function formatUsd(usd: number) {
-  return usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function truncateAddress(addr: string, len = 6) {
+  if (!addr || addr.length < len * 2) return addr;
+  return `${addr.slice(0, len)}…${addr.slice(-len)}`;
 }
 
 export function TerminalRightPanel() {
@@ -18,8 +21,7 @@ export function TerminalRightPanel() {
 
   const { data: solPriceUsd = 0 } = useQuery({
     queryKey: ["terminal-sol-price"],
-    queryFn: () =>
-      fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
+    queryFn: () => fetchSolPriceUsd(API_URL),
     staleTime: 60_000,
   });
 
@@ -34,73 +36,154 @@ export function TerminalRightPanel() {
   });
 
   const solBalance = solBalanceLamports / LAMPORTS_PER_SOL;
+  const walletAddress = publicKey?.toBase58() ?? null;
+  const walletValueUsd = solPriceUsd > 0 ? solBalance * solPriceUsd : null;
+  const isLive = connected && !!walletAddress;
 
   return (
-    <div
-      className="right-panel flex flex-col overflow-y-auto"
-      style={{
-        borderLeft: "1px solid var(--border-subtle)",
-        background: "var(--bg-base)",
-      }}
-    >
-      <div className="p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-              Portfolio
-            </h3>
-            <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-              Balance snapshot
-            </p>
-          </div>
+    <aside className="right-panel hidden min-h-0 2xl:flex">
+      <div className="flex h-full min-h-0 w-full flex-col py-5 pr-5">
+        <div
+          className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border"
+          style={{
+            borderColor: "color-mix(in srgb, var(--border-subtle) 88%, transparent)",
+            background:
+              "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 34%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-base) 100%)",
+            boxShadow: "0 28px 64px -40px rgba(0, 0, 0, 0.8)",
+          }}
+        >
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: "var(--accent-dim)" }}
-          >
-            <span className="font-mono text-xs" style={{ color: "var(--accent)" }}>
-              SOL
-            </span>
-          </div>
-        </div>
+            className="pointer-events-none absolute inset-x-0 top-0 h-28"
+            style={{
+              background:
+                "linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 100%)",
+            }}
+            aria-hidden
+          />
 
-        {!connected || !publicKey ? (
-          <p className="font-body text-xs mt-3" style={{ color: "var(--text-3)" }}>
-            Connect wallet to view balance.
-          </p>
-        ) : (
-          <div className="mt-3 rounded-[12px] border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-            <div className="flex items-baseline justify-between gap-3">
+          <div className="relative flex flex-1 min-h-0 flex-col overflow-y-auto p-5">
+            <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                  Native SOL
+                <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                  Terminal Pulse
                 </p>
-                <p className="font-mono text-2xl tabular-nums" style={{ color: "var(--accent)" }}>
-                  {solBalance.toFixed(4)} SOL
+                <h3 className="mt-2 font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>
+                  Wallet + Signals
+                </h3>
+                <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Native SOL, live USD conversion, and recent triggers in one rail.
                 </p>
               </div>
-              <div className="text-right shrink-0">
-                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                  ≈ USD
-                </p>
-                {solPriceUsd > 0 ? (
-                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-2)" }}>
-                    ${formatUsd(solBalance * solPriceUsd)}
-                  </p>
-                ) : (
-                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-3)" }}>
-                    —
-                  </p>
-                )}
+
+              <div
+                className="inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={{
+                  borderColor: isLive ? "color-mix(in srgb, var(--up) 32%, transparent)" : "var(--border-subtle)",
+                  background: isLive ? "color-mix(in srgb, var(--up) 12%, transparent)" : "var(--bg-elevated)",
+                  color: isLive ? "var(--up)" : "var(--text-3)",
+                }}
+              >
+                {isLive ? "Live" : "Idle"}
               </div>
             </div>
-          </div>
-        )}
 
-        <div className="mt-4">
-          <SignalHistoryPanel />
+            {!walletAddress ? (
+              <div
+                className="mt-5 rounded-[20px] border border-dashed p-5"
+                style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-elevated) 84%, transparent)" }}
+              >
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                >
+                  <Wallet2 className="h-5 w-5" />
+                </div>
+                <p className="mt-4 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                  Connect your wallet to activate this rail.
+                </p>
+                <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Once connected, Siren will show your native SOL balance, current USD conversion, and the latest alert activity.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div
+                  className="mt-5 rounded-[20px] border p-5"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--accent) 16%, var(--border-subtle))",
+                    background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 90%, transparent), var(--bg-base))",
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Native SOL
+                      </p>
+                      <p className="mt-1 font-body text-xs" style={{ color: "var(--text-3)" }}>
+                        Wallet {truncateAddress(walletAddress)}
+                      </p>
+                    </div>
+                    <div
+                      className="inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em]"
+                      style={{
+                        borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)",
+                        background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                        color: "var(--accent)",
+                      }}
+                    >
+                      Realtime
+                    </div>
+                  </div>
+
+                  <p className="mt-4 font-heading text-[2rem] font-bold tracking-tight tabular-nums" style={{ color: "var(--accent)" }}>
+                    {solBalance.toFixed(4)} <span className="text-lg font-medium" style={{ color: "var(--text-2)" }}>SOL</span>
+                  </p>
+
+                  <div className="mt-4 grid gap-3">
+                    <div className="rounded-2xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                      <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        Wallet value
+                      </p>
+                      <p className="mt-1 font-mono text-sm font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {walletValueUsd != null ? `$${formatUsd(walletValueUsd)}` : "—"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                      <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        1 SOL
+                      </p>
+                      <p className="mt-1 font-mono text-sm font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {solPriceUsd > 0 ? `$${formatUsd(solPriceUsd)}` : "Loading…"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className="mt-4 rounded-[20px] border p-4"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background: "color-mix(in srgb, var(--bg-elevated) 88%, transparent)",
+                  }}
+                >
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Signal Watch
+                      </p>
+                      <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        Thresholds and momentum triggers that fired recently.
+                      </p>
+                    </div>
+                    <Activity className="h-4 w-4 shrink-0" style={{ color: "var(--text-3)" }} />
+                  </div>
+                  <SignalHistoryPanel variant="panel" />
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }
-

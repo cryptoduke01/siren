@@ -34,6 +34,7 @@ import {
 import { hapticLight } from "@/lib/haptics";
 import { PasscodeDigits } from "@/components/PasscodeDigits";
 import { AdminNav } from "@/components/AdminNav";
+import { fetchSolPriceUsd } from "@/lib/pricing";
 
 type WaitlistRow = {
   id: string;
@@ -482,13 +483,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     const loadSolPrice = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/sol-price`, { credentials: "omit" });
-        const j = await res.json();
-        setSolPriceUsd(typeof j.usd === "number" ? j.usd : 0);
-      } catch {
-        setSolPriceUsd(0);
-      }
+      setSolPriceUsd(await fetchSolPriceUsd(API_URL));
     };
     void loadSolPrice();
   }, []);

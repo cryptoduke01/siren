@@ -68,12 +68,13 @@ export function PnlCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const displayPositions = positions;
-  const selected = displayPositions[selectedIndex] ?? displayPositions[0];
+  const positionCount = displayPositions.length;
+  const activeIndex = positionCount > 0 ? selectedIndex % positionCount : 0;
+  const selected = displayPositions[activeIndex] ?? displayPositions[0];
 
   const pnlUsd = selected?.pnlUsd ?? totalPnlUsd;
   const pnlPercent = selected?.pnlPercent ?? totalPnlPercent;
   const hasPnl = pnlUsd !== null && pnlUsd !== 0;
-  const isPositive = pnlUsd != null && pnlUsd > 0;
   const isLoss = pnlUsd != null && pnlUsd < 0;
   const hasShareableContent =
     positions.some((p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null);
@@ -296,7 +297,7 @@ export function PnlCard({
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <span className="font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
-                  {selectedIndex + 1} / {displayPositions.length}
+                  {activeIndex + 1} / {displayPositions.length}
                 </span>
                 <button
                   type="button"

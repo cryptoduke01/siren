@@ -170,11 +170,16 @@ body {
 
 /* Terminal grid layout — single row so no gap under navbar */
 .app-shell {
+  position: relative;
   display: grid;
   grid-template-rows: 1fr;
   grid-template-columns: auto 1px minmax(0, 1fr);
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 28%),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--kalshi) 8%, transparent), transparent 24%),
+    var(--bg-void);
 }
 
 .app-shell .topbar {
@@ -192,6 +197,7 @@ body {
   width: 360px;
   min-width: 280px;
   max-width: 560px;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -199,6 +205,7 @@ body {
 .app-shell .main-panel {
   grid-column: 3;
   grid-row: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 16px 20px 20px;
@@ -207,6 +214,8 @@ body {
 .app-shell .right-panel {
   grid-column: 4;
   grid-row: 1;
+  min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -224,6 +233,16 @@ body {
 @media (min-width: 1280px) {
   .app-shell .main-panel {
     padding: 20px 28px 28px 32px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .app-shell {
+    grid-template-columns: auto 1px minmax(0, 1fr) clamp(296px, 23vw, 360px);
+  }
+
+  .app-shell .main-panel {
+    padding: 20px 18px 28px 32px;
   }
 }
 

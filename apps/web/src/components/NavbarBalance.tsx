@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { fetchSolPriceUsd } from "@/lib/pricing";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -13,8 +14,7 @@ export function NavbarBalance() {
 
   const { data: solPriceUsd = 0 } = useQuery({
     queryKey: ["navbar-sol-price"],
-    queryFn: () =>
-      fetch(`${API_URL}/api/sol-price`, { credentials: "omit" }).then((r) => r.json()).then((j) => j.usd ?? 0),
+    queryFn: () => fetchSolPriceUsd(API_URL),
     staleTime: 60_000,
   });
 
