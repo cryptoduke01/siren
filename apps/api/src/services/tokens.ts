@@ -34,7 +34,13 @@ interface TokenEnrichment {
 }
 
 const RUGCHECK_CACHE_MS = 10 * 60 * 1000;
+const RUGCHECK_TIMEOUT_MS = 6_000;
+const JUPITER_TIMEOUT_MS = 8_000;
+const TOKENS_CACHE_MS = 45 * 1000;
+const TOKEN_HYDRATION_BATCH_SIZE = 6;
 const rugcheckCache = new Map<string, { expiry: number; value: RugcheckSummary | null }>();
+const surfacedTokensCache = new Map<string, { expiresAt: number; value: SurfacedToken[] }>();
+const surfacedTokensInFlight = new Map<string, Promise<SurfacedToken[]>>();
 
 /** Detect launchpad from mint suffix (Bags: BAGS, Pump.fun: pump, Bonk.fun: bonk, Moonshot: shot). */
 export function getLaunchpadFromMint(mint: string): LaunchpadId | undefined {
@@ -87,6 +93,7 @@ async function getRugcheckSummary(mint: string): Promise<RugcheckSummary | null>
   try {
     const res = await fetch(`https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(mint)}/report`, {
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(RUGCHECK_TIMEOUT_MS),
     });
     if (!res.ok) {
       rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value: null });
@@ -219,50 +226,48 @@ async function enrichToken(params: {
   };
 }
 
-async function hydrateSurfacedTokens(tokens: SurfacedToken[]): Promise<SurfacedToken[]> {
-  return Promise.all(
-    tokens.map(async (token) => {
-      const pairs = await getTokenPairs(token.mint);
-      const bestPair = pairs.reduce<DexPair | undefined>((best, pair) => {
-        if (!best) return pair;
-        return (pair.volume?.h24 ?? 0) > (best.volume?.h24 ?? 0) ? pair : best;
-      }, undefined);
-      const enrichment = await enrichToken({
-        mint: token.mint,
-        pair: bestPair,
-        name: token.name,
-        symbol: token.symbol,
-        priceUsd: token.price,
-      });
-      return {
-        ...token,
-        imageUrl: enrichment.imageUrl ?? token.imageUrl,
-        liquidityUsd: enrichment.liquidityUsd ?? token.liquidityUsd,
-        fdvUsd: enrichment.fdvUsd ?? token.fdvUsd,
-        holders: enrichment.holders ?? token.holders,
-        bondingCurveStatus: enrichment.bondingCurveStatus ?? token.bondingCurveStatus,
-        rugcheckScore: enrichment.rugcheckScore ?? token.rugcheckScore,
-        safe: enrichment.safe ?? token.safe,
-        riskScore: enrichment.risk.score,
-        riskLabel: enrichment.risk.label,
-        riskReasons: enrichment.risk.reasons,
-        riskBlocked: enrichment.risk.blocked,
-      };
-    })
-  );
-}
+async function hydrateSurfacedTokens(
+  tokens: SurfacedToken[],
+  bestPairByMint: Map<string, DexPair>
+): Promise<SurfacedToken[]> {
+  const hydrated: SurfacedToken[] = [];
 
-async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Promise<SurfacedToken[]> {
-  const byMint = new Map<string, DexPair>();
-  for (const p of pairs) {
-    const mint = tokenMintFromPair(p);
-    const existing = byMint.get(mint);
-    const vol = p.volume?.h24 ?? 0;
-    const existingVol = existing?.volume?.h24 ?? 0;
-    if (!existing || vol > existingVol) byMint.set(mint, p);
+  for (let index = 0; index < tokens.length; index += TOKEN_HYDRATION_BATCH_SIZE) {
+    const batch = tokens.slice(index, index + TOKEN_HYDRATION_BATCH_SIZE);
+    const resolved = await Promise.all(
+      batch.map(async (token) => {
+        const bestPair = bestPairByMint.get(token.mint) ?? pickBestPair(await getTokenPairs(token.mint));
+        const enrichment = await enrichToken({
+          mint: token.mint,
+          pair: bestPair,
+          name: token.name,
+          symbol: token.symbol,
+          priceUsd: token.price,
+        });
+        return {
+          ...token,
+          imageUrl: enrichment.imageUrl ?? token.imageUrl,
+          liquidityUsd: enrichment.liquidityUsd ?? token.liquidityUsd,
+          fdvUsd: enrichment.fdvUsd ?? token.fdvUsd,
+          holders: enrichment.holders ?? token.holders,
+          bondingCurveStatus: enrichment.bondingCurveStatus ?? token.bondingCurveStatus,
+          rugcheckScore: enrichment.rugcheckScore ?? token.rugcheckScore,
+          safe: enrichment.safe ?? token.safe,
+          riskScore: enrichment.risk.score,
+          riskLabel: enrichment.risk.label,
+          riskReasons: enrichment.risk.reasons,
+          riskBlocked: enrichment.risk.blocked,
+        };
+      })
+    );
+    hydrated.push(...resolved);
   }
 
-  const tokens = Array.from(byMint.entries()).map(([mint, p]) => {
+  return hydrated;
+}
+
+function pairsToSurfacedTokens(bestPairByMint: Map<string, DexPair>, keywords: string[]): SurfacedToken[] {
+  return Array.from(bestPairByMint.entries()).map(([mint, p]) => {
     const token = (p.baseToken.address === mint ? p.baseToken : p.quoteToken) as { address: string; symbol: string; name: string };
     const name = token.name || token.symbol || "Unknown";
     const symbol = token.symbol || "???";
@@ -289,7 +294,6 @@ async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Prom
       launchpad: getLaunchpadFromMint(mint),
     };
   });
-  return tokens;
 }
 
 const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
@@ -298,6 +302,33 @@ const DEFAULT_DISCOVERY_TERMS = ["bitcoin", "solana", "ethereum", "election", "s
 function parseKeywordsParam(param?: string): string[] {
   if (!param?.trim()) return [];
   return param.split(/[\s,]+/).filter((k) => k.length >= 2).slice(0, 5);
+}
+
+function buildSurfacedTokensCacheKey(marketId?: string, categoryId?: string, keywordsParam?: string): string {
+  return JSON.stringify({
+    marketId: marketId?.trim() || "",
+    categoryId: categoryId?.trim() || "",
+    keywords: parseKeywordsParam(keywordsParam).sort(),
+  });
+}
+
+function pickBestPair(pairs: DexPair[]): DexPair | undefined {
+  return pairs.reduce<DexPair | undefined>((best, pair) => {
+    if (!best) return pair;
+    return (pair.volume?.h24 ?? 0) > (best.volume?.h24 ?? 0) ? pair : best;
+  }, undefined);
+}
+
+function buildBestPairByMint(pairs: DexPair[]): Map<string, DexPair> {
+  const byMint = new Map<string, DexPair>();
+  for (const pair of pairs) {
+    const mint = tokenMintFromPair(pair);
+    const existing = byMint.get(mint);
+    if (!existing || (pair.volume?.h24 ?? 0) > (existing.volume?.h24 ?? 0)) {
+      byMint.set(mint, pair);
+    }
+  }
+  return byMint;
 }
 
 /** Extract meaningful keywords from a market title for token search. */
@@ -316,82 +347,107 @@ export function extractKeywordsFromTitle(title: string): string[] {
 }
 
 export async function getSurfacedTokens(marketId?: string, categoryId?: string, keywordsParam?: string): Promise<SurfacedToken[]> {
-  const keywords =
-    parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
-    : categoryId ? getKeywordsForCategory(categoryId)
-    : [];
+  const cacheKey = buildSurfacedTokensCacheKey(marketId, categoryId, keywordsParam);
+  const cached = surfacedTokensCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const allPairs: DexPair[] = [];
-  const seenMints = new Set<string>();
+  const inFlight = surfacedTokensInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
 
-  if (process.env.BAGS_API_KEY) {
+  const promise = (async () => {
+    const keywords =
+      parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
+      : categoryId ? getKeywordsForCategory(categoryId)
+      : [];
+
+    const allPairs: DexPair[] = [];
+    const seenMints = new Set<string>();
+
     try {
-      const pools = await getBagsPools();
-      const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, 24);
-      for (let i = 0; i < bagsMints.length; i += 4) {
-        const batch = bagsMints.slice(i, i + 4);
-        const results = await Promise.all(batch.map((m) => getTokenPairs(m)));
-        for (let j = 0; j < batch.length; j += 1) {
-          const pairs = results[j];
-          const queriedMint = batch[j];
-          if (pairs.length > 0 && !seenMints.has(queriedMint)) {
-            const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
-            seenMints.add(queriedMint);
-            allPairs.push(best);
+      if (process.env.BAGS_API_KEY) {
+        try {
+          const pools = await getBagsPools();
+          const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, 24);
+          for (let i = 0; i < bagsMints.length; i += 4) {
+            const batch = bagsMints.slice(i, i + 4);
+            const results = await Promise.all(batch.map((mint) => getTokenPairs(mint)));
+            for (let j = 0; j < batch.length; j += 1) {
+              const pairs = results[j];
+              const queriedMint = batch[j];
+              const best = pickBestPair(pairs);
+              if (best && !seenMints.has(queriedMint)) {
+                seenMints.add(queriedMint);
+                allPairs.push(best);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[tokens] Bags pools fetch failed:", e);
+        }
+      }
+
+      try {
+        const boosted = await getLatestBoostedTokens();
+        const boostedMints = boosted.slice(0, 20).map((t) => t.tokenAddress).filter((mint) => !seenMints.has(mint));
+        for (let i = 0; i < boostedMints.length; i += 4) {
+          const batch = boostedMints.slice(i, i + 4);
+          const results = await Promise.all(batch.map((mint) => getTokenPairs(mint)));
+          for (let j = 0; j < batch.length; j += 1) {
+            const queriedMint = batch[j];
+            const best = pickBestPair(results[j]);
+            if (best && !seenMints.has(queriedMint)) {
+              seenMints.add(queriedMint);
+              allPairs.push(best);
+            }
           }
         }
+      } catch (e) {
+        console.warn("[tokens] DexScreener boosted failed:", e);
       }
-    } catch (e) {
-      console.warn("[tokens] Bags pools fetch failed:", e);
-    }
-  }
 
-  try {
-    const boosted = await getLatestBoostedTokens();
-    const boostedMints = boosted.slice(0, 20).map((t) => t.tokenAddress).filter((m) => !seenMints.has(m));
-    for (let i = 0; i < boostedMints.length; i += 4) {
-      const batch = boostedMints.slice(i, i + 4);
-      const results = await Promise.all(batch.map((m) => getTokenPairs(m)));
-      for (let j = 0; j < batch.length; j += 1) {
-        const pairs = results[j];
-        const queriedMint = batch[j];
-        if (pairs.length > 0 && !seenMints.has(queriedMint)) {
-          const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
-          seenMints.add(queriedMint);
-          allPairs.push(best);
+      const shouldRunDiscoverySearch = keywords.length > 0 || !marketId;
+      if (shouldRunDiscoverySearch) {
+        try {
+          const searchTerms = (keywords.length > 0 ? keywords : DEFAULT_DISCOVERY_TERMS).slice(0, 5);
+          const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
+          const keywordPairs: DexPair[] = searchResults.flat();
+          for (const pair of keywordPairs) {
+            const mint = tokenMintFromPair(pair);
+            if (seenMints.has(mint)) continue;
+            seenMints.add(mint);
+            allPairs.push(pair);
+          }
+        } catch (e) {
+          console.warn("[tokens] DexScreener search failed:", e);
         }
       }
-    }
-  } catch (e) {
-    console.warn("[tokens] DexScreener boosted failed:", e);
-  }
 
-  const shouldRunDiscoverySearch = keywords.length > 0 || !marketId;
-  if (shouldRunDiscoverySearch) {
-    try {
-      const searchTerms = (keywords.length > 0 ? keywords : DEFAULT_DISCOVERY_TERMS).slice(0, 5);
-      const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
-      const keywordPairs: DexPair[] = searchResults.flat();
-      for (const pair of keywordPairs) {
-        const mint = tokenMintFromPair(pair);
-        if (seenMints.has(mint)) continue;
-        seenMints.add(mint);
-        allPairs.push(pair);
-      }
-    } catch (e) {
-      console.warn("[tokens] DexScreener search failed:", e);
-    }
-  }
+      const bestPairByMint = buildBestPairByMint(allPairs);
+      const surfaced = pairsToSurfacedTokens(bestPairByMint, keywords);
+      const ranked = surfaced
+        .sort((a, b) => {
+          if (keywords.length > 0) return b.relevanceScore - a.relevanceScore;
+          return (b.volume24h ?? 0) - (a.volume24h ?? 0);
+        })
+        .slice(0, keywords.length > 0 ? 24 : 36);
+      const hydrated = await hydrateSurfacedTokens(ranked, bestPairByMint);
+      const filtered = hydrated.filter((token) => !token.riskBlocked);
 
-  const surfaced = await pairsToSurfacedTokens(allPairs, keywords);
-  const ranked = surfaced
-    .sort((a, b) => {
-      if (keywords.length > 0) return b.relevanceScore - a.relevanceScore;
-      return (b.volume24h ?? 0) - (a.volume24h ?? 0);
-    })
-    .slice(0, keywords.length > 0 ? 24 : 36);
-  const hydrated = await hydrateSurfacedTokens(ranked);
-  return hydrated.filter((token) => !token.riskBlocked);
+      surfacedTokensCache.set(cacheKey, {
+        expiresAt: Date.now() + TOKENS_CACHE_MS,
+        value: filtered,
+      });
+      return filtered;
+    } catch (error) {
+      if (cached) return cached.value;
+      throw error;
+    } finally {
+      surfacedTokensInFlight.delete(cacheKey);
+    }
+  })();
+
+  surfacedTokensInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 export interface TokenInfo {
@@ -421,7 +477,10 @@ const JUPITER_CACHE_MS = 60 * 60 * 1000;
 async function getJupiterTokenByMint(mint: string): Promise<{ name: string; symbol: string; imageUrl?: string } | null> {
   try {
     if (!jupiterTokenCache || Date.now() - jupiterCacheTime > JUPITER_CACHE_MS) {
-      const res = await fetch(JUPITER_TOKEN_LIST_URL, { headers: { Accept: "application/json" } });
+      const res = await fetch(JUPITER_TOKEN_LIST_URL, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(JUPITER_TIMEOUT_MS),
+      });
       if (!res.ok) return null;
       const list = (await res.json()) as Array<{ address: string; symbol?: string; name?: string; logoURI?: string }>;
       jupiterTokenCache = new Map();

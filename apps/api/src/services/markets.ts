@@ -73,10 +73,12 @@ interface KalshiTradesResponse {
 
 const MARKETS_CACHE_MS = 60 * 1000;
 const EVENT_PAGE_LIMIT = 200;
+const MAX_EVENT_PAGES = 3;
 const VELOCITY_FETCH_LIMIT = 24;
 const MARKET_ACTIVITY_CACHE_MS = 60 * 1000;
 const KALSHI_TRADES_PAGE_LIMIT = 1000;
 const KALSHI_TRADES_MAX_PAGES = 12;
+const DFLOW_TIMEOUT_MS = 8_000;
 let marketsCache: { expiresAt: number; value: MarketWithVelocity[] } | null = null;
 let marketsInFlight: Promise<MarketWithVelocity[]> | null = null;
 const marketTradeActivityCache = new Map<string, { expiresAt: number; value: MarketTradeActivity }>();
@@ -104,8 +106,9 @@ function parseTimestamp(value?: string): number | undefined {
 async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["events"]>> {
   const events: NonNullable<DFlowEventsResponse["events"]> = [];
   let cursor: number | null | undefined = 0;
+  let pageCount = 0;
 
-  while (cursor !== null) {
+  while (cursor !== null && pageCount < MAX_EVENT_PAGES) {
     const qs = new URLSearchParams({
       withNestedMarkets: "true",
       status: "active",
@@ -113,7 +116,10 @@ async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["
     });
     if (cursor && cursor > 0) qs.set("cursor", String(cursor));
     const url = `${DFLOW_METADATA_URL}/api/v1/events?${qs.toString()}`;
-    const res = await fetch(url, { headers });
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
+    });
     if (!res.ok) {
       if (res.status === 429) throw new Error("DFlow metadata rate limited. Try again in a few seconds.");
       throw new Error(`DFlow API error: ${res.status}`);
@@ -121,6 +127,7 @@ async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["
     const json = (await res.json()) as DFlowEventsResponse;
     events.push(...(json.events ?? []));
     cursor = json.cursor ?? null;
+    pageCount += 1;
   }
 
   return events;
@@ -136,6 +143,7 @@ async function fetchMarketVelocity1h(ticker: string): Promise<number> {
   });
   const res = await fetch(`${DFLOW_METADATA_URL}/api/v1/market/${encodeURIComponent(ticker)}/candlesticks?${qs.toString()}`, {
     headers,
+    signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
   });
   if (res.status === 429) return 0;
   if (!res.ok) return 0;
