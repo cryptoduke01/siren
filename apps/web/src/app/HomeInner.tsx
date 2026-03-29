@@ -41,7 +41,7 @@ const SIDEBAR_DEFAULT = 400;
 
 export function HomeInner() {
   const router = useRouter();
-  const { connected, isReady } = useSirenWallet();
+  const { connected, isReady, authenticated } = useSirenWallet();
   const searchParams = useSearchParams();
   const { data: markets = [], isLoading } = useMarkets();
   const { setSelectedMarket, setSelectedToken, setBuyPanelOpen } = useSirenStore();
@@ -55,8 +55,8 @@ export function HomeInner() {
 
   useEffect(() => {
     // Ungated app, but require onboarding before terminal usage.
-    if (isReady && !connected) router.replace("/onboarding");
-  }, [connected, isReady, router]);
+    if (isReady && !connected && !authenticated) router.replace("/onboarding");
+  }, [authenticated, connected, isReady, router]);
 
   const handleResize = useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;

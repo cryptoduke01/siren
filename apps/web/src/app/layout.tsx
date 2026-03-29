@@ -10,7 +10,7 @@ const twitterImage = new URL("/twitter-image", siteUrl).toString();
 
 export const metadata: Metadata = {
   title: "Siren | Prediction Markets x Meme Tokens",
-  description: "Track Kalshi markets, surface token narratives, and trade both from one terminal.",
+  description: "Track Kalshi and Polymarket signals, surface Solana token narratives, and trade from one terminal.",
   metadataBase: new URL(siteUrl),
   manifest: "/manifest.json",
   alternates: {
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "Siren",
     title: "Siren | Prediction Markets x Meme Tokens",
-    description: "Track Kalshi markets, surface token narratives, and trade both from one terminal.",
+    description: "Track Kalshi and Polymarket signals, surface Solana token narratives, and trade from one terminal.",
     images: [
       {
         url: ogImage,
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     site: "@sirentracker",
     creator: "@sirentracker",
     title: "Siren | Prediction Markets x Meme Tokens",
-    description: "Track Kalshi markets, surface token narratives, and trade both from one terminal.",
+    description: "Track Kalshi and Polymarket signals, surface Solana token narratives, and trade from one terminal.",
     images: [twitterImage],
   },
   appleWebApp: { capable: true, title: "Siren" },

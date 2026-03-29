@@ -50,6 +50,19 @@ API keys, setup, and run instructions.
 
 ---
 
+### Polymarket
+
+- **What for:** Parallel signal sourcing alongside Kalshi. Siren reads active markets from Gamma, checks the CLOB book for flagged moves, and pushes Polymarket signals into the same live queue.
+- **How to get:**
+  1. Go to **https://polymarket.com** and create / retrieve API credentials
+  2. Copy your **API key**, **secret**, and **passphrase**
+- **Where to set:** `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`, and `POLYMARKET_HOST` in `apps/api/.env`
+- **Default host:** `https://clob.polymarket.com`
+
+**Docs:** https://docs.polymarket.com
+
+---
+
 ### Twitter / X (optional — CT signal layer)
 
 - **What for:** Mention velocity for tokens (e.g. “$JPOW” + “fed meeting”).
@@ -76,7 +89,7 @@ Edit `.env` and fill only what you have:
 
 - **Minimum to run:** With `DFLOW_API_KEY` set, use production URLs (`e.prediction-markets-api.dflow.net`, `e.quote-api.dflow.net`). Without a key, you can try dev URLs for testing (rate-limited).
 - **For real trading:** Set `DFLOW_API_KEY` and `BAGS_API_KEY`.
-- **For DB/Redis later:** Set `DATABASE_URL` and `REDIS_URL` when you add Postgres/Redis.
+- **For dual-source signals:** Set the Polymarket env vars and `REDIS_URL` so Siren can persist 60-second snapshots and the shared signal queue.
 - **For waitlist:** Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (from Supabase → Settings → API). Create the `waitlist_signups` table in the SQL editor; see `docs/WAITLIST_SETUP.md`.
 ### Frontend (`apps/web`)
 
@@ -89,7 +102,7 @@ Defaults point to local API:
 
 - `NEXT_PUBLIC_API_URL=http://localhost:4000`
 - `NEXT_PUBLIC_WS_URL=ws://localhost:4000/ws`
-- `NEXT_PUBLIC_PRIVY_APP_ID=` (from dashboard.privy.io for login)
+- `NEXT_PUBLIC_PRIVY_APP_ID=` (from dashboard.privy.io for Google, GitHub, and X login)
 
 Change API/WS URLs when you deploy.
 
@@ -138,6 +151,9 @@ curl http://localhost:4000/health
 # Markets (from DFlow Prediction Markets API; requires DFLOW_API_KEY for production)
 curl http://localhost:4000/api/markets
 
+# Signals (Kalshi + Polymarket feed)
+curl http://localhost:4000/api/signals
+
 # Surfaced tokens (mock data if no Bags key)
 curl "http://localhost:4000/api/tokens"
 ```
@@ -153,7 +169,7 @@ If `/health` returns `{"ok":true,...}` and `/api/markets` returns a list, you’
   pnpm db:seed   # if you have a seed script
   ```
 
-- **Redis:** Set `REDIS_URL` for velocity cache and BullMQ jobs when you add them.
+- **Redis:** Set `REDIS_URL` for signal snapshots, queue persistence, and future BullMQ jobs.
 
 ---
 
@@ -164,13 +180,13 @@ If `/health` returns `{"ok":true,...}` and `/api/markets` returns a list, you’
 | **1. Run locally** | Get the app running with `pnpm dev:api` + `pnpm dev:web` and confirm markets load (with or without keys). |
 | **2. Get Bags key** | Sign up at https://dev.bags.fm and add `BAGS_API_KEY` so token quotes and launch can use the real API. |
 | **3. Get DFlow key** | Email hello@dflow.net for a production key; set `DFLOW_API_KEY` for higher limits and production trading. |
-| **4. Wire unified buy** | In the app: connect DFlow order/quote and Bags trade quote to the unified buy panel; add wallet sign-and-send. |
-| **5. Add Kalshi Builder Code** | When integrating DFlow orders, set referral/fee account so you earn builder fees. |
-| **6. Add Bags partner key** | Create partner config in Bags for fee share; use it in launches/trades from Siren. |
-| **7. CT layer (optional)** | Add Twitter API or a mock: query mentions for token symbols + event keywords and feed into scoring. |
-| **8. Launch Signal** | When a market has high velocity but no surfaced tokens, show “Launch a token” with pre-filled Bags form. |
-| **9. Portfolio + Trending** | Implement `/portfolio` (positions + fees) and `/trending` (hot Bags tokens by CT velocity). |
-| **10. Deploy** | Frontend on Vercel, API + Postgres + Redis on Railway (or Fly.io); set env vars; submit to Kalshi grant + Bags hackathon. |
+| **4. Add Polymarket keys** | Populate the Polymarket env vars so the second source can poll Gamma + CLOB cleanly. |
+| **5. Wire unified buy** | In the app: connect DFlow order/quote and Bags trade quote to the unified buy panel; add wallet sign-and-send. |
+| **6. Add Kalshi Builder Code** | When integrating DFlow orders, set referral/fee account so you earn builder fees. |
+| **7. Add Bags partner key** | Create partner config in Bags for fee share; use it in launches/trades from Siren. |
+| **8. CT layer (optional)** | Add Twitter API or a mock: query mentions for token symbols + event keywords and feed into scoring. |
+| **9. Launch Signal** | When a market has high velocity but no surfaced tokens, show “Launch a token” with pre-filled Bags form. |
+| **10. Deploy** | Frontend on Vercel, API + Postgres + Redis on Railway (or Fly.io); set env vars; submit to grants / hackathons. |
 
 ---
 
@@ -192,6 +208,7 @@ pnpm dev:web    # terminal 2
 # 4. Test API
 curl http://localhost:4000/health
 curl http://localhost:4000/api/markets
+curl http://localhost:4000/api/signals
 
 # 5. Open app
 open http://localhost:3000
@@ -202,6 +219,7 @@ open http://localhost:3000
 - **Bags:** dev.bags.fm → `BAGS_API_KEY`; partner config → `BAGS_PARTNER_CONFIG_KEY`; ref link → `BAGS_REF_URL`
 - **DFlow:** Request via form (see above) → `DFLOW_API_KEY`
 - **Kalshi:** kalshi.com → API → `KALSHI_API_KEY` + `KALSHI_PRIVATE_KEY` (RSA PEM)
+- **Polymarket:** polymarket.com → credentials → `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`
 - **Twitter:** developer.x.com → Basic → Bearer → `TWITTER_BEARER_TOKEN`
 
 **Security:** Never commit `.env` (it’s in `.gitignore`). If any key was ever exposed (e.g. in chat or a screenshot), rotate it in the provider’s dashboard.

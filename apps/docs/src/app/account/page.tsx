@@ -4,8 +4,8 @@ export default function Account() {
       <h1>Account</h1>
       <h2>Wallets</h2>
       <p>
-        Connect Phantom, Solflare, or Torus for full control. Or sign in with Google, GitHub,
-        or X to get an embedded wallet — no extension needed.
+        Sign in with Google, GitHub, or X through Privy to get embedded Solana and EVM wallets —
+        no extension needed during onboarding.
       </p>
       <h2>Security</h2>
       <p>

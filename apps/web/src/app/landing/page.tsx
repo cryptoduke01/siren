@@ -3,7 +3,7 @@ import Link from "next/link";
 export const metadata = {
   title: "Siren | Prediction Markets x Meme Tokens",
   description:
-    "Siren turns Kalshi prediction markets into token trading flow. Watch markets, surface narratives, and trade from one terminal.",
+    "Siren turns Kalshi and Polymarket moves into Solana token trading flow. Watch signals, surface narratives, and trade from one terminal.",
 };
 
 export default function LandingPage() {
@@ -23,13 +23,14 @@ export default function LandingPage() {
           className="font-body text-lg mb-6"
           style={{ color: "var(--text-2)" }}
         >
-          Event-driven meme token terminal. Watch Kalshi prediction markets,
+          Event-driven meme token terminal. Watch Kalshi and Polymarket signals,
           surface Bags tokens tied to real-world events, and trade with
-          MEV-safe swaps.
+          MEV-aware swaps.
         </p>
         <ul className="font-body text-sm text-left max-w-md mx-auto mb-10 space-y-2" style={{ color: "var(--text-2)" }}>
-          <li>• Live Kalshi market data</li>
+          <li>• Live Kalshi + Polymarket signal feed</li>
           <li>• Token surfacing for real-world events</li>
+          <li>• Privy social onboarding with embedded wallets</li>
           <li>• Bags launches with creator fee-sharing</li>
           <li>• MEV-protected swaps via Jupiter</li>
         </ul>

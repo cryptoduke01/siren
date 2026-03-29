@@ -10,11 +10,15 @@ import {
 import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
 import { clusterApiUrl } from "@solana/web3.js";
 import { useMemo } from "react";
-import { PrivyProvider } from "@privy-io/react-auth";
+import { PrivyProvider, SUPPORTED_CHAINS } from "@privy-io/react-auth";
 import { PrivyWalletBridge } from "@/contexts/SirenWalletContext";
 
 const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
+const enabledEvmChains = SUPPORTED_CHAINS.filter((chain) =>
+  new Set(["1", "137", "8453"]).has(String(chain.id))
+);
+const defaultEvmChain = enabledEvmChains.find((chain) => String(chain.id) === "8453") ?? enabledEvmChains[0];
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
@@ -42,12 +46,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <PrivyProvider
         appId={privyAppId}
         config={{
-          loginMethods: ["email", "google", "github", "twitter"],
+          loginMethods: ["google", "github", "twitter"],
+          supportedChains: enabledEvmChains,
+          defaultChain: defaultEvmChain,
           appearance: {
-            walletChainType: "solana-only",
+            walletChainType: "ethereum-and-solana",
             showWalletLoginFirst: false,
           },
           embeddedWallets: {
+            ethereum: {
+              createOnLogin: "all-users",
+            },
             solana: {
               createOnLogin: "all-users",
             },

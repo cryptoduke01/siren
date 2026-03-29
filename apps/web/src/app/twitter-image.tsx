@@ -16,7 +16,7 @@ export default async function TwitterImage() {
     (
       <SocialCard
         eyebrow="Builder grant x hackathon"
-        title="Kalshi signals. Token execution. One terminal."
+        title="Kalshi + Polymarket signals. One execution rail."
         subtitle="Siren turns prediction market moves into tradable Solana token flow with a faster, cleaner trading screen."
       />
     ),

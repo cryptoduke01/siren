@@ -6,6 +6,7 @@ import fastifyCors from "@fastify/cors";
 import fastifyWebsocket from "@fastify/websocket";
 import { registerRoutes } from "./routes.js";
 import { createWebSocketHandler } from "./ws.js";
+import { startSignalPolling } from "./services/signalPoller.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
@@ -29,6 +30,7 @@ async function main() {
   });
 
   registerRoutes(fastify);
+  startSignalPolling(fastify.log);
 
   const port = Number(process.env.PORT) || 4000;
   await fastify.listen({ port, host: "0.0.0.0" });

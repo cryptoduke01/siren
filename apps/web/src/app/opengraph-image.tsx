@@ -15,9 +15,9 @@ export default async function OpenGraphImage() {
   return new ImageResponse(
     (
       <SocialCard
-        eyebrow="Kalshi x Bags"
+        eyebrow="Kalshi x Polymarket x Bags"
         title="Prediction markets meet meme token flow."
-        subtitle="Track live Kalshi signals, surface token narratives, and trade both from one Siren screen."
+        subtitle="Track live Kalshi and Polymarket signals, surface token narratives, and trade both from one Siren screen."
       />
     ),
     {

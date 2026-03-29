@@ -6,18 +6,17 @@ import { useRouter } from "next/navigation";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { TopBar } from "@/components/TopBar";
 import {
-  Rocket,
-  TrendingUp,
-  BarChart3,
-  Zap,
-  Shield,
   ArrowRight,
-  ChevronDown,
+  BarChart3,
   CheckCircle2,
+  Loader2,
+  Rocket,
+  Shield,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { hapticLight } from "@/lib/haptics";
-import { WalletModal } from "@/components/WalletModal";
 import { motion } from "framer-motion";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -25,115 +24,129 @@ const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 const FEATURES = [
   {
     icon: BarChart3,
-    title: "Prediction markets",
+    title: "Dual signal rail",
     description:
-      "Browse Kalshi markets with live probability, volume, and velocity. Politics, crypto, sports—organized by category.",
+      "Track Kalshi and Polymarket in parallel, then rank the sharpest probability moves in one live Siren feed.",
   },
   {
     icon: Zap,
-    title: "Event-driven tokens",
+    title: "Instant token matching",
     description:
-      "Tap a market to surface meme tokens tied to that event. Bags, Pump, Bonk—matched by keywords and DexScreener.",
+      "Surface Solana meme tokens from event language automatically through DexScreener and Siren's keyword mapping layer.",
   },
   {
     icon: TrendingUp,
-    title: "Trade both",
+    title: "Single execution surface",
     description:
-      "Buy YES or NO on markets via DFlow. Swap tokens via Jupiter with MEV protection. One terminal, prediction + meme.",
+      "React to a signal, inspect the linked tokens, and move into Jupiter execution without tab-hopping across tools.",
   },
   {
     icon: Rocket,
-    title: "Launch tokens",
+    title: "Privy embedded wallets",
     description:
-      "No matching token? Launch one via Bags—social links, metadata, fee share. Track launches from your portfolio.",
+      "Social login creates Siren-managed Solana and EVM wallets automatically, so users can onboard without extensions.",
   },
   {
     icon: Shield,
-    title: "Portfolio & PnL",
+    title: "Portfolio + launch loop",
     description:
-      "SOL balances, token holdings, prediction positions, Bags fee earnings. Share or download your PnL card.",
+      "Stay inside one account surface for balances, launches, positions, and the next narrative worth trading.",
   },
 ];
 
-function OnboardingWithBoth() {
-  const { connected } = useSirenWallet();
+function PrivyAccessCard() {
+  const { connected, authenticated, isReady } = useSirenWallet();
   const { login, ready } = usePrivy();
   const router = useRouter();
-  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (connected) router.replace("/");
   }, [connected, router]);
 
+  const provisioning = authenticated && !connected;
+  const canOpenPrivy = Boolean(PRIVY_APP_ID) && ready && !provisioning;
+
   return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-sm">
-      <button
-        type="button"
-        onClick={() => {
-          hapticLight();
-          setModalOpen(true);
-        }}
-        className="w-full px-8 py-4 rounded-xl font-heading font-semibold text-sm uppercase tracking-[0.12em] transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-      >
-        Connect Solana wallet
-      </button>
-      <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
-        Phantom, Backpack, Solflare, Coinbase, Torus
-      </p>
-      <span className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-        or
-      </span>
-      <button
-        type="button"
-        onClick={() => {
-          hapticLight();
-          login();
-        }}
-        disabled={!ready}
-        className="w-full px-8 py-4 rounded-xl font-heading font-semibold text-sm uppercase tracking-[0.12em] transition-all duration-200 border disabled:opacity-50 hover:border-[var(--border-active)] active:scale-[0.98]"
+    <div className="flex w-full flex-col gap-4">
+      <div
+        className="rounded-2xl border p-6"
         style={{
-          borderColor: "var(--border-default)",
-          color: "var(--text-1)",
-          background: "var(--bg-surface)",
+          borderColor: "var(--border-subtle)",
+          background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 92%, transparent), var(--bg-elevated))",
         }}
       >
-        {ready ? "Log in with email or social" : "Loading…"}
-      </button>
-      <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
-        Email, Google, GitHub, or X
-      </p>
-      <WalletModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
-    </div>
-  );
-}
+        <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+          Social access
+        </p>
+        <h2 className="mt-3 font-heading text-2xl font-bold" style={{ color: "var(--text-1)" }}>
+          Sign in with Privy
+        </h2>
+        <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+          Continue with Google, GitHub, or X. Siren will create your Solana and EVM wallets automatically after login.
+        </p>
 
-function OnboardingWithAdapter() {
-  const { connected } = useSirenWallet();
-  const router = useRouter();
-  const [modalOpen, setModalOpen] = useState(false);
+        <button
+          type="button"
+          onClick={() => {
+            if (!canOpenPrivy) return;
+            hapticLight();
+            login();
+          }}
+          disabled={!canOpenPrivy}
+          className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-semibold uppercase tracking-[0.12em] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+        >
+          {provisioning ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Creating wallets
+            </>
+          ) : PRIVY_APP_ID ? (
+            ready ? "Open Privy" : "Loading Privy"
+          ) : (
+            "Privy not configured"
+          )}
+        </button>
 
-  useEffect(() => {
-    if (connected) router.replace("/");
-  }, [connected, router]);
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {["Google", "GitHub", "X"].map((provider) => (
+            <span
+              key={provider}
+              className="rounded-full border px-3 py-1 font-body text-[11px]"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+            >
+              {provider}
+            </span>
+          ))}
+        </div>
 
-  return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-sm">
-      <button
-        type="button"
-        onClick={() => {
-          hapticLight();
-          setModalOpen(true);
-        }}
-        className="w-full px-8 py-4 rounded-xl font-heading font-semibold text-sm uppercase tracking-[0.12em] transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+        <div className="mt-4 rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+          <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Embedded wallets provisioned on signup:
+          </p>
+          <p className="mt-1 font-body text-xs" style={{ color: "var(--text-2)" }}>
+            Solana for trading, plus Base / Ethereum / Polygon for the broader Privy account rail.
+          </p>
+        </div>
+      </div>
+
+      <Link
+        href="https://docs.onsiren.xyz"
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={() => hapticLight()}
+        className="inline-flex items-center gap-2 font-body text-sm"
+        style={{ color: "var(--text-3)" }}
       >
-        Connect wallet
-      </button>
-      <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
-        Phantom, Solflare, Backpack, or Torus
-      </p>
-      <WalletModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+        Read the docs
+        <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+
+      {!isReady && authenticated && (
+        <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+          Finalizing your Siren wallets before terminal access.
+        </p>
+      )}
     </div>
   );
 }
@@ -147,182 +160,131 @@ export default function OnboardingPage() {
     if (connected) {
       try {
         localStorage.setItem("siren-onboarding-complete", "true");
-      } catch {}
+      } catch {
+        /* ignore localStorage availability */
+      }
       router.replace("/");
     }
   }, [connected, router]);
 
   return (
-    <div
-      className="min-h-screen flex flex-col"
-      style={{ background: "var(--bg-void)" }}
-    >
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
-      <main className="flex-1 flex flex-col items-center px-4 py-12 md:py-16">
-        {/* Hero */}
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="w-full max-w-2xl text-center mb-12"
-        >
-          <img src="/brand/logo.svg" alt="Siren" className="h-10 md:h-12 w-auto mx-auto mb-6" />
-          <h1
-            className="font-heading font-bold text-3xl md:text-4xl md:text-5xl mb-4 tracking-tight"
-            style={{ color: "var(--text-1)", lineHeight: 1.15 }}
-          >
-            Event-driven meme token terminal
-          </h1>
-          <p
-            className="font-body text-base md:text-lg max-w-xl mx-auto mb-2"
-            style={{ color: "var(--text-2)", lineHeight: 1.6 }}
-          >
-            Watch Kalshi prediction markets in real time. Surface Bags tokens tied to those events. Trade both from one terminal.
-          </p>
-          <div className="mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-            <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-            <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-              Solana · DFlow · Jupiter · Bags
-            </p>
-          </div>
-        </motion.section>
-
-        {/* CTA */}
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="w-full max-w-xl mb-14"
-        >
-          <div
-            className="rounded-2xl border p-8 md:p-10"
-            style={{
-              borderColor: "var(--border-subtle)",
-              background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
-              boxShadow: "0 1px 0 0 var(--border-subtle), 0 8px 32px rgba(0,0,0,0.2)",
-            }}
-          >
-            <p
-              className="font-body text-xs uppercase tracking-wider mb-6"
-              style={{ color: "var(--accent)" }}
+      <main className="flex-1 px-4 py-12 md:py-16">
+        <div className="mx-auto grid w-full max-w-6xl gap-12 lg:grid-cols-[minmax(0,1.1fr)_420px]">
+          <div>
+            <motion.section
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
             >
-              Get started
-            </p>
-            {PRIVY_APP_ID ? <OnboardingWithBoth /> : <OnboardingWithAdapter />}
-            <Link
-              href="/"
-              onClick={() => hapticLight()}
-              className="mt-6 inline-flex items-center gap-2 font-body text-sm font-medium"
-              style={{ color: "var(--text-3)" }}
-            >
-              Skip to terminal
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </motion.section>
-
-        {/* Feature cards */}
-        <motion.section
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="w-full max-w-4xl"
-        >
-          <h2
-            className="font-heading font-semibold text-sm uppercase tracking-wider mb-6 text-center"
-            style={{ color: "var(--text-3)" }}
-          >
-            What you can do
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {FEATURES.slice(0, showMore ? undefined : 3).map((f, i) => (
-              <motion.div
-                key={f.title}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.25 + i * 0.05 }}
-                className="rounded-xl border p-5 transition-all duration-200 hover:border-[var(--border-active)]"
-                style={{
-                  borderColor: "var(--border-subtle)",
-                  background: "var(--bg-surface)",
-                }}
+              <img src="/brand/logo.svg" alt="Siren" className="h-10 w-auto md:h-12" />
+              <div className="mt-6 inline-flex items-center gap-2 rounded-full border px-3 py-1" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
+                <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                  Kalshi + Polymarket signals · Solana execution · Privy onboarding
+                </p>
+              </div>
+              <h1
+                className="mt-6 font-heading text-4xl font-bold tracking-tight md:text-5xl"
+                style={{ color: "var(--text-1)", lineHeight: 1.06 }}
               >
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-                  style={{
-                    background: "var(--accent-dim)",
-                    color: "var(--accent)",
-                  }}
-                >
-                  <f.icon className="w-5 h-5" strokeWidth={2} />
-                </div>
-                <p
-                  className="font-heading font-semibold text-sm mb-1.5"
-                  style={{ color: "var(--text-1)" }}
-                >
-                  {f.title}
-                </p>
-                <p
-                  className="font-body text-xs leading-relaxed"
-                  style={{ color: "var(--text-2)" }}
-                >
-                  {f.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-          {!showMore && FEATURES.length > 3 && (
-            <button
-              type="button"
-              onClick={() => {
-                hapticLight();
-                setShowMore(true);
-              }}
-              className="mt-4 w-full py-2.5 rounded-xl font-body text-xs font-medium flex items-center justify-center gap-1"
-              style={{
-                color: "var(--text-3)",
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
-              }}
-            >
-              Show {FEATURES.length - 3} more
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </motion.section>
+                Event-driven meme token trading terminal
+              </h1>
+              <p
+                className="mt-5 max-w-2xl font-body text-base leading-relaxed md:text-lg"
+                style={{ color: "var(--text-2)" }}
+              >
+                Siren watches prediction market moves, maps them to live Solana meme tokens, and keeps the trading flow clean.
+                Kalshi and Polymarket now run in parallel through the same terminal.
+              </p>
+            </motion.section>
 
-        {/* Details + docs */}
-        <motion.section
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.4 }}
-          className="mt-14 text-center max-w-3xl"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 text-left">
-            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>Execution</p>
-              <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>Token swaps route through Jupiter with MEV-aware paths and explicit slippage controls.</p>
-            </div>
-            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>Market intelligence</p>
-              <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>Track Kalshi probabilities and velocity while seeing the token surface react in real time.</p>
-            </div>
-            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>Launch + portfolio</p>
-              <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>Launch through Bags and monitor balances, positions, and fee earnings from one account view.</p>
-            </div>
+            <motion.section
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.12 }}
+              className="mt-10"
+            >
+              <h2 className="font-heading text-sm font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                What Siren does
+              </h2>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                {FEATURES.slice(0, showMore ? undefined : 4).map((feature, index) => (
+                  <motion.div
+                    key={feature.title}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.18 + index * 0.05 }}
+                    className="rounded-2xl border p-5"
+                    style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                  >
+                    <div
+                      className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                    >
+                      <feature.icon className="h-5 w-5" />
+                    </div>
+                    <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                      {feature.title}
+                    </p>
+                    <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      {feature.description}
+                    </p>
+                  </motion.div>
+                ))}
+              </div>
+              {!showMore && FEATURES.length > 4 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticLight();
+                    setShowMore(true);
+                  }}
+                  className="mt-4 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+                >
+                  Show {FEATURES.length - 4} more
+                </button>
+              )}
+            </motion.section>
+
+            <motion.section
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.28 }}
+              className="mt-10 grid gap-3 md:grid-cols-3"
+            >
+              <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <p className="font-heading text-xs" style={{ color: "var(--text-1)" }}>Signal sources</p>
+                <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  Kalshi and Polymarket are labeled separately, then ranked in one live feed by move size.
+                </p>
+              </div>
+              <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <p className="font-heading text-xs" style={{ color: "var(--text-1)" }}>Wallet rail</p>
+                <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  Privy social auth creates the Solana and EVM wallets Siren needs without asking users to bring one first.
+                </p>
+              </div>
+              <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <p className="font-heading text-xs" style={{ color: "var(--text-1)" }}>Execution</p>
+                <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  Token discovery stays on Solana so users can move directly into Jupiter routing from the same narrative.
+                </p>
+              </div>
+            </motion.section>
           </div>
-          <a
-            href="https://docs.onsiren.xyz"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => hapticLight()}
-            className="font-body text-xs underline"
-            style={{ color: "var(--text-3)" }}
+
+          <motion.aside
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="lg:sticky lg:top-20"
           >
-            Read the docs →
-          </a>
-        </motion.section>
+            <PrivyAccessCard />
+          </motion.aside>
+        </div>
       </main>
     </div>
   );

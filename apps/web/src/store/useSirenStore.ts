@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { PredictionSignal } from "@siren/shared";
 
 export interface SelectedMarket {
   ticker: string;
@@ -49,12 +50,14 @@ type BuyPanelMode = "market" | "token";
 
 interface SirenState {
   selectedMarket: SelectedMarket | null;
+  selectedSignal: PredictionSignal | null;
   selectedToken: SelectedToken | null;
   buyPanelOpen: boolean;
   buyPanelMode: BuyPanelMode;
   openForSell: boolean;
   detailPanelOpen: boolean;
   setSelectedMarket: (m: SelectedMarket | null) => void;
+  setSelectedSignal: (signal: PredictionSignal | null) => void;
   setSelectedToken: (t: SelectedToken | null, opts?: { openForSell?: boolean }) => void;
   setBuyPanelOpen: (open: boolean, mode?: BuyPanelMode) => void;
   setDetailPanelOpen: (open: boolean) => void;
@@ -62,12 +65,28 @@ interface SirenState {
 
 export const useSirenStore = create<SirenState>((set) => ({
   selectedMarket: null,
+  selectedSignal: null,
   selectedToken: null,
   buyPanelOpen: false,
   buyPanelMode: "market",
   openForSell: false,
   detailPanelOpen: false,
-  setSelectedMarket: (m) => set({ selectedMarket: m, buyPanelOpen: false, detailPanelOpen: false, openForSell: false }),
+  setSelectedMarket: (m) =>
+    set({
+      selectedMarket: m,
+      selectedSignal: null,
+      buyPanelOpen: false,
+      detailPanelOpen: false,
+      openForSell: false,
+    }),
+  setSelectedSignal: (signal) =>
+    set({
+      selectedSignal: signal,
+      selectedMarket: null,
+      buyPanelOpen: false,
+      detailPanelOpen: false,
+      openForSell: false,
+    }),
   setSelectedToken: (t, opts) =>
     set((s) => ({
       selectedToken: t,

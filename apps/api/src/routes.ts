@@ -8,6 +8,7 @@ import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { sendWelcomeWithAccessCode, sendLaunchThreadEmail, canSendEmail } from "./services/email.js";
+import { getSignalFeedSnapshot } from "./services/signalState.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -677,6 +678,21 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch markets" });
+    }
+  });
+
+  app.get("/api/signals", async (_req, reply) => {
+    try {
+      const snapshot = await getSignalFeedSnapshot();
+      return reply.send({
+        success: true,
+        data: snapshot.signals,
+        status: snapshot.status,
+        updatedAt: snapshot.updatedAt,
+      });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(503).send({ success: false, error: "Failed to fetch signals" });
     }
   });
 

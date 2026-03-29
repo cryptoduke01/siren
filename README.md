@@ -1,24 +1,26 @@
 # Siren
 
-Event-driven meme token terminal on Solana. Watch Kalshi prediction market probabilities in real time and surface Bags tokens tied to those events. Trade markets and tokens from one UI.
+Event-driven meme token terminal on Solana. Siren watches Kalshi and Polymarket in parallel, detects fast prediction-market moves, surfaces matched Solana meme tokens, and keeps token execution in one UI.
 
 ## What Siren Does
 
-Siren connects prediction market data from Kalshi (via DFlow) with meme tokens on Solana (via Bags and DexScreener). You can:
+Siren connects prediction market data from Kalshi and Polymarket with meme tokens on Solana (via Bags and DexScreener). You can:
 
-- Browse prediction markets with live probability and velocity
+- Watch Kalshi and Polymarket signals in one ranked feed
+- Browse Kalshi prediction markets with live probability and velocity
 - Surface tokens matched to market keywords (DexScreener search)
 - Buy YES or NO on markets in-app (DFlow) or on Kalshi
 - Buy tokens via Jupiter swaps
 - Launch new meme tokens via Bags
+- Sign in with Privy using Google, GitHub, or X and get embedded Solana + EVM wallets automatically
 - Filter markets by category (Politics, Crypto, Sports, Business, Entertainment)
 - Use on mobile as a feed with bottom sheet market picker
 
 ## Stack
 
-- Frontend: Next.js 15, React 19, TypeScript, Tailwind, Framer Motion, TanStack Query, Zustand, Solana Wallet Adapter (Phantom, Solflare, Torus)
-- Backend: Fastify 5, Prisma, PostgreSQL
-- APIs: DFlow (Kalshi markets + trading), Jupiter (token swaps), DexScreener (token search), Bags (token launch)
+- Frontend: Next.js 15, React 19, TypeScript, Tailwind, Framer Motion, TanStack Query, Zustand, Privy, Solana Wallet Adapter
+- Backend: Fastify 5, Prisma, PostgreSQL, Redis-ready signal state
+- APIs: DFlow (Kalshi markets + trading), Polymarket (Gamma + CLOB), Jupiter (token swaps), DexScreener (token search), Bags (token launch)
 
 ## Project Structure
 
@@ -47,14 +49,19 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in API keys. See docs/G
 Backend (`apps/api/.env`):
 
 - `DFLOW_API_KEY` – DFlow (markets + trading). Request at pond.dflow.net.
+- `POLYMARKET_API_KEY` / `POLYMARKET_SECRET` / `POLYMARKET_PASSPHRASE` – Polymarket credentials.
+- `POLYMARKET_HOST` – Polymarket CLOB host (default `https://clob.polymarket.com`).
 - `BAGS_API_KEY` – Bags (token launch). Sign up at dev.bags.fm.
 - `JUPITER_API_KEY` – Jupiter (token swaps). Get at portal.jup.ag.
 - `DATABASE_URL` – PostgreSQL (optional for MVP)
+- `REDIS_URL` – Redis for signal snapshots / queue persistence
 - `DEXSCREENER_BASE_URL` – Optional; defaults to api.dexscreener.com
 
 Frontend (`apps/web/.env.local`):
 
 - `NEXT_PUBLIC_API_URL` – Backend URL (default http://localhost:4000)
+- `NEXT_PUBLIC_WS_URL` – WebSocket URL (default ws://localhost:4000/ws)
+- `NEXT_PUBLIC_PRIVY_APP_ID` – Privy app ID for Google, GitHub, and X login
 - `NEXT_PUBLIC_SOLANA_RPC_URL` – Optional custom RPC (e.g. Helius)
 
 ## Hosting

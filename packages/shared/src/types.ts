@@ -66,6 +66,47 @@ export interface SurfacedToken extends BagsToken {
   launchpad?: LaunchpadId;
 }
 
+export type SignalSource = "kalshi" | "polymarket";
+
+export interface SignalOrderBookSnapshot {
+  tokenId?: string;
+  bestBid?: number;
+  bestAsk?: number;
+  spread?: number;
+  lastTradePrice?: number;
+  updatedAt?: string;
+}
+
+export interface PredictionSignal {
+  id: string;
+  marketId: string;
+  source: SignalSource;
+  question: string;
+  currentProb: number;
+  previousProb: number;
+  delta: number;
+  direction: "up" | "down";
+  volume: number;
+  timestamp: string;
+  matchedTokens: SurfacedToken[];
+  marketUrl?: string;
+  book?: SignalOrderBookSnapshot;
+}
+
+export interface SignalSourceStatus {
+  source: SignalSource;
+  connected: boolean;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastError?: string;
+}
+
+export interface SignalFeedSnapshot {
+  signals: PredictionSignal[];
+  status: SignalSourceStatus[];
+  updatedAt: string;
+}
+
 export interface DFlowMarket {
   ticker: string;
   eventTicker: string;
