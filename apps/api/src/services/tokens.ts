@@ -38,6 +38,8 @@ const RUGCHECK_TIMEOUT_MS = 6_000;
 const JUPITER_TIMEOUT_MS = 8_000;
 const TOKENS_CACHE_MS = 45 * 1000;
 const TOKEN_HYDRATION_BATCH_SIZE = 6;
+const DEFAULT_DISCOVERY_RESULT_LIMIT = 16;
+const TARGETED_RESULT_LIMIT = 12;
 const rugcheckCache = new Map<string, { expiry: number; value: RugcheckSummary | null }>();
 const surfacedTokensCache = new Map<string, { expiresAt: number; value: SurfacedToken[] }>();
 const surfacedTokensInFlight = new Map<string, Promise<SurfacedToken[]>>();
@@ -266,6 +268,27 @@ async function hydrateSurfacedTokens(
   return hydrated;
 }
 
+function applyInlineRisk(token: SurfacedToken, pair?: DexPair): SurfacedToken {
+  const risk = analyzeTokenRisk({
+    pair,
+    mint: token.mint,
+    name: token.name,
+    symbol: token.symbol,
+    priceUsd: token.price,
+    volume24h: token.volume24h,
+    imageUrl: token.imageUrl,
+  });
+
+  return {
+    ...token,
+    safe: risk.label === "low" || risk.label === "moderate",
+    riskScore: risk.score,
+    riskLabel: risk.label,
+    riskReasons: risk.reasons,
+    riskBlocked: risk.blocked,
+  };
+}
+
 function pairsToSurfacedTokens(bestPairByMint: Map<string, DexPair>, keywords: string[]): SurfacedToken[] {
   return Array.from(bestPairByMint.entries()).map(([mint, p]) => {
     const token = (p.baseToken.address === mint ? p.baseToken : p.quoteToken) as { address: string; symbol: string; name: string };
@@ -359,26 +382,23 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
       parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
       : categoryId ? getKeywordsForCategory(categoryId)
       : [];
+    const isDefaultDiscovery = !marketId && !categoryId && keywords.length === 0;
 
     const allPairs: DexPair[] = [];
     const seenMints = new Set<string>();
 
     try {
-      if (process.env.BAGS_API_KEY) {
+      if (process.env.BAGS_API_KEY && !isDefaultDiscovery) {
         try {
           const pools = await getBagsPools();
-          const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, 24);
-          for (let i = 0; i < bagsMints.length; i += 4) {
-            const batch = bagsMints.slice(i, i + 4);
-            const results = await Promise.all(batch.map((mint) => getTokenPairs(mint)));
-            for (let j = 0; j < batch.length; j += 1) {
-              const pairs = results[j];
-              const queriedMint = batch[j];
-              const best = pickBestPair(pairs);
-              if (best && !seenMints.has(queriedMint)) {
-                seenMints.add(queriedMint);
-                allPairs.push(best);
-              }
+          const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, TARGETED_RESULT_LIMIT);
+          const results = await Promise.all(bagsMints.map((mint) => getTokenPairs(mint)));
+          for (let index = 0; index < bagsMints.length; index += 1) {
+            const queriedMint = bagsMints[index];
+            const best = pickBestPair(results[index]);
+            if (best && !seenMints.has(queriedMint)) {
+              seenMints.add(queriedMint);
+              allPairs.push(best);
             }
           }
         } catch (e) {
@@ -388,17 +408,17 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
 
       try {
         const boosted = await getLatestBoostedTokens();
-        const boostedMints = boosted.slice(0, 20).map((t) => t.tokenAddress).filter((mint) => !seenMints.has(mint));
-        for (let i = 0; i < boostedMints.length; i += 4) {
-          const batch = boostedMints.slice(i, i + 4);
-          const results = await Promise.all(batch.map((mint) => getTokenPairs(mint)));
-          for (let j = 0; j < batch.length; j += 1) {
-            const queriedMint = batch[j];
-            const best = pickBestPair(results[j]);
-            if (best && !seenMints.has(queriedMint)) {
-              seenMints.add(queriedMint);
-              allPairs.push(best);
-            }
+        const boostedMints = boosted
+          .slice(0, isDefaultDiscovery ? DEFAULT_DISCOVERY_RESULT_LIMIT : TARGETED_RESULT_LIMIT)
+          .map((t) => t.tokenAddress)
+          .filter((mint) => !seenMints.has(mint));
+        const results = await Promise.all(boostedMints.map((mint) => getTokenPairs(mint)));
+        for (let index = 0; index < boostedMints.length; index += 1) {
+          const queriedMint = boostedMints[index];
+          const best = pickBestPair(results[index]);
+          if (best && !seenMints.has(queriedMint)) {
+            seenMints.add(queriedMint);
+            allPairs.push(best);
           }
         }
       } catch (e) {
@@ -408,7 +428,7 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
       const shouldRunDiscoverySearch = keywords.length > 0 || !marketId;
       if (shouldRunDiscoverySearch) {
         try {
-          const searchTerms = (keywords.length > 0 ? keywords : DEFAULT_DISCOVERY_TERMS).slice(0, 5);
+          const searchTerms = (keywords.length > 0 ? keywords : DEFAULT_DISCOVERY_TERMS).slice(0, isDefaultDiscovery ? 3 : 5);
           const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
           const keywordPairs: DexPair[] = searchResults.flat();
           for (const pair of keywordPairs) {
@@ -429,9 +449,13 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
           if (keywords.length > 0) return b.relevanceScore - a.relevanceScore;
           return (b.volume24h ?? 0) - (a.volume24h ?? 0);
         })
-        .slice(0, keywords.length > 0 ? 24 : 36);
-      const hydrated = await hydrateSurfacedTokens(ranked, bestPairByMint);
-      const filtered = hydrated.filter((token) => !token.riskBlocked);
+        .slice(0, isDefaultDiscovery ? DEFAULT_DISCOVERY_RESULT_LIMIT : TARGETED_RESULT_LIMIT)
+        .map((token) => applyInlineRisk(token, bestPairByMint.get(token.mint)))
+        .filter((token) => !token.riskBlocked);
+
+      const filtered = isDefaultDiscovery
+        ? ranked
+        : (await hydrateSurfacedTokens(ranked, bestPairByMint)).filter((token) => !token.riskBlocked);
 
       surfacedTokensCache.set(cacheKey, {
         expiresAt: Date.now() + TOKENS_CACHE_MS,

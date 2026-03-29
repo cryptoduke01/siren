@@ -73,12 +73,12 @@ interface KalshiTradesResponse {
 
 const MARKETS_CACHE_MS = 60 * 1000;
 const EVENT_PAGE_LIMIT = 200;
-const MAX_EVENT_PAGES = 3;
-const VELOCITY_FETCH_LIMIT = 24;
+const MAX_EVENT_PAGES = 2;
+const VELOCITY_FETCH_LIMIT = 12;
 const MARKET_ACTIVITY_CACHE_MS = 60 * 1000;
 const KALSHI_TRADES_PAGE_LIMIT = 1000;
 const KALSHI_TRADES_MAX_PAGES = 12;
-const DFLOW_TIMEOUT_MS = 8_000;
+const DFLOW_TIMEOUT_MS = 5_000;
 let marketsCache: { expiresAt: number; value: MarketWithVelocity[] } | null = null;
 let marketsInFlight: Promise<MarketWithVelocity[]> | null = null;
 const marketTradeActivityCache = new Map<string, { expiresAt: number; value: MarketTradeActivity }>();
@@ -116,11 +116,18 @@ async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["
     });
     if (cursor && cursor > 0) qs.set("cursor", String(cursor));
     const url = `${DFLOW_METADATA_URL}/api/v1/events?${qs.toString()}`;
-    const res = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (events.length > 0) break;
+      throw error;
+    }
     if (!res.ok) {
+      if (events.length > 0) break;
       if (res.status === 429) throw new Error("DFlow metadata rate limited. Try again in a few seconds.");
       throw new Error(`DFlow API error: ${res.status}`);
     }
