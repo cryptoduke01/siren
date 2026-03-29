@@ -13,6 +13,8 @@ import { getSignalFeedSnapshot } from "./services/signalState.js";
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const STABLE_QUOTE_SYMBOLS = new Set(["USD", "USDC", "USDT", "USDS", "USDE"]);
+const MARKET_ROUTE_TIMEOUT_MS = 10_000;
+const TOKEN_ROUTE_TIMEOUT_MS = 8_000;
 
 type SolPricePair = {
   chainId?: string;
@@ -22,6 +24,15 @@ type SolPricePair = {
   baseToken?: { address?: string; symbol?: string };
   quoteToken?: { address?: string; symbol?: string };
 };
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    }),
+  ]);
+}
 
 function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
   if (!pairs?.length) return 0;
@@ -673,11 +684,11 @@ export function registerRoutes(app: FastifyInstance) {
 
   app.get("/api/markets", async (_req, reply) => {
     try {
-      const markets = await getMarketsWithVelocity();
+      const markets = await withTimeout(getMarketsWithVelocity(), MARKET_ROUTE_TIMEOUT_MS, "markets");
       return reply.send({ success: true, data: markets });
     } catch (e) {
-      app.log.error(e);
-      return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch markets" });
+      app.log.warn(e);
+      return reply.send({ success: true, data: [] });
     }
   });
 
@@ -713,11 +724,15 @@ export function registerRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { marketId?: string; categoryId?: string; keywords?: string } }>("/api/tokens", async (req, reply) => {
     const { marketId, categoryId, keywords: keywordsParam } = req.query;
     try {
-      const tokens = await getSurfacedTokens(marketId, categoryId, keywordsParam);
+      const tokens = await withTimeout(
+        getSurfacedTokens(marketId, categoryId, keywordsParam),
+        TOKEN_ROUTE_TIMEOUT_MS,
+        "tokens"
+      );
       return reply.send({ success: true, data: tokens });
     } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch tokens" });
+      app.log.warn(e);
+      return reply.send({ success: true, data: [] });
     }
   });
 
