@@ -10,12 +10,22 @@ import {
 import { broadcastSignalSnapshot } from "../ws.js";
 
 let started = false;
+const pollInFlight: Record<"kalshi" | "polymarket", boolean> = {
+  kalshi: false,
+  polymarket: false,
+};
 
 async function runSourcePoll(
   source: "kalshi" | "polymarket",
   poll: () => Promise<Awaited<ReturnType<typeof pollKalshiMarkets>>>,
   logger: FastifyBaseLogger
 ): Promise<void> {
+  if (pollInFlight[source]) {
+    logger.debug({ source }, `${source} poll skipped because the previous cycle is still running`);
+    return;
+  }
+
+  pollInFlight[source] = true;
   try {
     const signals = await poll();
     await markSignalSourceHealthy(source);
@@ -36,6 +46,8 @@ async function runSourcePoll(
     );
     const snapshot = await markSignalSourceFailed(source, error);
     broadcastSignalSnapshot(snapshot);
+  } finally {
+    pollInFlight[source] = false;
   }
 }
 

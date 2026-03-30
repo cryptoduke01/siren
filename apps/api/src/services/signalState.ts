@@ -21,6 +21,7 @@ const MAX_SIGNAL_ITEMS = 100;
 
 const memorySnapshots = new Map<string, MarketProbabilitySnapshot[]>();
 let memorySignals: PredictionSignal[] = [];
+let memoryUpdatedAt = new Date().toISOString();
 const memoryStatuses = new Map<SignalSource, SignalSourceStatus>([
   ["kalshi", { source: "kalshi", connected: false }],
   ["polymarket", { source: "polymarket", connected: false }],
@@ -74,6 +75,7 @@ async function setStoredStatuses(statuses: SignalSourceStatus[]): Promise<void> 
   for (const status of statuses) {
     memoryStatuses.set(status.source, status);
   }
+  memoryUpdatedAt = new Date().toISOString();
   await writeJson(SIGNAL_STATUS_KEY, defaultStatuses());
 }
 
@@ -88,6 +90,7 @@ async function getStoredSignals(): Promise<PredictionSignal[]> {
 
 async function setStoredSignals(signals: PredictionSignal[]): Promise<void> {
   memorySignals = signals;
+  memoryUpdatedAt = new Date().toISOString();
   await writeJson(SIGNAL_FEED_KEY, signals);
 }
 
@@ -118,6 +121,14 @@ export async function getSignalFeedSnapshot(): Promise<SignalFeedSnapshot> {
     signals,
     status,
     updatedAt: new Date().toISOString(),
+  };
+}
+
+export function getInMemorySignalFeedSnapshot(): SignalFeedSnapshot {
+  return {
+    signals: memorySignals,
+    status: defaultStatuses(),
+    updatedAt: memoryUpdatedAt,
   };
 }
 

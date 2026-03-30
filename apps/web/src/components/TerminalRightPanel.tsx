@@ -5,7 +5,7 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { Activity, Wallet2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
-import { fetchSolPriceUsd, formatUsd } from "@/lib/pricing";
+import { fetchSolPriceUsd, formatUsd, SOL_PRICE_QUERY_KEY } from "@/lib/pricing";
 import { SignalHistoryPanel } from "./SignalHistoryPanel";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -20,9 +20,11 @@ export function TerminalRightPanel() {
   const { connection } = useConnection();
 
   const { data: solPriceUsd = 0 } = useQuery({
-    queryKey: ["terminal-sol-price"],
+    queryKey: SOL_PRICE_QUERY_KEY,
     queryFn: () => fetchSolPriceUsd(API_URL),
-    staleTime: 60_000,
+    staleTime: 120_000,
+    refetchInterval: 120_000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: solBalanceLamports = 0 } = useQuery({

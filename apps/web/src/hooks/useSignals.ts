@@ -42,9 +42,10 @@ export function useSignals({ enabled = true }: { enabled?: boolean } = {}) {
     queryKey: QUERY_KEY,
     queryFn: fetchSignals,
     enabled,
-    refetchInterval: enabled ? 30_000 : false,
-    retry: 2,
-    staleTime: 10_000,
+    refetchInterval: enabled ? 90_000 : false,
+    retry: 1,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {

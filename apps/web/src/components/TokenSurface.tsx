@@ -83,6 +83,17 @@ function formatCentsFromProbability(probability?: number | null, side: "yes" | "
   return `${cents.toFixed(1)}c`;
 }
 
+function formatTimestampLabel(value?: number | null): string {
+  if (!value || !Number.isFinite(value)) return "Open-ended";
+  const timestampMs = value < 1_000_000_000_000 ? value * 1000 : value;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(timestampMs);
+}
+
 function SignalSourcePill({ source }: { source: PredictionSignal["source"] }) {
   return (
     <span
@@ -118,99 +129,168 @@ function PredictionMarketFocusPanel({
           "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
       }}
     >
-      <div className="border-b px-5 py-4" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-2xl">
-            <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-              Selected market
-            </p>
-            <h2 className="mt-2 font-heading text-2xl font-bold leading-tight md:text-[2rem]" style={{ color: "var(--text-1)" }}>
+      <div className="border-b px-5 py-5" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_320px] xl:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                Selected market
+              </p>
+              <span
+                className="inline-flex items-center rounded-full border px-2.5 py-1 font-body text-[10px] font-medium uppercase tracking-[0.12em]"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)",
+                  background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                  color: "var(--accent)",
+                }}
+              >
+                Kalshi rail
+              </span>
+              <span
+                className="inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium"
+                style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}
+              >
+                {market.ticker}
+              </span>
+            </div>
+
+            <h2
+              className="mt-4 max-w-4xl font-heading text-[2.1rem] font-bold leading-[0.96] tracking-[-0.04em] md:text-[2.85rem]"
+              style={{ color: "var(--text-1)" }}
+            >
               {market.title}
             </h2>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span
+                className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]"
+                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+              >
+                Closes {formatTimestampLabel(market.close_time)}
+              </span>
+              <span
+                className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]"
+                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+              >
+                YES probability {formatPercent(market.probability)}
+              </span>
+            </div>
+
             {market.subtitle && (
-              <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+              <p className="mt-4 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                 {market.subtitle}
               </p>
             )}
-            <p className="mt-3 max-w-2xl font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Trade YES or NO here, then buy related tokens below.
+            <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Hit the market rail for direct YES or NO execution, then sweep the linked tokens below from the same screen.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onTrade}
-              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
-              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-            >
-              Trade market
-              <ArrowUpRight className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={onBrowseTokens}
-              className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-            >
-              Buy linked tokens
-            </button>
-            <button
-              type="button"
-              onClick={onOpenKalshi}
-              className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-              style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-            >
-              Trade on Kalshi
-              <ExternalLink className="h-4 w-4" />
-            </button>
+          <div
+            className="rounded-[20px] border p-4"
+            style={{
+              borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
+              background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), var(--bg-surface))",
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                  Command deck
+                </p>
+                <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Fast read on price, speed, and liquidity.
+                </p>
+              </div>
+              <div
+                className="inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)",
+                  background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                  color: "var(--accent)",
+                }}
+              >
+                Live
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                  YES
+                </p>
+                <p className="mt-2 font-mono text-[1.8rem] font-semibold leading-none tabular-nums" style={{ color: "var(--bags)" }}>
+                  {formatCentsFromProbability(market.probability, "yes")}
+                </p>
+              </div>
+              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                  NO
+                </p>
+                <p className="mt-2 font-mono text-[1.8rem] font-semibold leading-none tabular-nums" style={{ color: "var(--down)" }}>
+                  {formatCentsFromProbability(market.probability, "no")}
+                </p>
+              </div>
+              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                  1h velocity
+                </p>
+                <p
+                  className="mt-2 font-mono text-xl font-semibold leading-none tabular-nums"
+                  style={{ color: market.velocity_1h >= 0 ? "var(--up)" : "var(--down)" }}
+                >
+                  {market.velocity_1h >= 0 ? "+" : ""}
+                  {market.velocity_1h.toFixed(1)}%
+                </p>
+              </div>
+              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                  Liquidity
+                </p>
+                <p className="mt-2 font-mono text-xl font-semibold leading-none tabular-nums" style={{ color: "var(--text-1)" }}>
+                  {formatCompactNumber(market.liquidity, 1)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={onTrade}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
+                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+              >
+                Trade market
+                <ArrowUpRight className="h-4 w-4" />
+              </button>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                <button
+                  type="button"
+                  onClick={onBrowseTokens}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+                >
+                  Buy linked tokens
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenKalshi}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                  style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                >
+                  Trade on Kalshi
+                  <ExternalLink className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            YES price
-          </p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--bags)" }}>
-            {formatCentsFromProbability(market.probability, "yes")}
-          </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Implied YES probability {formatPercent(market.probability)}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            NO price
-          </p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--down)" }}>
-            {formatCentsFromProbability(market.probability, "no")}
-          </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Implied NO probability {formatPercent(100 - market.probability)}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            1h velocity
-          </p>
-          <p
-            className="mt-2 font-mono text-2xl font-semibold tabular-nums"
-            style={{ color: market.velocity_1h >= 0 ? "var(--up)" : "var(--down)" }}
-          >
-            {market.velocity_1h >= 0 ? "+" : ""}{market.velocity_1h.toFixed(1)}%
-          </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Directional move across the last hour
-          </p>
-        </div>
-
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            Volume
+            Lifetime volume
           </p>
           <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
             {formatCompactNumber(market.volume, 1)}
@@ -241,18 +321,6 @@ function PredictionMarketFocusPanel({
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
             Public fills, not unique traders
-          </p>
-        </div>
-
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            Liquidity
-          </p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {formatCompactNumber(market.liquidity, 1)}
-          </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Event liquidity available in the current book
           </p>
         </div>
 

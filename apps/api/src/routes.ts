@@ -8,13 +8,17 @@ import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { sendWelcomeWithAccessCode, sendLaunchThreadEmail, canSendEmail } from "./services/email.js";
-import { getSignalFeedSnapshot } from "./services/signalState.js";
+import { getInMemorySignalFeedSnapshot, getSignalFeedSnapshot } from "./services/signalState.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const STABLE_QUOTE_SYMBOLS = new Set(["USD", "USDC", "USDT", "USDS", "USDE"]);
 const MARKET_ROUTE_TIMEOUT_MS = 10_000;
 const TOKEN_ROUTE_TIMEOUT_MS = 8_000;
+const SIGNAL_ROUTE_TIMEOUT_MS = 1_500;
+const SIGNAL_ROUTE_CACHE_MS = 5_000;
+const SOL_PRICE_ROUTE_TIMEOUT_MS = 4_500;
+const SOL_PRICE_CACHE_MS = 60_000;
 
 type SolPricePair = {
   chainId?: string;
@@ -26,12 +30,15 @@ type SolPricePair = {
 };
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+      timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
     }),
-  ]);
+  ]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 }
 
 function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
@@ -91,6 +98,74 @@ function getTradeErrorStatus(error?: string | null): number {
     return 400;
   }
   return 503;
+}
+
+let signalRouteCache: { expiresAt: number; value: Awaited<ReturnType<typeof getSignalFeedSnapshot>> } | null = null;
+let solPriceCache: { expiresAt: number; value: number } | null = null;
+let solPriceInFlight: Promise<number> | null = null;
+
+function buildSignalFeedResponse(snapshot: Awaited<ReturnType<typeof getSignalFeedSnapshot>>) {
+  return {
+    success: true,
+    data: snapshot.signals,
+    status: snapshot.status,
+    updatedAt: snapshot.updatedAt,
+  };
+}
+
+async function fetchSolPriceUsd(): Promise<number> {
+  if (solPriceCache && solPriceCache.expiresAt > Date.now()) {
+    return solPriceCache.value;
+  }
+
+  if (solPriceInFlight) {
+    return solPriceInFlight;
+  }
+
+  solPriceInFlight = (async () => {
+    let usd = 0;
+
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(3_500),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { solana?: { usd?: number } };
+        usd = json.solana?.usd ?? 0;
+      }
+    } catch {
+      /* CoinGecko failed, try DexScreener */
+    }
+
+    if (!usd || !Number.isFinite(usd)) {
+      try {
+        const ds = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${SOL_MINT}`, {
+          signal: AbortSignal.timeout(3_500),
+        });
+        if (ds.ok) {
+          const json = (await ds.json()) as { pairs?: SolPricePair[] };
+          usd = pickReliableSolUsdPrice(json.pairs);
+        }
+      } catch {
+        /* fallback failed */
+      }
+    }
+
+    const normalized = usd && Number.isFinite(usd) ? usd : 0;
+    if (normalized > 0) {
+      solPriceCache = {
+        expiresAt: Date.now() + SOL_PRICE_CACHE_MS,
+        value: normalized,
+      };
+    }
+
+    return normalized || solPriceCache?.value || 0;
+  })().finally(() => {
+    solPriceInFlight = null;
+  });
+
+  return solPriceInFlight;
 }
 
 // In-memory volume store (resets on restart). For persistence, add Supabase/DB.
@@ -683,6 +758,7 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/markets", async (_req, reply) => {
+    reply.header("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
     try {
       const markets = await withTimeout(getMarketsWithVelocity(), MARKET_ROUTE_TIMEOUT_MS, "markets");
       return reply.send({ success: true, data: markets });
@@ -693,17 +769,21 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/signals", async (_req, reply) => {
+    reply.header("Cache-Control", "public, max-age=5, stale-while-revalidate=30");
+    if (signalRouteCache && signalRouteCache.expiresAt > Date.now()) {
+      return reply.send(buildSignalFeedResponse(signalRouteCache.value));
+    }
+
     try {
-      const snapshot = await getSignalFeedSnapshot();
-      return reply.send({
-        success: true,
-        data: snapshot.signals,
-        status: snapshot.status,
-        updatedAt: snapshot.updatedAt,
-      });
+      const snapshot = await withTimeout(getSignalFeedSnapshot(), SIGNAL_ROUTE_TIMEOUT_MS, "signals");
+      signalRouteCache = {
+        expiresAt: Date.now() + SIGNAL_ROUTE_CACHE_MS,
+        value: snapshot,
+      };
+      return reply.send(buildSignalFeedResponse(snapshot));
     } catch (e) {
-      app.log.error(e);
-      return reply.status(503).send({ success: false, error: "Failed to fetch signals" });
+      app.log.warn(e);
+      return reply.send(buildSignalFeedResponse(signalRouteCache?.value ?? getInMemorySignalFeedSnapshot()));
     }
   });
 
@@ -802,34 +882,13 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/sol-price", async (_req, reply) => {
+    reply.header("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
     try {
-      let usd = 0;
-      try {
-        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
-          headers: { Accept: "application/json" },
-        });
-        if (res.ok) {
-          const json = (await res.json()) as { solana?: { usd?: number } };
-          usd = json.solana?.usd ?? 0;
-        }
-      } catch {
-        /* CoinGecko failed, try DexScreener */
-      }
-      if (!usd || !Number.isFinite(usd)) {
-        try {
-          const ds = await fetch("https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112");
-          if (ds.ok) {
-            const j = (await ds.json()) as { pairs?: SolPricePair[] };
-            usd = pickReliableSolUsdPrice(j.pairs);
-          }
-        } catch {
-          /* fallback failed */
-        }
-      }
-      return reply.send({ success: true, usd: usd && Number.isFinite(usd) ? usd : 0 });
+      const usd = await withTimeout(fetchSolPriceUsd(), SOL_PRICE_ROUTE_TIMEOUT_MS, "sol-price");
+      return reply.send({ success: true, usd });
     } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch SOL price" });
+      app.log.warn(e);
+      return reply.send({ success: true, usd: solPriceCache?.value ?? 0 });
     }
   });
 

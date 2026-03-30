@@ -1,3 +1,5 @@
+export const SOL_PRICE_QUERY_KEY = ["sol-price"] as const;
+
 export function parseFiniteNumber(value: unknown): number | null {
   const parsed =
     typeof value === "number"
