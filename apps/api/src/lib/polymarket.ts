@@ -11,7 +11,7 @@ import { getProbabilitySnapshot60sAgo, saveProbabilitySnapshot } from "../servic
 const POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets";
 const POLYMARKET_HOST = process.env.POLYMARKET_HOST?.trim() || "https://clob.polymarket.com";
 const POLYMARKET_MARKET_LIMIT = Math.max(50, Number.parseInt(process.env.POLYMARKET_MARKET_LIMIT ?? "500", 10) || 500);
-const POLYMARKET_SIGNAL_THRESHOLD = Number.parseFloat(process.env.POLYMARKET_SIGNAL_THRESHOLD ?? "2.5") || 2.5;
+const POLYMARKET_SIGNAL_THRESHOLD = Number.parseFloat(process.env.POLYMARKET_SIGNAL_THRESHOLD ?? "0.5") || 0.5;
 
 function parseFiniteNumber(value?: string | number | null): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;

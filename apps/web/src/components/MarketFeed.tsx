@@ -318,7 +318,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
             >
               <p className="font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-                No live signals yet. Siren will surface them here as Kalshi or Polymarket probabilities move by 3%+.
+                No live signals yet. Siren will surface them here as Kalshi or Polymarket probabilities cross the live movement threshold.
               </p>
             </div>
           )}
