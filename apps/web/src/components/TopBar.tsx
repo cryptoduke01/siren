@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Star, Wallet, Sun, Moon, Rocket, TrendingUp, ClipboardList, Share2 } from "lucide-react";
+import { Menu, X, Star, Wallet, Sun, Moon, Rocket, TrendingUp, ClipboardList } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
@@ -13,7 +13,6 @@ import { WaitlistHeader } from "./WaitlistHeader";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useSignals } from "@/hooks/useSignals";
-import { useToastStore } from "@/store/useToastStore";
 
 const NAV = [
   { href: "/", label: "Terminal", icon: Rocket },
@@ -27,7 +26,6 @@ export function TopBar() {
   const { theme, toggleTheme } = useThemeStore();
   const { authenticated } = usePrivy();
   const { connected } = useSirenWallet();
-  const addToast = useToastStore((state) => state.addToast);
   const showSignalSummary = pathname === "/" || pathname === "/onboarding";
   const { signals } = useSignals({ enabled: showSignalSummary });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -44,25 +42,6 @@ export function TopBar() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);
-
-  const handleShare = async () => {
-    const shareUrl = "https://www.onsiren.xyz";
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: "Siren",
-          text: "Prediction markets x meme token terminal",
-          url: shareUrl,
-        });
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
-      }
-      addToast("onsiren.xyz copied. Put it in motion.", "success");
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return;
-      addToast("Could not share Siren right now.", "error");
-    }
-  };
 
   if (pathname === "/waitlist") {
     return <WaitlistHeader />;
@@ -126,19 +105,6 @@ export function TopBar() {
         )}
         <div className="hidden md:flex items-center gap-2">
           <NavbarBalance />
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              void handleShare();
-            }}
-            className="hidden xl:inline-flex h-8 items-center gap-2 rounded-[8px] border px-3 font-body text-[11px] transition-all hover:bg-[var(--bg-hover)]"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
-            aria-label="Share onsiren.xyz"
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            onsiren.xyz
-          </button>
           <Link
             href="/watchlist"
             onClick={() => hapticLight()}

@@ -12,7 +12,7 @@ Standard terminal capabilities and roadmap. Brand assets incoming — placeholde
 | **Token swap (buy/sell)** | OK | Unified panel; DFlow or Jupiter |
 | **Slippage** | Config | Default 2% (200 bps); configurable via API |
 | **Bags token launch** | OK | Create token, social links, fee share |
-| **Portfolio** | OK | Balances, positions, token holdings, Bags launches |
+| **Portfolio** | OK | Balances, positions, token holdings, Bags launches, Kalshi KYC note |
 | **Watchlist** | OK | Saved markets/tokens |
 | **Responsive layout** | OK | Mobile markets sheet, adjustable sidebar |
 | **Privy social onboarding** | OK | Google / GitHub / X only; embedded Solana + EVM wallets on login |

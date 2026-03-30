@@ -53,6 +53,7 @@ API keys, setup, and run instructions.
 ### Polymarket
 
 - **What for:** Parallel signal sourcing alongside Kalshi. Siren reads active markets from Gamma, checks the CLOB book for flagged moves, and pushes Polymarket signals into the same live queue.
+- **What is live in Siren now:** Mixed-source market browsing, source-labeled signals, Privy social login, embedded Solana + EVM wallets, and the shared token-matching rail.
 - **How to get:**
   1. Go to **https://polymarket.com** and create / retrieve API credentials
   2. Copy your **API key**, **secret**, and **passphrase**
@@ -109,6 +110,8 @@ Change API/WS URLs when you deploy.
 **Swaps & balance (production):** The default Solana RPC often returns `403 Access forbidden` or fails to fetch balances. Set **`NEXT_PUBLIC_SOLANA_RPC_URL`** on Vercel (e.g. `https://mainnet.helius-rpc.com/?api-key=YOUR_KEY`). Without this, swaps and portfolio balance will not work on the deployed site.
 
 **OAuth (Google, GitHub, X):** See `docs/PRIVY_OAUTH_SETUP.md`.
+
+**Kalshi KYC:** Portfolio visibility works without it, but executing Kalshi market trades requires Kalshi KYC/compliance approval before those orders can clear.
 
 ---
 

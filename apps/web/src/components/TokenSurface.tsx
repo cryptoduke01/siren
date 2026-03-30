@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Copy, Check, ArrowUpRight, ExternalLink, Activity, Share2 } from "lucide-react";
+import { toPng } from "html-to-image";
+import { Copy, Check, ArrowUpRight, ExternalLink, Activity, Share2, Download, Loader2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { useSirenStore, type SelectedMarket } from "@/store/useSirenStore";
@@ -129,17 +130,22 @@ function PredictionMarketFocusPanel({
   onPrimaryAction,
   onOpenVenue,
   onBrowseTokens,
-  onShare,
+  onDownloadCard,
+  exportingCard,
+  exportBrandLabel,
 }: {
   market: SelectedMarket;
   onPrimaryAction: () => void;
   onOpenVenue: () => void;
   onBrowseTokens: () => void;
-  onShare: () => void;
+  onDownloadCard: () => void;
+  exportingCard: boolean;
+  exportBrandLabel: string;
 }) {
   const { data: marketActivity } = useMarketActivity(market.source === "kalshi" ? market.ticker : undefined);
   const platformLabel = getSelectedMarketVenueLabel(market);
   const canTradeInSiren = canTradeSelectedMarketInSiren(market);
+  const exportRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <section
@@ -150,8 +156,13 @@ function PredictionMarketFocusPanel({
           "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
       }}
     >
-      <div className="border-b px-4 py-4 sm:px-5 sm:py-5" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.3fr)_minmax(300px,360px)] 2xl:items-start">
+      <div
+        ref={exportRef}
+        data-market-card-export="true"
+        className="border-b px-4 py-4 sm:px-5 sm:py-5"
+        style={{ borderColor: "var(--border-subtle)" }}
+      >
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,340px)] xl:items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -176,24 +187,21 @@ function PredictionMarketFocusPanel({
                   {market.ticker}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={onShare}
+              <div
                 className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
                 style={{
                   borderColor: "var(--border-subtle)",
                   background: "var(--bg-surface)",
                   color: "var(--text-2)",
                 }}
-                aria-label="Share this Siren view"
               >
                 <Share2 className="h-3.5 w-3.5" />
-                onsiren.xyz
-              </button>
+                {exportBrandLabel}
+              </div>
             </div>
 
             <h2
-              className="mt-4 max-w-5xl break-words font-heading text-[clamp(2.4rem,6vw,4.8rem)] font-bold leading-[0.92] tracking-[-0.05em]"
+              className="mt-4 max-w-[14ch] break-words font-heading text-[clamp(1.95rem,4.2vw,3.5rem)] font-bold leading-[0.92] tracking-[-0.045em] sm:max-w-[16ch]"
               style={{ color: "var(--text-1)" }}
             >
               {market.title}
@@ -233,7 +241,7 @@ function PredictionMarketFocusPanel({
           </div>
 
           <div
-            className="rounded-[20px] border p-4"
+            className="rounded-[20px] border p-4 xl:self-stretch"
             style={{
               borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
               background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), var(--bg-surface))",
@@ -328,6 +336,16 @@ function PredictionMarketFocusPanel({
                   <ExternalLink className="h-4 w-4" />
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={onDownloadCard}
+                data-export-ignore="true"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+              >
+                {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exportingCard ? "Saving card..." : "Download card"}
+              </button>
             </div>
           </div>
         </div>
@@ -549,6 +567,7 @@ export function TokenSurface() {
   const { publicKey } = useSirenWallet();
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
+  const [exportingCard, setExportingCard] = useState(false);
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [launchpadFilter, setLaunchpadFilter] = useState<"all" | "bags" | "pump" | "bonk" | "moonshot">("all");
   const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -610,24 +629,43 @@ export function TokenSurface() {
 
   const shareSelectedMarket = async () => {
     if (!selectedMarket || typeof window === "undefined") return;
-
-    const shareUrl = `${window.location.origin}/?market=${encodeURIComponent(selectedMarket.ticker)}`;
-    const sharePayload = {
-      title: `${selectedMarket.title} · Siren`,
-      text: `Track ${getSelectedMarketVenueLabel(selectedMarket)} market flow on Siren`,
-      url: shareUrl,
-    };
-
     try {
-      if (navigator.share) {
-        await navigator.share(sharePayload);
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
+      const cardNode = surfaceRef.current?.querySelector<HTMLElement>("[data-market-card-export='true']");
+      if (!cardNode) {
+        addToast("Card export is not ready yet. Try again in a second.", "error");
+        return;
       }
-      addToast("Siren link copied. Share it out.", "success");
+
+      hapticLight();
+      setExportingCard(true);
+      await document.fonts.ready;
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const dataUrl = await toPng(cardNode, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#050508",
+        skipFonts: false,
+        filter: (node) => {
+          if (!(node instanceof HTMLElement)) return true;
+          return node.dataset.exportIgnore !== "true";
+        },
+      });
+
+      const safeTicker = selectedMarket.ticker.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+      const anchor = document.createElement("a");
+      anchor.href = dataUrl;
+      anchor.download = `siren-market-${safeTicker || "card"}-${Date.now()}.png`;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      addToast("Market card saved. Share the Siren rail.", "success");
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return;
-      addToast("Unable to share right now. Try again in a second.", "error");
+      console.warn("Market card export failed", error);
+      addToast("Could not save the market card right now.", "error");
+    } finally {
+      setExportingCard(false);
     }
   };
 
@@ -656,7 +694,9 @@ export function TokenSurface() {
             hapticLight();
             tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
-          onShare={shareSelectedMarket}
+          onDownloadCard={shareSelectedMarket}
+          exportingCard={exportingCard}
+          exportBrandLabel="onsiren.xyz"
         />
       ) : selectedSignal ? (
         <SignalNarrativePanel

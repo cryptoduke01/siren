@@ -13,6 +13,11 @@ export default function GettingStarted() {
         Use the terminal to explore Kalshi and Polymarket signals. Tap a signal or market to see linked tokens
         and trade options.
       </p>
+      <h2>4. Know the Kalshi trading rule</h2>
+      <p>
+        Portfolio tracking and token trading work without extra compliance steps, but trading Kalshi markets
+        requires Kalshi KYC before those market orders can be executed.
+      </p>
     </>
   );
 }

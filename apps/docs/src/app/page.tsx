@@ -9,11 +9,13 @@ export default function DocsHome() {
       <h2>What you can do</h2>
       <ul>
         <li>Watch Kalshi and Polymarket signals in one feed</li>
+        <li>Browse both Kalshi and Polymarket markets from the same terminal</li>
         <li>Surface tokens matched to market keywords</li>
         <li>Buy YES or NO on markets (DFlow) or on Kalshi</li>
         <li>Buy tokens via Jupiter swaps</li>
         <li>Launch new meme tokens via Bags</li>
         <li>Sign in with Privy using Google, GitHub, or X</li>
+        <li>Provision embedded Solana and EVM wallets automatically after login</li>
       </ul>
       <h2>Getting access</h2>
       <p>

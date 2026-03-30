@@ -983,6 +983,20 @@ export default function PortfolioPage() {
             PnL, balances, prediction positions, token holdings & fee earnings in one place.
           </p>
         </div>
+        <div
+          className="mb-6 rounded-2xl border px-4 py-4 md:px-5"
+          style={{
+            borderColor: "color-mix(in srgb, var(--bags) 28%, var(--border-subtle))",
+            background: "linear-gradient(145deg, color-mix(in srgb, var(--bags) 8%, var(--bg-surface)) 0%, var(--bg-surface) 100%)",
+          }}
+        >
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--bags)" }}>
+            Kalshi trading note
+          </p>
+          <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+            You can view Siren positions and track portfolio exposure without extra steps, but placing Kalshi market trades requires passing Kalshi KYC and compliance checks before the venue will let those orders through.
+          </p>
+        </div>
         {!connected ? (
           <div
             className="rounded-2xl border p-10 md:p-14 text-center max-w-md mx-auto"
