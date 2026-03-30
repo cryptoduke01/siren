@@ -12,17 +12,17 @@ export function buildSolanaFundingConfig(amount = "25"): SolanaFundingConfig {
   return {
     chain: "solana:mainnet",
     amount,
-    asset: "native-currency",
+    asset: "USDC",
     defaultFundingMethod: "card",
     card: {
       preferredProvider: "moonpay",
     },
     uiConfig: {
       landing: {
-        title: "Add SOL",
+        title: "Add Solana USDC",
       },
-      receiveFundsTitle: "Add SOL to your Siren wallet",
-      receiveFundsSubtitle: "Use card, Apple Pay when available, or any supported funding path inside Privy.",
+      receiveFundsTitle: "Add Solana USDC to your Siren wallet",
+      receiveFundsSubtitle: "Use card, Apple Pay when available, or any supported funding path inside Privy. Keep a little SOL for network fees.",
     },
   };
 }

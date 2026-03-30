@@ -12,6 +12,7 @@ import { TopBar } from "@/components/TopBar";
 import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
+import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
 import { fetchEthPriceUsd, fetchSolPriceUsd, isFiniteNumber } from "@/lib/pricing";
 import type { MarketWithVelocity } from "@siren/shared";
@@ -19,10 +20,13 @@ import bs58 from "bs58";
 import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useFundWallet as useSolanaFundWallet } from "@privy-io/react-auth/solana";
 import { buildBaseFundingConfig, buildPolymarketFundingConfig, buildSolanaFundingConfig } from "@/lib/privyFunding";
+import { buildProofDeepLink, buildProofMessage, buildProofRedirectUri, encodeProofSignature } from "@/lib/dflowProof";
+import { formatProfileName, readProfileName, sanitizeProfileName, writeProfileName } from "@/lib/profilePrefs";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const LAMPORTS_PER_SOL = 1e9;
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
+const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 async function fetchSolPrice(): Promise<number> {
   return fetchSolPriceUsd(API_URL);
@@ -603,11 +607,14 @@ function SendSolModal({
     <div className="fixed inset-0 z-40 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
       <div className="w-full max-w-sm rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Send SOL</p>
+          <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Withdraw from Solana</p>
           <span className="rounded-full border px-2.5 py-1 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
-            Mainnet
+            Signed by Privy
           </span>
         </div>
+        <p className="mb-3 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+          Send SOL out of your Siren wallet. USDC trade balances stay separate from this gas wallet.
+        </p>
         <input type="text" placeholder="Recipient" value={toAddress} onChange={(e) => setToAddress(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-2 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
         <input type="number" step="0.001" min="0" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-1 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
         <p className={`font-body text-[11px] ${amt > 0 ? "mb-1" : "mb-3"}`} style={{ color: "var(--text-3)" }}>Balance: {balanceSol.toFixed(4)} SOL</p>
@@ -615,7 +622,7 @@ function SendSolModal({
         {!resultModal && error && <p className="text-xs mb-2" style={{ color: "var(--down)" }}>{error}</p>}
         {!resultModal && success && <p className="text-xs mb-2" style={{ color: "var(--bags)" }}>{success}</p>}
         <div className="flex gap-2">
-          <button type="button" onClick={handleSend} disabled={loading} className="flex-1 py-2 rounded-lg font-heading font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: "var(--bags)", color: "var(--accent-text)" }}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Send</button>
+          <button type="button" onClick={handleSend} disabled={loading} className="flex-1 py-2 rounded-lg font-heading font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: "var(--bags)", color: "var(--accent-text)" }}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Withdraw</button>
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Close</button>
         </div>
         {resultModal && (
@@ -650,10 +657,11 @@ function buildPredictionTokenInfo(
 }
 
 export default function PortfolioPage() {
-  const { connected, publicKey, signTransaction, evmAddress, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
+  const { connected, publicKey, signTransaction, signMessage, evmAddress, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
   const { connection } = useConnection();
   const queryClient = useQueryClient();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
+  const addToast = useToastStore((state) => state.addToast);
   const { fundWallet: fundEvmWallet } = useEvmFundWallet();
   const { fundWallet: fundSolanaWallet } = useSolanaFundWallet();
   const [fundingOpen, setFundingOpen] = useState(false);
@@ -671,6 +679,8 @@ export default function PortfolioPage() {
   const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
   const [tradeMetricsByMint, setTradeMetricsByMint] = useState<Record<string, TradeMetrics>>({});
+  const [profileNameDraft, setProfileNameDraft] = useState("");
+  const [proofFlowLoading, setProofFlowLoading] = useState(false);
 
   const loadBagsLaunches = () => {
     if (!publicKey) return;
@@ -754,6 +764,26 @@ export default function PortfolioPage() {
     queryFn: () => fetchPolymarketDepositAddresses(evmAddress!),
     enabled: fundingOpen && !!evmAddress,
     staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const {
+    data: dflowProofStatus,
+    isLoading: dflowProofLoading,
+    refetch: refetchDflowProofStatus,
+    isFetching: dflowProofFetching,
+  } = useQuery({
+    queryKey: ["dflow-proof-status", publicKey?.toBase58()],
+    queryFn: async () => {
+      if (!publicKey) return { verified: false };
+      const res = await fetch(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`, {
+        credentials: "omit",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || "Unable to check identity status.");
+      return (payload?.data ?? { verified: false }) as { verified: boolean };
+    },
+    enabled: !!publicKey,
+    staleTime: 60_000,
     retry: 1,
   });
 
@@ -943,6 +973,23 @@ export default function PortfolioPage() {
     });
   }
 
+  const profileIdentity = publicKey?.toBase58() ?? evmAddress ?? null;
+  const profileName = formatProfileName(profileNameDraft);
+  const proofVerified = !!dflowProofStatus?.verified;
+
+  useEffect(() => {
+    setProfileNameDraft(readProfileName(profileIdentity));
+  }, [profileIdentity]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !publicKey) return;
+    const handleFocus = () => {
+      void refetchDflowProofStatus();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [publicKey?.toBase58(), refetchDflowProofStatus]);
+
   const totalUsd =
     (balances?.mainnet ?? 0) * solPriceUsd +
     baseBalanceEth * ethPriceUsd +
@@ -952,6 +999,9 @@ export default function PortfolioPage() {
     );
   const solBalanceUsd = (balances?.mainnet ?? 0) * solPriceUsd;
   const baseBalanceUsd = baseBalanceEth * ethPriceUsd;
+  const solanaUsdcHolding = tokenHoldings.find((token) => token.mint === SOLANA_USDC_MINT);
+  const solanaUsdcBalance = solanaUsdcHolding?.balance ?? 0;
+  const pendingTaskCount = Number(!proofVerified && !!publicKey);
 
   const handleExportPrivateKey = async () => {
     hapticLight();
@@ -964,6 +1014,41 @@ export default function PortfolioPage() {
       setPrivateKeyError(error instanceof Error ? error.message : "Private key export is unavailable.");
     } finally {
       setExportingKey(false);
+    }
+  };
+
+  const handleSaveProfileName = () => {
+    hapticLight();
+    const saved = writeProfileName(profileIdentity, profileNameDraft);
+    setProfileNameDraft(saved);
+    addToast(saved ? `Cards will show ${formatProfileName(saved)}.` : "Card name cleared.", "success");
+  };
+
+  const openDflowProofFlow = async () => {
+    hapticLight();
+    if (!publicKey || !signMessage) {
+      addToast("Connect your Solana wallet to verify identity.", "error");
+      return;
+    }
+    try {
+      setProofFlowLoading(true);
+      const timestamp = Date.now();
+      const message = buildProofMessage(timestamp);
+      const signatureBytes = await signMessage(message);
+      const signature = encodeProofSignature(signatureBytes);
+      const redirectUri = buildProofRedirectUri(`${window.location.origin}/portfolio`, publicKey.toBase58());
+      const deepLink = buildProofDeepLink({
+        wallet: publicKey.toBase58(),
+        signature,
+        timestamp,
+        redirectUri,
+      });
+      window.open(deepLink, "_blank", "noopener,noreferrer");
+      addToast("Identity check opened in a new tab. Finish there, then come back here.", "success");
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : "Unable to open identity verification right now.", "error");
+    } finally {
+      setProofFlowLoading(false);
     }
   };
 
@@ -1128,7 +1213,7 @@ export default function PortfolioPage() {
           address: publicKey.toBase58(),
           options: buildSolanaFundingConfig(),
         });
-        setFundingMessage("Solana funding is open. Card and Apple Pay options appear inside Privy when they are available on your device and in your region.");
+        setFundingMessage("Solana USDC funding is open. Card and Apple Pay options appear inside Privy when they are available on your device and in your region.");
       } else {
         if (!evmAddress) throw new Error("Your embedded EVM wallet is still being created.");
         const result = await fundEvmWallet({
@@ -1237,10 +1322,13 @@ export default function PortfolioPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
-                    {predictionPositions.length} prediction positions
+                    {predictionPositions.length} active positions
                   </span>
                   <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
-                    {bagsLaunches.length} Bags launches tracked
+                    {pendingTaskCount} pending
+                  </span>
+                  <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                    History live
                   </span>
                 </div>
               </div>
@@ -1263,7 +1351,7 @@ export default function PortfolioPage() {
                     </p>
                   )}
                   <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                    Add funds with card when available, receive on Solana or Base, and keep a Polymarket-ready balance without leaving Siren.
+                    Keep a little SOL or ETH for gas, but fund USDC here when you want to trade inside Siren.
                   </p>
                   {walletVolumeSol > 0 && (
                     <p className="mt-3 font-body text-xs" style={{ color: "var(--text-2)" }}>
@@ -1319,7 +1407,7 @@ export default function PortfolioPage() {
                       style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
                     >
                       <Send className="w-3.5 h-3.5" />
-                      Send SOL
+                      Withdraw
                     </button>
                     {canExportPrivateKey && (
                       <button
@@ -1357,6 +1445,9 @@ export default function PortfolioPage() {
                         {shortenAddress(publicKey.toBase58())}
                       </p>
                     )}
+                    <p className="mt-3 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      Trading balance: <span className="font-mono" style={{ color: "var(--text-2)" }}>{solanaUsdcBalance.toFixed(2)} USDC</span>
+                    </p>
                   </div>
 
                   <div className="rounded-[22px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
@@ -1415,12 +1506,61 @@ export default function PortfolioPage() {
                   </div>
 
                   <div className="rounded-[22px] border p-4 sm:col-span-2 xl:col-span-1" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
-                    <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--bags)" }}>
-                      Kalshi note
-                    </p>
-                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                      Portfolio tracking is live immediately. Trading Kalshi markets still requires venue KYC and compliance approval before those orders can clear.
-                    </p>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: proofVerified ? "var(--up)" : "var(--bags)" }}>
+                          Identity
+                        </p>
+                        <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                          {proofVerified
+                            ? "Your wallet is verified for the Kalshi flow."
+                            : "Verify identity once to unlock Kalshi trades from inside Siren."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={proofVerified ? () => void refetchDflowProofStatus() : openDflowProofFlow}
+                        disabled={proofFlowLoading || dflowProofFetching || dflowProofLoading || !publicKey}
+                        className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px] disabled:opacity-60"
+                        style={{
+                          borderColor: proofVerified ? "color-mix(in srgb, var(--up) 36%, var(--border-subtle))" : "color-mix(in srgb, var(--bags) 32%, var(--border-subtle))",
+                          background: proofVerified ? "color-mix(in srgb, var(--up) 8%, transparent)" : "color-mix(in srgb, var(--bags) 10%, transparent)",
+                          color: proofVerified ? "var(--up)" : "var(--bags)",
+                        }}
+                      >
+                        {proofFlowLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        {proofVerified ? "Refresh status" : "Verify identity"}
+                      </button>
+                    </div>
+                    <div className="mt-4 rounded-xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--polymarket)" }}>
+                        Name on cards
+                      </p>
+                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        Shows up on your shared PnL and market cards.
+                      </p>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <input
+                          type="text"
+                          value={profileNameDraft}
+                          onChange={(event) => setProfileNameDraft(sanitizeProfileName(event.target.value))}
+                          placeholder="yourname"
+                          className="flex-1 rounded-xl border px-3 py-2 font-body text-sm"
+                          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveProfileName}
+                          className="rounded-xl border px-4 py-2 font-body text-xs font-medium"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                        >
+                          Save name
+                        </button>
+                      </div>
+                      <p className="mt-2 font-body text-[11px]" style={{ color: "var(--text-2)" }}>
+                        Preview: <span className="font-mono">{profileName}</span>
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1508,10 +1648,10 @@ export default function PortfolioPage() {
                             Add funds
                           </p>
                           <h3 className="mt-1 font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
-                            Card, Apple Pay, wallet deposit.
+                            Card, transfer, or receive.
                           </h3>
                           <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Privy handles card funding here. Apple Pay appears when MoonPay supports it on your device and in your region.
+                            Use card when it is available, top up from another wallet, or copy your receive address. Trades use USDC.
                           </p>
                         </div>
                         <button
@@ -1555,10 +1695,10 @@ export default function PortfolioPage() {
                             {fundingAction === "solana" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} /> : null}
                           </div>
                           <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                            Add SOL
+                            Add Solana USDC
                           </p>
                           <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-                            Buy SOL straight into your Siren Solana wallet.
+                            Top up Solana USDC for spot and Kalshi trades.
                           </p>
                         </button>
 
@@ -1576,7 +1716,7 @@ export default function PortfolioPage() {
                             {fundingAction === "base" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--polymarket)" }} /> : null}
                           </div>
                           <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                            Add Base ETH
+                            Add Base funds
                           </p>
                           <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
                             Top up your embedded EVM wallet for Base activity and transfers.
@@ -1939,10 +2079,10 @@ export default function PortfolioPage() {
                 </div>
                 <div>
                   <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                    Prediction positions
+                    Active positions
                   </h2>
                   <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    YES/NO shares from Kalshi (DFlow)
+                    Kalshi YES/NO shares you already hold
                   </p>
                 </div>
               </div>
@@ -1955,7 +2095,7 @@ export default function PortfolioPage() {
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="max-w-md">
                       <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-                        Prediction PnL
+                        Position PnL
                       </p>
                       <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                         Positions are marked from live YES probability, with YES and NO shares repriced to their current market odds.
@@ -1969,6 +2109,7 @@ export default function PortfolioPage() {
                       totalPnlPercent={predictionTotalPnlPercent}
                       positions={predictionPnlPositions}
                       walletAddress={publicKey?.toBase58() ?? null}
+                      displayName={profileName}
                       isLoading={marketsLoading || tokensLoading}
                       onSell={(position) => {
                         const info = tokenInfoByMint.get(position.mint ?? "");
@@ -2012,7 +2153,7 @@ export default function PortfolioPage() {
                   <div className="py-8 text-center">
                     <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-40" style={{ color: "var(--text-3)" }} />
                     <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
-                      No prediction positions yet
+                      No active positions yet
                     </p>
                     <p className="font-body text-xs mb-4" style={{ color: "var(--text-3)" }}>
                       Buy YES/NO shares from the Terminal to add positions here.
@@ -2425,11 +2566,11 @@ export default function PortfolioPage() {
               </div>
               <div className="min-w-0">
                 <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                  Transaction history
+                  History
                 </h2>
-                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                  For {publicKey ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}` : "your wallet"} — Helius
-                </p>
+                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                    For {publicKey ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}` : "your wallet"} — Helius
+                  </p>
               </div>
             </div>
             <div className="p-5">

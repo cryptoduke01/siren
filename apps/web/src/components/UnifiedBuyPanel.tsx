@@ -23,10 +23,12 @@ import {
   DFLOW_PROOF_PORTAL_URL,
 } from "@/lib/dflowProof";
 import { buildPolymarketFundingConfig } from "@/lib/privyFunding";
+import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
+const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
 const POLYMARKET_HOST = "https://clob.polymarket.com";
 const POLYGON_CHAIN_ID = 137;
@@ -121,6 +123,10 @@ function getFriendlyTradeError(message: string, fallback: string): string {
     return "Prediction market trading is not available in your jurisdiction right now. Use the Kalshi link instead.";
   }
   return fallback;
+}
+
+function logTradeFailure(context: Record<string, unknown>) {
+  console.warn("[siren-trade-failure]", context);
 }
 
 type DflowAsyncStatus = {
@@ -356,6 +362,7 @@ export function UnifiedBuyPanel() {
   };
   const [tradePnLModalOpen, setTradePnLModalOpen] = useState(false);
   const [tradePnLData, setTradePnLData] = useState<TradePnLCardModel | null>(null);
+  const [cardDisplayName, setCardDisplayName] = useState("@siren");
   const isPredictionToken = selectedToken?.assetType === "prediction";
   const selectedMarketSource = selectedMarket?.source;
   const isKalshiMarketTrade = buyPanelMode === "market" && selectedMarketSource === "kalshi";
@@ -406,6 +413,20 @@ export function UnifiedBuyPanel() {
     retry: 1,
   });
   const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
+  const { data: solanaUsdcBalance = 0 } = useQuery({
+    queryKey: ["solana-usdc-balance", publicKey?.toBase58()],
+    queryFn: async () => {
+      if (!publicKey) return 0;
+      const accounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+        mint: new PublicKey(SOLANA_USDC_MINT),
+      });
+      const tokenAmount = (accounts.value[0]?.account.data as { parsed?: { info?: { tokenAmount?: { uiAmount?: number } } } })?.parsed?.info?.tokenAmount?.uiAmount;
+      return Number.isFinite(tokenAmount) ? tokenAmount ?? 0 : 0;
+    },
+    enabled: !!publicKey,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
@@ -447,8 +468,8 @@ export function UnifiedBuyPanel() {
   const selectedMarketMint = marketSide === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
   const selectedPolymarketTokenId = marketSide === "yes" ? selectedMarket?.yes_token_id : selectedMarket?.no_token_id;
   const selectedMarketInstrumentId = selectedMarket?.source === "polymarket" ? selectedPolymarketTokenId : selectedMarketMint;
-  const marketSpendAssetLabel = isPolymarketTrade ? "USDC" : "SOL";
-  const marketSpendPlaceholder = isPolymarketTrade ? "10.00" : "0.05";
+  const marketSpendAssetLabel = "USDC";
+  const marketSpendPlaceholder = "10.00";
   const parsedBuySolAmount = parsePositiveNumber(deferredSolAmount);
   const parsedSellTokenAmount = parsePositiveNumber(deferredSellAmount);
   const predictionTradeBlocked = isKalshiMarketTrade && !!predictionEligibility?.blocked;
@@ -456,14 +477,7 @@ export function UnifiedBuyPanel() {
     predictionEligibility?.reason ?? "Prediction market trading is not available in your jurisdiction right now.";
   const selectedTokenPriceUsd =
     typeof selectedToken?.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
-  const tradeNotionalUsd =
-    parsedBuySolAmount != null
-      ? isPolymarketTrade
-        ? parsedBuySolAmount
-        : solPriceUsd > 0
-          ? parsedBuySolAmount * solPriceUsd
-          : null
-      : null;
+  const tradeNotionalUsd = parsedBuySolAmount != null ? parsedBuySolAmount : null;
   const estimatedContracts =
     selectedMarketPriceUsd && tradeNotionalUsd != null && tradeNotionalUsd > 0
       ? tradeNotionalUsd / selectedMarketPriceUsd
@@ -480,13 +494,16 @@ export function UnifiedBuyPanel() {
     tokenBuyApproxReceive != null ? tokenBuyApproxReceive * (1 - slippageBps / 10_000) : null;
   const tokenSellApproxUsd =
     sellMode && parsedSellTokenAmount != null && selectedTokenPriceUsd != null ? parsedSellTokenAmount * selectedTokenPriceUsd : null;
-  const tokenSellApproxSol =
-    tokenSellApproxUsd != null && solPriceUsd > 0 ? tokenSellApproxUsd / solPriceUsd : null;
-  const tokenSellMinReceiveSol =
-    tokenSellApproxSol != null ? tokenSellApproxSol * (1 - slippageBps / 10_000) : null;
+  const tokenSellMinReceiveUsd =
+    tokenSellApproxUsd != null ? tokenSellApproxUsd * (1 - slippageBps / 10_000) : null;
   const tokenRouteLabel = isPredictionToken ? "DFlow" : isBagsMint(selectedToken?.mint) ? "Bags" : "Jupiter";
   const verificationRequired = isWalletVerificationError(error);
   const proofVerified = !!dflowProofStatus?.verified;
+
+  useEffect(() => {
+    const identity = publicKey?.toBase58() ?? evmAddress ?? null;
+    setCardDisplayName(formatProfileName(readProfileName(identity)));
+  }, [publicKey?.toBase58(), evmAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -712,8 +729,8 @@ export function UnifiedBuyPanel() {
     setError(null);
     setSuccess(null);
     setLoading(true);
+    const isSell = !!sellMode;
     try {
-      const isSell = !!sellMode;
       let inputMint: string;
       let outputMint: string;
       let amount: string;
@@ -731,18 +748,23 @@ export function UnifiedBuyPanel() {
         const decimals = await getMintDecimals(connection, selectedToken.mint);
         amount = parseUnitsToBigInt(amountStr, decimals).toString();
         inputMint = selectedToken.mint;
-        outputMint = NATIVE_SOL_MINT;
+        outputMint = SOLANA_USDC_MINT;
       } else {
         const amountStr = solAmount?.trim() || "";
         amountNum = parseFloat(amountStr);
         if (!amountStr || amountNum <= 0 || !Number.isFinite(amountNum)) {
-          setError("Enter a valid SOL amount (e.g. 0.01).");
+          setError("Enter a valid USDC amount (e.g. 10.00).");
           setLoading(false);
           return;
         }
-        amount = String(Math.floor(amountNum * LAMPORTS_PER_SOL));
-        inputMint = NATIVE_SOL_MINT;
+        amount = parseUnitsToBigInt(amountStr, 6).toString();
+        inputMint = SOLANA_USDC_MINT;
         outputMint = selectedToken.mint;
+        if (solanaUsdcBalance < amountNum) {
+          setError(`Not enough Solana USDC. You have ${formatTokenAmount(solanaUsdcBalance, 2)} USDC ready to trade.`);
+          setLoading(false);
+          return;
+        }
       }
 
       const tokenPriceUsd = typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
@@ -752,9 +774,9 @@ export function UnifiedBuyPanel() {
       // For the Trade PnL card (buy flows)
       let tokenAmountForPnL: number | null = null;
       let boughtUsdForPnL: number | null = null;
-      if (!isSell && tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0 && Number.isFinite(amountNum)) {
-        boughtUsdForPnL = amountNum * solPriceUsd;
-        tokenAmountForPnL = (amountNum * solPriceUsd) / tokenPriceUsd;
+      if (!isSell && tokenPriceUsd != null && tokenPriceUsd > 0 && Number.isFinite(amountNum)) {
+        boughtUsdForPnL = amountNum;
+        tokenAmountForPnL = amountNum / tokenPriceUsd;
       }
 
       const res = await fetch(`${API_URL}/api/swap/order`, {
@@ -801,9 +823,9 @@ export function UnifiedBuyPanel() {
             volumeSol = amountNum * approxSolPerToken;
           }
         } else {
-          volumeSol = amountNum;
-          if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
-            tokenAmountApprox = (amountNum * solPriceUsd) / tokenPriceUsd;
+          volumeSol = solPriceUsd > 0 ? amountNum / solPriceUsd : null;
+          if (tokenPriceUsd != null && tokenPriceUsd > 0) {
+            tokenAmountApprox = amountNum / tokenPriceUsd;
           }
         }
 
@@ -877,6 +899,16 @@ export function UnifiedBuyPanel() {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const friendly = getFriendlyTradeError(msg, "Swap failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
+      logTradeFailure({
+        venue: tokenRouteLabel,
+        mode: isSell ? "sell" : "buy",
+        tokenMint: selectedToken?.mint,
+        inputAsset: isSell ? tokenDisplaySymbol : "USDC",
+        outputAsset: isSell ? "USDC" : tokenDisplaySymbol,
+        amount: isSell ? sellAmount : solAmount,
+        wallet: publicKey?.toBase58(),
+        message: msg,
+      });
       setError(friendly);
       setResultModal({
         type: "error",
@@ -1079,6 +1111,16 @@ export function UnifiedBuyPanel() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Polymarket trade failed";
       const friendly = getFriendlyTradeError(msg, "Polymarket trade failed. Please try again.");
+      logTradeFailure({
+        venue: "polymarket",
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "Polygon USDC",
+        amount: solAmount,
+        wallet: evmAddress,
+        message: msg,
+      });
       setError(friendly);
       setResultModal({
         type: "error",
@@ -1110,7 +1152,11 @@ export function UnifiedBuyPanel() {
 
     const amountNum = parseFloat(solAmount?.trim() || "");
     if (!solAmount.trim() || amountNum <= 0 || !Number.isFinite(amountNum)) {
-      setError("Enter a valid SOL amount (e.g. 0.05).");
+      setError("Enter a valid USDC amount (e.g. 10.00).");
+      return;
+    }
+    if (solanaUsdcBalance < amountNum) {
+      setError(`Not enough Solana USDC. You have ${formatTokenAmount(solanaUsdcBalance, 2)} USDC ready to trade.`);
       return;
     }
 
@@ -1135,13 +1181,13 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
     setLoading(true);
     try {
-      const amount = String(Math.floor(amountNum * LAMPORTS_PER_SOL));
+      const amount = parseUnitsToBigInt(solAmount.trim(), 6).toString();
       const outcomeLabel = marketSide.toUpperCase();
       const outcomeSymbol = `${outcomeLabel} ${selectedMarket.ticker}`;
       const outcomeName = `${selectedMarket.title} · ${outcomeLabel}`;
 
       const qs = new URLSearchParams({
-        inputMint: NATIVE_SOL_MINT,
+        inputMint: SOLANA_USDC_MINT,
         outputMint: selectedMarketMint,
         amount,
         userPublicKey: publicKey.toBase58(),
@@ -1168,11 +1214,11 @@ export function UnifiedBuyPanel() {
         throw new Error(`DFlow order ${asyncStatus.status}.`);
       }
 
-      const tokenAmountApprox = solPriceUsd > 0 ? (amountNum * solPriceUsd) / marketPriceUsd : null;
+      const tokenAmountApprox = amountNum / marketPriceUsd;
       recordLocalTrade({
         mint: selectedMarketMint,
         side: "buy",
-        volumeSol: amountNum,
+        volumeSol: solPriceUsd > 0 ? amountNum / solPriceUsd : null,
         tokenAmount: tokenAmountApprox,
         priceUsd: marketPriceUsd,
         tokenName: outcomeName,
@@ -1219,6 +1265,16 @@ export function UnifiedBuyPanel() {
       const msg = e instanceof Error ? e.message : "Prediction trade failed";
       const friendly = getFriendlyTradeError(msg, "Prediction market trade failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
+      logTradeFailure({
+        venue: selectedMarket.source,
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "USDC",
+        amount: solAmount,
+        wallet: publicKey?.toBase58(),
+        message: msg,
+      });
       setError(friendly);
       setResultModal({
         type: "error",
@@ -1278,7 +1334,7 @@ export function UnifiedBuyPanel() {
                     <p className="font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
                         ? "Pick YES or NO, enter a USDC amount, and Siren will route the order through your embedded EVM wallet."
-                        : "Pick YES or NO, enter SOL, and Siren will build the order for you."}
+                        : "Pick YES or NO, enter Solana USDC, and Siren will build the order for you."}
                     </p>
 
                     <div className="mt-4 grid grid-cols-2 gap-2">
@@ -1506,7 +1562,7 @@ export function UnifiedBuyPanel() {
                             Polymarket wallet
                           </p>
                           <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Siren uses your embedded EVM wallet for Polymarket orders. Fund it with Polygon USDC here, or deposit from Solana and let the venue convert it for trading.
+                            Siren uses your embedded EVM wallet for Polymarket orders. Fund it with Polygon USDC here, or deposit from Solana or Base and let the venue convert it for trading.
                           </p>
                           <button
                             type="button"
@@ -1657,12 +1713,12 @@ export function UnifiedBuyPanel() {
                         ) : (
                           <>
                             <div className="mt-3">
-                              <label className="text-xs text-[var(--text-secondary)] block mb-1">SOL amount (enter for each buy)</label>
+                              <label className="text-xs text-[var(--text-secondary)] block mb-1">USDC amount (enter for each buy)</label>
                               <input
                                 type="number"
-                                step="0.001"
-                                min="0.001"
-                                placeholder="0.01"
+                                step="0.01"
+                                min="1"
+                                placeholder="10.00"
                                 value={solAmount}
                                 onChange={(e) => setSolAmount(e.target.value)}
                                 className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
@@ -1678,7 +1734,7 @@ export function UnifiedBuyPanel() {
                                     {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
                                   </p>
                                   <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
-                                    {parsedBuySolAmount != null ? `${formatTokenAmount(parsedBuySolAmount, 4)} SOL` : "Enter a SOL amount"}
+                                    {parsedBuySolAmount != null ? `${formatTokenAmount(parsedBuySolAmount, 2)} USDC` : "Enter a USDC amount"}
                                   </p>
                                 </div>
                                 <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
@@ -1701,7 +1757,7 @@ export function UnifiedBuyPanel() {
                                 </div>
                               </div>
                               <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                                Approximate preview from the latest token price. Final route quote is built at submit time.
+                                Approximate preview from the latest token price. Siren buys from Solana USDC and builds the final quote at submit time.
                               </p>
                             </div>
                             <button
@@ -1771,7 +1827,7 @@ export function UnifiedBuyPanel() {
                             <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
                               <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated receive</p>
                               <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                {tokenSellApproxSol != null ? `${formatTokenAmount(tokenSellApproxSol, 4)} SOL` : "—"}
+                                {tokenSellApproxUsd != null ? `${formatTokenAmount(tokenSellApproxUsd, 2)} USDC` : "—"}
                               </p>
                               <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
                                 {tokenSellApproxUsd != null ? formatUsd(tokenSellApproxUsd, 2) : "—"}
@@ -1780,7 +1836,7 @@ export function UnifiedBuyPanel() {
                             <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
                               <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Min receive @ slippage</p>
                               <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                {tokenSellMinReceiveSol != null ? `${formatTokenAmount(tokenSellMinReceiveSol, 4)} SOL` : "—"}
+                                {tokenSellMinReceiveUsd != null ? `${formatTokenAmount(tokenSellMinReceiveUsd, 2)} USDC` : "—"}
                               </p>
                             </div>
                             <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
@@ -1805,7 +1861,7 @@ export function UnifiedBuyPanel() {
                               <Loader2 className="w-4 h-4 animate-spin" /> Selling...
                             </>
                           ) : (
-                            `${isPredictionToken ? "Close" : "Sell"} ${tokenDisplayName} → SOL`
+                            `${isPredictionToken ? "Close" : "Sell"} ${tokenDisplayName} → USDC`
                           )}
                         </button>
                       </>
@@ -1815,7 +1871,7 @@ export function UnifiedBuyPanel() {
                       {isPredictionToken ? (
                         <div className="rounded-lg border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
                           <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Prediction positions are marked from the live YES probability. Closing routes the outcome token back to SOL through DFlow.
+                            Prediction positions are marked from the live YES probability. Closing routes the outcome token back to Solana USDC through DFlow.
                           </p>
                         </div>
                       ) : (
@@ -1960,7 +2016,7 @@ export function UnifiedBuyPanel() {
               )}
               {!resultModal && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
               <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">
-                Use market mode for YES or NO shares and token mode for linked coins. Kalshi trades may need a one-time DFlow wallet verification first.
+                Use market mode for YES or NO shares and token mode for linked coins. Siren spends USDC for both Solana and Polymarket trades, and Kalshi may need a one-time DFlow wallet verification first.
               </p>
             </div>
           </motion.div>
@@ -2004,6 +2060,7 @@ export function UnifiedBuyPanel() {
               percent={tradePnLData.percent}
               kalshiMarket={tradePnLData.kalshiMarket}
               wallet={tradePnLData.wallet}
+              displayName={cardDisplayName}
               executedAt={tradePnLData.executedAt}
             />
           </div>

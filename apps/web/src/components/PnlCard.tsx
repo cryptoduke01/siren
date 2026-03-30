@@ -23,6 +23,7 @@ interface PnlCardProps {
   totalPnlPercent: number | null;
   positions: PnlPosition[];
   walletAddress?: string | null;
+  displayName?: string | null;
   isLoading?: boolean;
   /** Called when user clicks sell for a position. Opens buy panel in sell mode. */
   onSell?: (position: PnlPosition) => void;
@@ -58,6 +59,7 @@ export function PnlCard({
   totalPnlPercent,
   positions,
   walletAddress,
+  displayName,
   isLoading,
   onSell,
 }: PnlCardProps) {
@@ -270,7 +272,14 @@ export function PnlCard({
             </div>
 
             <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-              <img src="/brand/mark.svg" alt="Siren" className="h-6 w-auto opacity-95 md:h-7" />
+              <div className="min-w-0">
+                <img src="/brand/mark.svg" alt="Siren" className="h-6 w-auto opacity-95 md:h-7" />
+                {displayName && (
+                  <p className="mt-1 font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                    {displayName}
+                  </p>
+                )}
+              </div>
               <span className="font-mono text-xs font-medium md:text-sm" style={{ color: accent }}>
                 onsiren.xyz
               </span>

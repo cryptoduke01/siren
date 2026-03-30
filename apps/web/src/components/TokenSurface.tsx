@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toPng } from "html-to-image";
-import { Copy, Check, ArrowUpRight, ExternalLink, Activity, Share2, Download, Loader2 } from "lucide-react";
+import { Copy, Check, ArrowUpRight, ExternalLink, Share2, Download, Loader2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { useSirenStore, type SelectedMarket } from "@/store/useSirenStore";
@@ -15,6 +15,7 @@ import { TokenAlertButton } from "./AlertButton";
 import { MarketAlertButton } from "./AlertButton";
 import { LaunchpadBadge } from "./LaunchpadBadge";
 import { hapticLight } from "@/lib/haptics";
+import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
 import type { PredictionSignal, SurfacedToken } from "@siren/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -128,6 +129,106 @@ function getSelectedMarketUrl(market: SelectedMarket): string {
   return market.market_url || market.kalshi_url || (market.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com");
 }
 
+function CompactMarketStat({
+  label,
+  value,
+  tone = "var(--text-1)",
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div className="rounded-2xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+      <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+        {label}
+      </p>
+      <p className="mt-2 font-mono text-lg font-semibold leading-none tabular-nums" style={{ color: tone }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function MarketShareExportCard({
+  market,
+  displayName,
+  exportBrandLabel,
+}: {
+  market: SelectedMarket;
+  displayName: string;
+  exportBrandLabel: string;
+}) {
+  return (
+    <div
+      data-market-card-export="true"
+      className="w-[760px] overflow-hidden rounded-[32px] border p-8"
+      style={{
+        borderColor: "color-mix(in srgb, var(--accent) 28%, var(--border-subtle))",
+        background:
+          "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 42%), radial-gradient(circle at bottom right, color-mix(in srgb, var(--polymarket) 10%, transparent), transparent 40%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+        fontFamily: "Inter, sans-serif",
+      }}
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+            Selected market
+          </p>
+          <span
+            className="inline-flex items-center rounded-full border px-3 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+            style={{
+              borderColor: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 34%, transparent)" : "color-mix(in srgb, var(--polymarket) 34%, transparent)",
+              background: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 12%, transparent)" : "color-mix(in srgb, var(--polymarket) 12%, transparent)",
+              color: market.source === "kalshi" ? "var(--kalshi)" : "var(--polymarket)",
+            }}
+          >
+            {getSelectedMarketSourceLabel(market)}
+          </span>
+        </div>
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+          {exportBrandLabel}
+        </span>
+      </div>
+
+      <h2
+        className="mt-8 max-w-[18ch] font-heading text-[58px] font-bold leading-[0.9] tracking-[-0.05em]"
+        style={{ color: "var(--text-1)", fontFamily: '"Clash Display", sans-serif' }}
+      >
+        {market.title}
+      </h2>
+
+      <p className="mt-5 max-w-[40ch] font-body text-lg leading-relaxed" style={{ color: "var(--text-2)" }}>
+        Trade it inside Siren, then use the matched token list if you want extra exposure.
+      </p>
+
+      <div className="mt-8 grid grid-cols-2 gap-3">
+        <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--bags)" />
+        <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
+        <CompactMarketStat label="Move 1h" value={`${market.velocity_1h >= 0 ? "+" : ""}${market.velocity_1h.toFixed(1)}%`} tone={market.velocity_1h >= 0 ? "var(--up)" : "var(--down)"} />
+        <CompactMarketStat label="Closes" value={formatTimestampLabel(market.close_time)} />
+      </div>
+
+      <div className="mt-10 flex items-end justify-between gap-4 border-t pt-5" style={{ borderColor: "var(--border-subtle)" }}>
+        <div>
+          <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+            Shared by
+          </p>
+          <p className="mt-1 font-heading text-xl font-semibold" style={{ color: "var(--text-1)", fontFamily: '"Clash Display", sans-serif' }}>
+            {displayName}
+          </p>
+        </div>
+        <div className="text-right">
+          <img src="/brand/mark.svg" alt="Siren" className="ml-auto h-7 w-auto" />
+          <p className="mt-2 font-mono text-sm" style={{ color: "var(--accent)" }}>
+            onsiren.xyz
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PredictionMarketFocusPanel({
   market,
   onPrimaryAction,
@@ -136,7 +237,7 @@ function PredictionMarketFocusPanel({
   onShareCard,
   onDownloadCard,
   exportingCard,
-  exportBrandLabel,
+  displayName,
 }: {
   market: SelectedMarket;
   onPrimaryAction: () => void;
@@ -145,12 +246,10 @@ function PredictionMarketFocusPanel({
   onShareCard: () => void;
   onDownloadCard: () => void;
   exportingCard: boolean;
-  exportBrandLabel: string;
+  displayName: string;
 }) {
   const { data: marketActivity } = useMarketActivity(market.source === "kalshi" ? market.ticker : undefined);
-  const platformLabel = getSelectedMarketVenueLabel(market);
   const canTradeInSiren = canTradeSelectedMarketInSiren(market);
-  const exportRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <section
@@ -160,287 +259,114 @@ function PredictionMarketFocusPanel({
         background:
           "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
       }}
-      >
-        <div
-          ref={exportRef}
-          data-market-card-export="true"
-        className="border-b px-4 py-4 sm:px-5 sm:py-5"
-        style={{ borderColor: "var(--border-subtle)" }}
-      >
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(250px,300px)] xl:items-start">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-                  Selected market
-                </p>
-                <span
-                  className="inline-flex items-center rounded-full border px-2.5 py-1 font-body text-[10px] font-medium uppercase tracking-[0.12em]"
-                  style={{
-                    borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)",
-                    background: "color-mix(in srgb, var(--accent) 10%, transparent)",
-                    color: "var(--accent)",
-                  }}
-                >
-                  {getSelectedMarketSourceLabel(market)}
-                </span>
-                <span
-                  className="inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium"
-                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}
-                  title={market.ticker}
-                >
-                  {market.ticker}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={onShareCard}
-                  data-export-ignore="true"
-                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-medium"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
-                >
-                  {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
-                  {exportingCard ? "Preparing..." : "Share card"}
-                </button>
-                <button
-                  type="button"
-                  onClick={onDownloadCard}
-                  data-export-ignore="true"
-                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-medium"
-                  style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-                >
-                  {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                  Save
-                </button>
-                <div
-                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
-                  style={{
-                    borderColor: "var(--border-subtle)",
-                    background: "var(--bg-surface)",
-                    color: "var(--text-2)",
-                  }}
-                >
-                  {exportBrandLabel}
-                </div>
-              </div>
-            </div>
-
-            <h2
-              className="mt-4 max-w-[24ch] break-words font-heading text-[clamp(1.2rem,2.25vw,2rem)] font-bold leading-[0.96] tracking-[-0.04em]"
-              style={{ color: "var(--text-1)" }}
-            >
-              {market.title}
-            </h2>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span
-                className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]"
-                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
-              >
-                Closes {formatTimestampLabel(market.close_time)}
-              </span>
-              <span
-                className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]"
-                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
-              >
-                YES probability {formatPercent(market.probability)}
-              </span>
-              <span
-                className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]"
-                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
-              >
-                Venue {platformLabel}
-              </span>
-            </div>
-
-            {market.subtitle && (
-              <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                {market.subtitle}
+    >
+      <div className="grid gap-5 px-4 py-4 sm:px-5 sm:py-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                Selected market
               </p>
-            )}
-            <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              {market.source === "kalshi"
-                ? "Trade the market here, then use the matched token list below if you want extra exposure."
-                : "Trade this Polymarket market from inside Siren, then use the matched tokens below if you want extra exposure."}
-            </p>
-          </div>
-
-          <div
-            className="rounded-[20px] border p-3.5 xl:self-stretch"
-            style={{
-              borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
-              background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), var(--bg-surface))",
-            }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                  Quick view
-                </p>
-                <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Price, speed, and liquidity at a glance.
-                </p>
-              </div>
-              <div
-                className="inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em]"
+              <span
+                className="inline-flex items-center rounded-full border px-3 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
                 style={{
-                  borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)",
-                  background: "color-mix(in srgb, var(--accent) 10%, transparent)",
-                  color: "var(--accent)",
+                  borderColor: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 34%, transparent)" : "color-mix(in srgb, var(--polymarket) 34%, transparent)",
+                  background: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 12%, transparent)" : "color-mix(in srgb, var(--polymarket) 12%, transparent)",
+                  color: market.source === "kalshi" ? "var(--kalshi)" : "var(--polymarket)",
                 }}
               >
-                Live
-              </div>
+                {getSelectedMarketSourceLabel(market)}
+              </span>
             </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                  YES
-                </p>
-                <p className="mt-2 font-mono text-[1.8rem] font-semibold leading-none tabular-nums" style={{ color: "var(--bags)" }}>
-                  {formatCentsFromProbability(market.probability, "yes")}
-                </p>
-              </div>
-              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                  NO
-                </p>
-                <p className="mt-2 font-mono text-[1.8rem] font-semibold leading-none tabular-nums" style={{ color: "var(--down)" }}>
-                  {formatCentsFromProbability(market.probability, "no")}
-                </p>
-              </div>
-              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                  1h velocity
-                </p>
-                <p
-                  className="mt-2 font-mono text-xl font-semibold leading-none tabular-nums"
-                  style={{ color: market.velocity_1h >= 0 ? "var(--up)" : "var(--down)" }}
-                >
-                  {market.velocity_1h >= 0 ? "+" : ""}
-                  {market.velocity_1h.toFixed(1)}%
-                </p>
-              </div>
-              <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                  Liquidity
-                </p>
-                <p className="mt-2 font-mono text-xl font-semibold leading-none tabular-nums" style={{ color: "var(--text-1)" }}>
-                  {formatCompactNumber(market.liquidity, 1)}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={onPrimaryAction}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
-                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                onClick={onShareCard}
+                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-medium"
+                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
               >
-                {canTradeInSiren ? "Trade this market" : "View matched tokens"}
-                <ArrowUpRight className="h-4 w-4" />
+                {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
+                Share
               </button>
-              <div className={`grid gap-2 ${canTradeInSiren ? "sm:grid-cols-2 2xl:grid-cols-1" : ""}`}>
-                <button
-                  type="button"
-                  onClick={onBrowseTokens}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  View matched tokens
-                </button>
-                {canTradeInSiren ? (
-                  <button
-                    type="button"
-                    onClick={onOpenVenue}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                    style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-                  >
-                    View market page
-                    <ExternalLink className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onOpenVenue}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                    style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-                  >
-                    View market page
-                    <ExternalLink className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={onDownloadCard}
+                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-medium"
+                style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+              >
+                {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                Download
+              </button>
             </div>
           </div>
-        </div>
-        <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3" style={{ borderColor: "var(--border-subtle)" }}>
-          <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Shareable market card
-          </span>
-          <span className="font-heading text-sm font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-1)" }}>
-            {exportBrandLabel}
-          </span>
-        </div>
-      </div>
 
-      <div className="grid gap-3 px-4 py-4 sm:px-5 sm:grid-cols-2 2xl:grid-cols-4">
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            Lifetime volume
-          </p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {formatCompactNumber(market.volume, 1)}
-          </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Lifetime filled contracts in this market
-          </p>
-        </div>
+          <h2
+            className="mt-4 max-w-[18ch] break-words font-heading text-[clamp(1.15rem,2vw,1.8rem)] font-bold leading-[0.95] tracking-[-0.045em]"
+            style={{ color: "var(--text-1)" }}
+          >
+            {market.title}
+          </h2>
 
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            {market.source === "kalshi" ? "Volume 24h" : "Liquidity"}
+          <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+            Trade it inside Siren, then use the matched token list below if you want extra exposure.
           </p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {formatCompactNumber(market.source === "kalshi" ? market.volume_24h : market.liquidity, 1)}
-          </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            {market.source === "kalshi"
-              ? "Contracts filled across the last 24 hours"
-              : "Venue liquidity on the active order book"}
-          </p>
-        </div>
 
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            {market.source === "kalshi" ? "Trades 24h" : "Venue"}
-          </p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {market.source === "kalshi" ? formatCompactNumber(marketActivity?.recent_trades_24h, 0) : platformLabel}
-          </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            {market.source === "kalshi" ? "Public fills, not unique traders" : "Pulled from live Polymarket market data"}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <div className="flex items-center justify-between gap-2">
-            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-              {market.source === "kalshi" ? "Open interest" : "Closes"}
-            </p>
-            <Activity className="h-4 w-4" style={{ color: "var(--text-3)" }} />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--bags)" />
+            <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
+            <CompactMarketStat label="Closes" value={formatTimestampLabel(market.close_time)} />
+            <CompactMarketStat
+              label={market.source === "kalshi" ? "Trades 24h" : "Liquidity"}
+              value={
+                market.source === "kalshi"
+                  ? formatCompactNumber(marketActivity?.recent_trades_24h, 0)
+                  : formatCompactNumber(market.liquidity, 1)
+              }
+            />
           </div>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {market.source === "kalshi" ? formatCompactNumber(market.open_interest, 1) : formatTimestampLabel(market.close_time)}
+        </div>
+
+        <div
+          className="rounded-[20px] border p-4"
+          style={{
+            borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
+            background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), var(--bg-surface))",
+          }}
+        >
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+            Quick actions
           </p>
-          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            {market.source === "kalshi"
-              ? "Open contracts still exposed to resolution"
-              : "Expected market close from the venue schedule"}
+          <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+            Shared as {displayName}. Venue page stays optional.
           </p>
+
+          <div className="mt-4 space-y-2">
+            <button
+              type="button"
+              onClick={onPrimaryAction}
+              className="inline-flex w-full items-center justify-center rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
+              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+            >
+              {canTradeInSiren ? "Trade in Siren" : "View matched tokens"}
+            </button>
+            <button
+              type="button"
+              onClick={onBrowseTokens}
+              className="inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+            >
+              Matched tokens
+            </button>
+            <button
+              type="button"
+              onClick={onOpenVenue}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+              style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+            >
+              Venue page
+              <ExternalLink className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -600,13 +526,15 @@ function SignalNarrativePanel({
 
 export function TokenSurface() {
   const { selectedMarket, selectedSignal, setBuyPanelOpen } = useSirenStore();
-  const { publicKey } = useSirenWallet();
+  const { publicKey, evmAddress } = useSirenWallet();
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [exportingCard, setExportingCard] = useState(false);
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
+  const [cardDisplayName, setCardDisplayName] = useState("@siren");
   const [launchpadFilter, setLaunchpadFilter] = useState<"all" | "bags" | "pump" | "bonk" | "moonshot">("all");
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const shareCardRef = useRef<HTMLDivElement | null>(null);
   const tokenSectionRef = useRef<HTMLDivElement | null>(null);
 
   const searchQuery = searchInput.trim();
@@ -646,6 +574,11 @@ export function TokenSurface() {
     surfaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [selectedMarket?.ticker, selectedSignal?.id]);
 
+  useEffect(() => {
+    const identity = publicKey?.toBase58() ?? evmAddress ?? null;
+    setCardDisplayName(formatProfileName(readProfileName(identity)));
+  }, [publicKey?.toBase58(), evmAddress]);
+
   const tokenRows = selectedSignal ? selectedSignal.matchedTokens : tokens;
 
   const filteredTokens = useMemo(() => {
@@ -666,7 +599,7 @@ export function TokenSurface() {
   const exportSelectedMarket = async (mode: "share" | "download") => {
     if (!selectedMarket || typeof window === "undefined") return;
     try {
-      const cardNode = surfaceRef.current?.querySelector<HTMLElement>("[data-market-card-export='true']");
+      const cardNode = shareCardRef.current;
       if (!cardNode) {
         addToast("Card export is not ready yet. Try again in a second.", "error");
         return;
@@ -725,6 +658,16 @@ export function TokenSurface() {
       className="flex flex-col h-full min-h-0 min-w-0 p-4 md:p-6 overflow-y-auto overflow-x-hidden"
       style={{ background: "var(--bg-void)" }}
     >
+      {selectedMarket && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed left-[-9999px] top-0 opacity-0"
+        >
+          <div ref={shareCardRef}>
+            <MarketShareExportCard market={selectedMarket} displayName={cardDisplayName} exportBrandLabel="onsiren.xyz" />
+          </div>
+        </div>
+      )}
       {selectedMarket ? (
         <PredictionMarketFocusPanel
           market={selectedMarket}
@@ -747,7 +690,7 @@ export function TokenSurface() {
           onShareCard={() => exportSelectedMarket("share")}
           onDownloadCard={() => exportSelectedMarket("download")}
           exportingCard={exportingCard}
-          exportBrandLabel="onsiren.xyz"
+          displayName={cardDisplayName}
         />
       ) : selectedSignal ? (
         <SignalNarrativePanel
