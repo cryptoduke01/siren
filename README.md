@@ -1,19 +1,19 @@
 # Siren
 
-Event-driven meme token terminal on Solana. Siren watches Kalshi and Polymarket in parallel, detects fast prediction-market moves, surfaces matched Solana meme tokens, and keeps token execution in one UI.
+Siren turns live prediction market moves into simple token ideas and fast trades. It watches Kalshi and Polymarket, finds matching Solana tokens, and keeps the next step clear.
 
 ## What Siren Does
 
-Siren connects prediction market data from Kalshi and Polymarket with meme tokens on Solana (via Bags and DexScreener). You can:
+Siren connects prediction market data from Kalshi and Polymarket with meme tokens on Solana using Bags and DexScreener. You can:
 
 - Watch Kalshi and Polymarket signals in one ranked feed
-- Browse Kalshi prediction markets with live probability and velocity
-- Surface tokens matched to market keywords (DexScreener search)
-- Buy YES or NO on markets in-app (DFlow) or on Kalshi
+- Browse prediction markets with live probability and movement
+- See tokens matched to market questions
+- Trade Kalshi YES or NO in-app through DFlow
 - Buy tokens via Jupiter swaps
 - Launch new meme tokens via Bags
 - Sign in with Privy using Google, GitHub, or X and get embedded Solana + EVM wallets automatically
-- Filter markets by category (Politics, Crypto, Sports, Business, Entertainment)
+- View your Solana wallet, Base wallet, positions, and balances in one portfolio
 - Use on mobile as a feed with bottom sheet market picker
 
 ## Stack
