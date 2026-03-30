@@ -103,6 +103,9 @@ function getTradeErrorStatus(error?: string | null): number {
 let signalRouteCache: { expiresAt: number; value: Awaited<ReturnType<typeof getSignalFeedSnapshot>> } | null = null;
 let solPriceCache: { expiresAt: number; value: number } | null = null;
 let solPriceInFlight: Promise<number> | null = null;
+let ethPriceCache: { expiresAt: number; value: number } | null = null;
+let ethPriceInFlight: Promise<number> | null = null;
+const BASE_RPC_URL = process.env.BASE_RPC_URL?.trim() || "https://mainnet.base.org";
 
 function buildSignalFeedResponse(snapshot: Awaited<ReturnType<typeof getSignalFeedSnapshot>>) {
   return {
@@ -166,6 +169,82 @@ async function fetchSolPriceUsd(): Promise<number> {
   });
 
   return solPriceInFlight;
+}
+
+async function fetchEthPriceUsd(): Promise<number> {
+  if (ethPriceCache && ethPriceCache.expiresAt > Date.now()) {
+    return ethPriceCache.value;
+  }
+
+  if (ethPriceInFlight) {
+    return ethPriceInFlight;
+  }
+
+  ethPriceInFlight = (async () => {
+    let usd = 0;
+
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(3_500),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { ethereum?: { usd?: number } };
+        usd = json.ethereum?.usd ?? 0;
+      }
+    } catch {
+      /* CoinGecko failed. */
+    }
+
+    ethPriceCache = {
+      expiresAt: Date.now() + SOL_PRICE_CACHE_MS,
+      value: usd,
+    };
+    ethPriceInFlight = null;
+    return usd;
+  })();
+
+  return ethPriceInFlight;
+}
+
+function isHexEvmAddress(value: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function parseEthFromHexWei(value: string): number {
+  const wei = BigInt(value);
+  return Number(wei) / 1e18;
+}
+
+async function fetchBaseBalanceEth(address: string): Promise<number> {
+  const response = await fetch(BASE_RPC_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_getBalance",
+      params: [address, "latest"],
+    }),
+    signal: AbortSignal.timeout(6_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Base RPC error: ${response.status}`);
+  }
+
+  const payload = (await response.json()) as { result?: string; error?: { message?: string } };
+  if (payload.error) {
+    throw new Error(payload.error.message || "Base RPC returned an error");
+  }
+  if (typeof payload.result !== "string") {
+    throw new Error("Base RPC did not return a balance");
+  }
+
+  return parseEthFromHexWei(payload.result);
 }
 
 // In-memory volume store (resets on restart). For persistence, add Supabase/DB.
@@ -889,6 +968,40 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.warn(e);
       return reply.send({ success: true, usd: solPriceCache?.value ?? 0 });
+    }
+  });
+
+  app.get("/api/eth-price", async (_req, reply) => {
+    reply.header("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    try {
+      const usd = await withTimeout(fetchEthPriceUsd(), SOL_PRICE_ROUTE_TIMEOUT_MS, "eth-price");
+      return reply.send({ success: true, usd });
+    } catch (e) {
+      app.log.warn(e);
+      return reply.send({ success: true, usd: ethPriceCache?.value ?? 0 });
+    }
+  });
+
+  app.get<{ Querystring: { address: string } }>("/api/base/balance", async (req, reply) => {
+    reply.header("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
+    const address = req.query.address?.trim();
+    if (!address || !isHexEvmAddress(address)) {
+      return reply.status(400).send({ success: false, error: "Valid EVM address required" });
+    }
+
+    try {
+      const eth = await withTimeout(fetchBaseBalanceEth(address), 6_000, "base-balance");
+      return reply.send({
+        success: true,
+        data: {
+          chain: "base",
+          address,
+          eth,
+        },
+      });
+    } catch (e) {
+      app.log.warn(e);
+      return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch Base balance" });
     }
   });
 

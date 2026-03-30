@@ -163,13 +163,13 @@ export function MarketDetailPanel() {
                     className="flex items-center justify-center gap-2 w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    Open on {venueLabel}
+                    Open venue page
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
                     {selectedMarket.source === "kalshi"
                       ? "In-app trading requires outcome mints. Use Kalshi for this market."
-                      : "Polymarket markets open on the venue while Siren handles the linked token flow here."}
+                      : "Polymarket is live here as signal context while Siren keeps the linked token flow inside the terminal."}
                   </p>
                 </>
               )}

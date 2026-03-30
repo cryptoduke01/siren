@@ -130,6 +130,7 @@ function PredictionMarketFocusPanel({
   onPrimaryAction,
   onOpenVenue,
   onBrowseTokens,
+  onShareCard,
   onDownloadCard,
   exportingCard,
   exportBrandLabel,
@@ -138,6 +139,7 @@ function PredictionMarketFocusPanel({
   onPrimaryAction: () => void;
   onOpenVenue: () => void;
   onBrowseTokens: () => void;
+  onShareCard: () => void;
   onDownloadCard: () => void;
   exportingCard: boolean;
   exportBrandLabel: string;
@@ -201,7 +203,7 @@ function PredictionMarketFocusPanel({
             </div>
 
             <h2
-              className="mt-4 max-w-[14ch] break-words font-heading text-[clamp(1.95rem,4.2vw,3.5rem)] font-bold leading-[0.92] tracking-[-0.045em] sm:max-w-[16ch]"
+              className="mt-4 max-w-[18ch] break-words font-heading text-[clamp(1.55rem,3vw,2.95rem)] font-bold leading-[0.95] tracking-[-0.04em] sm:max-w-[20ch]"
               style={{ color: "var(--text-1)" }}
             >
               {market.title}
@@ -314,10 +316,10 @@ function PredictionMarketFocusPanel({
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
                 style={{ background: "var(--accent)", color: "var(--accent-text)" }}
               >
-                {canTradeInSiren ? "Trade in Siren" : `Open on ${platformLabel}`}
+                {canTradeInSiren ? "Trade in Siren" : "Buy linked tokens"}
                 <ArrowUpRight className="h-4 w-4" />
               </button>
-              <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1">
+              <div className={`grid gap-2 ${canTradeInSiren ? "sm:grid-cols-2 2xl:grid-cols-1" : ""}`}>
                 <button
                   type="button"
                   onClick={onBrowseTokens}
@@ -326,26 +328,55 @@ function PredictionMarketFocusPanel({
                 >
                   Buy linked tokens
                 </button>
+                {canTradeInSiren ? (
+                  <button
+                    type="button"
+                    onClick={onOpenVenue}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                    style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                  >
+                    Open on {platformLabel}
+                    <ExternalLink className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenVenue}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                    style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                  >
+                    Open venue data
+                    <ExternalLink className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {!canTradeInSiren && (
+                <p className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Polymarket is live in Siren as a signal and market-context rail. The direct in-terminal venue execution rail is still being wired, so linked token flow stays primary here.
+                </p>
+              )}
+              <div className="grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={onOpenVenue}
+                  onClick={onShareCard}
+                  data-export-ignore="true"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+                >
+                  {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                  {exportingCard ? "Preparing card..." : "Share card"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onDownloadCard}
+                  data-export-ignore="true"
                   className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
                   style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                 >
-                  Open on {platformLabel}
-                  <ExternalLink className="h-4 w-4" />
+                  {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {exportingCard ? "Preparing card..." : "Download card"}
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={onDownloadCard}
-                data-export-ignore="true"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-              >
-                {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {exportingCard ? "Saving card..." : "Download card"}
-              </button>
             </div>
           </div>
         </div>
@@ -627,7 +658,7 @@ export function TokenSurface() {
 
   const { setSelectedToken } = useSirenStore();
 
-  const shareSelectedMarket = async () => {
+  const exportSelectedMarket = async (mode: "share" | "download") => {
     if (!selectedMarket || typeof window === "undefined") return;
     try {
       const cardNode = surfaceRef.current?.querySelector<HTMLElement>("[data-market-card-export='true']");
@@ -653,14 +684,28 @@ export function TokenSurface() {
       });
 
       const safeTicker = selectedMarket.ticker.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+      const filename = `siren-market-${safeTicker || "card"}-${Date.now()}.png`;
+      const blob = await fetch(dataUrl).then((response) => response.blob());
+      const file = new File([blob], filename, { type: "image/png" });
+
+      if (mode === "share" && navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: selectedMarket.title,
+          text: "Signal rail from onsiren.xyz",
+        });
+        addToast("Market card shared.", "success");
+        return;
+      }
+
       const anchor = document.createElement("a");
       anchor.href = dataUrl;
-      anchor.download = `siren-market-${safeTicker || "card"}-${Date.now()}.png`;
+      anchor.download = filename;
       anchor.rel = "noopener";
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      addToast("Market card saved. Share the Siren rail.", "success");
+      addToast(mode === "share" ? "Share is unavailable here, so the card was downloaded instead." : "Market card saved.", "success");
     } catch (error) {
       console.warn("Market card export failed", error);
       addToast("Could not save the market card right now.", "error");
@@ -684,7 +729,7 @@ export function TokenSurface() {
               setBuyPanelOpen(true, "market");
               return;
             }
-            window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
+            tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
           onOpenVenue={() => {
             hapticLight();
@@ -694,7 +739,8 @@ export function TokenSurface() {
             hapticLight();
             tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
-          onDownloadCard={shareSelectedMarket}
+          onShareCard={() => exportSelectedMarket("share")}
+          onDownloadCard={() => exportSelectedMarket("download")}
           exportingCard={exportingCard}
           exportBrandLabel="onsiren.xyz"
         />
@@ -799,25 +845,34 @@ export function TokenSurface() {
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
           {selectedMarket && (
             <>
-              <button
-                type="button"
-                onClick={() => {
-                  hapticLight();
-                  if (canTradeSelectedMarketInSiren(selectedMarket)) {
+              {canTradeSelectedMarketInSiren(selectedMarket) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticLight();
                     setBuyPanelOpen(true, "market");
-                    return;
-                  }
-                  window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
-                }}
-                className="h-8 rounded-[6px] px-4 font-heading text-[11px] font-bold uppercase transition-all duration-[120ms] ease hover:opacity-90"
-                style={{
-                  background: "var(--accent)",
-                  color: "var(--accent-text)",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                {canTradeSelectedMarketInSiren(selectedMarket) ? "Trade market" : `Open ${getSelectedMarketVenueLabel(selectedMarket)}`}
-              </button>
+                  }}
+                  className="h-8 rounded-[6px] px-4 font-heading text-[11px] font-bold uppercase transition-all duration-[120ms] ease hover:opacity-90"
+                  style={{
+                    background: "var(--accent)",
+                    color: "var(--accent-text)",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  Trade market
+                </button>
+              ) : (
+                <div
+                  className="inline-flex h-8 items-center rounded-[6px] border px-3 font-body text-[11px]"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background: "var(--bg-elevated)",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  Polymarket rail live
+                </div>
+              )}
               <MarketAlertButton ticker={selectedMarket.ticker} probability={selectedMarket.probability} />
               <StarButton type="market" id={selectedMarket.ticker} />
             </>

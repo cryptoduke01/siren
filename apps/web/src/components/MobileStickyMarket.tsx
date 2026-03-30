@@ -58,7 +58,7 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
           className="h-9 rounded-[8px] px-3 text-[11px] font-heading font-semibold uppercase tracking-[0.08em]"
           style={{ background: "var(--accent)", color: "var(--accent-text)" }}
         >
-          {canTradeInSiren ? "Trade" : venueLabel}
+          {canTradeInSiren ? "Trade" : "Venue"}
         </button>
         <button
           type="button"

@@ -7,13 +7,13 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
-import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
+import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History, KeyRound } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
-import { fetchSolPriceUsd, isFiniteNumber } from "@/lib/pricing";
+import { fetchEthPriceUsd, fetchSolPriceUsd, isFiniteNumber } from "@/lib/pricing";
 import type { MarketWithVelocity } from "@siren/shared";
 import bs58 from "bs58";
 
@@ -23,6 +23,10 @@ const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 
 async function fetchSolPrice(): Promise<number> {
   return fetchSolPriceUsd(API_URL);
+}
+
+async function fetchEthPrice(): Promise<number> {
+  return fetchEthPriceUsd(API_URL);
 }
 
 async function fetchTokenInfo(mint: string): Promise<TokenInfoSnapshot | null> {
@@ -74,16 +78,26 @@ function getPnlTone(pnlUsd: number | null | undefined): string {
 async function fetchBalances(publicKey: string) {
   const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
   const mainnet = new Connection(rpcUrl, "confirmed");
-  const devnet = new Connection(clusterApiUrl("devnet"), "confirmed");
   const pubkey = new PublicKey(publicKey);
-  const [mainnetBal, devnetBal] = await Promise.all([
-    mainnet.getBalance(pubkey),
-    devnet.getBalance(pubkey),
-  ]);
+  const mainnetBal = await mainnet.getBalance(pubkey);
   return {
     mainnet: mainnetBal / LAMPORTS_PER_SOL,
-    devnet: devnetBal / LAMPORTS_PER_SOL,
   };
+}
+
+async function fetchBaseBalance(address: string): Promise<number> {
+  const res = await fetch(`${API_URL}/api/base/balance?address=${encodeURIComponent(address)}`, { credentials: "omit" });
+  if (!res.ok) {
+    throw new Error("Base balance fetch failed");
+  }
+  const payload = await res.json();
+  return Math.max(0, Number(payload?.data?.eth) || 0);
+}
+
+function shortenAddress(value?: string | null): string {
+  if (!value) return "—";
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 interface TokenHolding {
@@ -458,18 +472,15 @@ function AddressCopyButton({ address }: { address: string }) {
 }
 
 function SendSolModal({
-  balanceMainnet,
-  balanceDevnet,
+  balance,
   solPriceUsd,
   onClose,
 }: {
-  balanceMainnet: number;
-  balanceDevnet: number;
+  balance: number;
   solPriceUsd: number;
   onClose: () => void;
 }) {
   const { publicKey, signTransaction } = useSirenWallet();
-  const [network, setNetwork] = useState<"mainnet" | "devnet">("mainnet");
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -478,13 +489,10 @@ function SendSolModal({
   const [resultModal, setResultModal] = useState<{ type: "success" | "error"; title: string; message: string; txSignature?: string } | null>(null);
   const queryClient = useQueryClient();
 
-  const balanceSol = network === "mainnet" ? balanceMainnet : balanceDevnet;
-  const conn = new Connection(
-    network === "mainnet" ? (process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta")) : clusterApiUrl("devnet"),
-    "confirmed"
-  );
+  const balanceSol = balance;
+  const conn = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta"), "confirmed");
   const amt = parseFloat(amount) || 0;
-  const usdEst = network === "mainnet" && amt > 0 ? amt * solPriceUsd : undefined;
+  const usdEst = amt > 0 ? amt * solPriceUsd : undefined;
 
   const handleSend = async () => {
     if (!signTransaction || !publicKey) return;
@@ -516,11 +524,11 @@ function SendSolModal({
       const signed = await signTransaction(tx);
       const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
       await conn.confirmTransaction(sig, "confirmed");
-      setSuccess(`Sent ${amt} SOL on ${network}. Tx: ${sig.slice(0, 8)}...`);
+      setSuccess(`Sent ${amt} SOL. Tx: ${sig.slice(0, 8)}...`);
       setAmount("");
       setToAddress("");
       if (publicKey) queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
-      setResultModal({ type: "success", title: "Send complete", message: `Sent ${amt} SOL on ${network}.`, txSignature: sig });
+      setResultModal({ type: "success", title: "Send complete", message: `Sent ${amt} SOL on mainnet.`, txSignature: sig });
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "Send failed";
       setError(errMsg);
@@ -535,16 +543,14 @@ function SendSolModal({
       <div className="w-full max-w-sm rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Send SOL</p>
-          <div className="flex gap-1">
-            {(["mainnet", "devnet"] as const).map((n) => (
-              <button key={n} type="button" onClick={() => { setNetwork(n); setError(null); }} className="px-2.5 py-1 rounded text-[11px] font-medium" style={{ background: network === n ? "var(--accent-dim)" : "transparent", color: network === n ? "var(--accent)" : "var(--text-3)" }}>{n === "mainnet" ? "Mainnet" : "Devnet"}</button>
-            ))}
-          </div>
+          <span className="rounded-full border px-2.5 py-1 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+            Mainnet
+          </span>
         </div>
         <input type="text" placeholder="Recipient" value={toAddress} onChange={(e) => setToAddress(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-2 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
         <input type="number" step="0.001" min="0" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-1 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
         <p className={`font-body text-[11px] ${amt > 0 ? "mb-1" : "mb-3"}`} style={{ color: "var(--text-3)" }}>Balance: {balanceSol.toFixed(4)} SOL</p>
-        {amt > 0 && (usdEst != null ? <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-2)" }}>≈ ${usdEst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</p> : <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-3)" }}>Devnet</p>)}
+        {amt > 0 && usdEst != null && <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-2)" }}>≈ ${usdEst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</p>}
         {!resultModal && error && <p className="text-xs mb-2" style={{ color: "var(--down)" }}>{error}</p>}
         {!resultModal && success && <p className="text-xs mb-2" style={{ color: "var(--bags)" }}>{success}</p>}
         <div className="flex gap-2">
@@ -583,14 +589,17 @@ function buildPredictionTokenInfo(
 }
 
 export default function PortfolioPage() {
-  const { connected, publicKey, signTransaction } = useSirenWallet();
+  const { connected, publicKey, signTransaction, evmAddress, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
   const { connection } = useConnection();
   const queryClient = useQueryClient();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
-  const [balanceView, setBalanceView] = useState<"mainnet" | "devnet">("mainnet");
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [receiveRail, setReceiveRail] = useState<"solana" | "base">("solana");
   const [swapOpen, setSwapOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [privateKeyValue, setPrivateKeyValue] = useState<string | null>(null);
+  const [privateKeyError, setPrivateKeyError] = useState<string | null>(null);
+  const [exportingKey, setExportingKey] = useState(false);
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
@@ -646,6 +655,26 @@ export default function PortfolioPage() {
     queryFn: fetchSolPrice,
     refetchInterval: 60_000,
     staleTime: 30_000,
+  });
+
+  const { data: ethPriceUsd = 0 } = useQuery({
+    queryKey: ["eth-price"],
+    queryFn: fetchEthPrice,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const {
+    data: baseBalanceEth = 0,
+    isLoading: baseBalanceLoading,
+    isError: baseBalanceError,
+    refetch: refetchBaseBalance,
+  } = useQuery({
+    queryKey: ["base-balance", evmAddress],
+    queryFn: () => fetchBaseBalance(evmAddress!),
+    enabled: !!evmAddress,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
   });
 
   const { data: tokenHoldings = [], isLoading: tokensLoading, refetch: refetchTokens } = useQuery({
@@ -836,10 +865,27 @@ export default function PortfolioPage() {
 
   const totalUsd =
     (balances?.mainnet ?? 0) * solPriceUsd +
+    baseBalanceEth * ethPriceUsd +
     tokenHoldings.reduce(
       (sum, t) => sum + t.balance * (tokenInfoByMint.get(t.mint)?.priceUsd ?? 0),
       0
     );
+  const solBalanceUsd = (balances?.mainnet ?? 0) * solPriceUsd;
+  const baseBalanceUsd = baseBalanceEth * ethPriceUsd;
+
+  const handleExportPrivateKey = async () => {
+    hapticLight();
+    setPrivateKeyError(null);
+    setExportingKey(true);
+    try {
+      const key = await exportPrivateKey();
+      setPrivateKeyValue(key);
+    } catch (error) {
+      setPrivateKeyError(error instanceof Error ? error.message : "Private key export is unavailable.");
+    } finally {
+      setExportingKey(false);
+    }
+  };
 
   const predictionPositions: PredictionPosition[] = tokenHoldings
     .filter((t) => mintToMarket.has(t.mint))
@@ -971,6 +1017,16 @@ export default function PortfolioPage() {
     setBuyPanelOpen(true, "token");
   };
 
+  const receiveAddress =
+    receiveRail === "base"
+      ? evmAddress ?? ""
+      : publicKey?.toBase58() ?? "";
+  const receiveTitle = receiveRail === "base" ? "Receive on Base" : "Receive on Solana";
+  const receiveDescription =
+    receiveRail === "base"
+      ? "Use this embedded EVM address for Base deposits and balance top-ups."
+      : "Scan this code or share the Solana execution address to receive funds.";
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
@@ -1025,78 +1081,188 @@ export default function PortfolioPage() {
         ) : (
           <>
             <div
-              className="rounded-2xl border p-6 md:p-8 mb-6"
+              className="mb-6 overflow-hidden rounded-[28px] border p-6 md:p-8"
               style={{
-                borderColor: "var(--border-subtle)",
-                background: "linear-gradient(145deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
-                boxShadow: "0 1px 0 0 var(--border-subtle), 0 4px 24px rgba(0,0,0,0.06)",
+                borderColor: "color-mix(in srgb, var(--bags) 18%, var(--border-subtle))",
+                background:
+                  "radial-gradient(circle at top right, color-mix(in srgb, var(--polymarket) 16%, transparent), transparent 38%), radial-gradient(circle at top left, color-mix(in srgb, var(--bags) 12%, transparent), transparent 34%), linear-gradient(145deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+                boxShadow: "0 1px 0 0 var(--border-subtle), 0 24px 60px rgba(0,0,0,0.22)",
               }}
             >
-              <p className="font-body text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-3)" }}>
-                Total portfolio value
-              </p>
-              {isLoading ? (
-                <div className="h-10 w-32 rounded bg-[var(--border-subtle)] animate-pulse" />
-              ) : solPriceUsd > 0 ? (
-                <p className="font-heading font-bold text-3xl md:text-4xl tabular-nums" style={{ color: "var(--accent)" }}>
-                  ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              ) : (
-                <p className="font-heading font-bold text-2xl md:text-3xl tabular-nums" style={{ color: "var(--text-2)" }}>
-                  <span className="font-mono">{(balances?.mainnet ?? 0).toFixed(4)} SOL</span>
-                  <span className="font-body text-base ml-2 font-normal" style={{ color: "var(--text-3)" }}>+ tokens (USD loading…)</span>
-                </p>
-              )}
-              <p className="font-body text-xs mt-1" style={{ color: "var(--text-3)" }}>
-                Mainnet SOL + token holdings (USD)
-              </p>
-              {walletVolumeSol > 0 && (
-                <p className="font-body text-xs mt-2" style={{ color: "var(--text-2)" }}>
-                  Your 7d volume:{" "}
-                  <span className="font-mono">
-                    {walletVolumeSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                    Portfolio command center
+                  </p>
+                  <h2 className="mt-2 font-heading text-[clamp(1.7rem,3vw,2.55rem)] font-bold leading-[0.92]" style={{ color: "var(--text-1)" }}>
+                    Solana execution.
+                    <br />
+                    Base account rail.
+                  </h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                    {predictionPositions.length} prediction positions
                   </span>
-                  {solPriceUsd > 0 && (
-                    <>
-                      {" "}
-                      (≈$
-                      {(walletVolumeSol * solPriceUsd).toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}
-                      )
-                    </>
+                  <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                    {bagsLaunches.length} Bags launches tracked
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,360px)]">
+                <div>
+                  <p className="font-body text-xs uppercase tracking-wider" style={{ color: "var(--text-3)" }}>
+                    Total portfolio value
+                  </p>
+                  {isLoading ? (
+                    <div className="mt-3 h-12 w-40 rounded bg-[var(--border-subtle)] animate-pulse" />
+                  ) : solPriceUsd > 0 || ethPriceUsd > 0 ? (
+                    <p className="mt-3 font-heading font-bold text-[clamp(2.35rem,5vw,4.35rem)] tabular-nums" style={{ color: "var(--accent)" }}>
+                      ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  ) : (
+                    <p className="mt-3 font-heading font-bold text-2xl md:text-3xl tabular-nums" style={{ color: "var(--text-2)" }}>
+                      <span className="font-mono">{(balances?.mainnet ?? 0).toFixed(4)} SOL</span>
+                      <span className="font-body text-base ml-2 font-normal" style={{ color: "var(--text-3)" }}>+ tokens (USD loading…)</span>
+                    </p>
                   )}
-                </p>
-              )}
-              {/* Platform volume is admin/competition metric; keep it off user-facing portfolio. */}
-              <div className="flex flex-wrap gap-2 mt-4">
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setReceiveOpen(true); }}
-                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  <QrCode className="w-3.5 h-3.5" />
-                  Receive
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setSwapOpen(true); }}
-                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  <ArrowLeftRight className="w-3.5 h-3.5" />
-                  Swap
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setSendOpen(true); }}
-                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  Send
-                </button>
+                  <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    One premium account surface for token exposure, prediction positions, fee earnings, and the fast receive / export controls you actually need.
+                  </p>
+                  {walletVolumeSol > 0 && (
+                    <p className="mt-3 font-body text-xs" style={{ color: "var(--text-2)" }}>
+                      Your 7d volume:{" "}
+                      <span className="font-mono">
+                        {walletVolumeSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                      </span>
+                      {solPriceUsd > 0 && (
+                        <>
+                          {" "}
+                          (≈$
+                          {(walletVolumeSol * solPriceUsd).toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
+                          })}
+                          )
+                        </>
+                      )}
+                    </p>
+                  )}
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { hapticLight(); setReceiveRail("solana"); setReceiveOpen(true); }}
+                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      Receive
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { hapticLight(); setSwapOpen(true); }}
+                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                      Swap
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { hapticLight(); setSendOpen(true); }}
+                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Send SOL
+                    </button>
+                    {canExportPrivateKey && (
+                      <button
+                        type="button"
+                        onClick={handleExportPrivateKey}
+                        disabled={exportingKey}
+                        className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium disabled:opacity-60"
+                        style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                      >
+                        {exportingKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
+                        Export key
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="rounded-[22px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                          Solana rail
+                        </p>
+                        <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {(balances?.mainnet ?? 0).toFixed(4)} SOL
+                        </p>
+                        <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                          {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Mainnet execution rail"}
+                        </p>
+                      </div>
+                      {publicKey && <AddressCopyButton address={publicKey.toBase58()} />}
+                    </div>
+                    {publicKey && (
+                      <p className="mt-3 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+                        {shortenAddress(publicKey.toBase58())}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-[22px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--polymarket)" }}>
+                          Base rail
+                        </p>
+                        {baseBalanceLoading ? (
+                          <div className="mt-2 h-8 w-24 rounded bg-[var(--border-subtle)] animate-pulse" />
+                        ) : (
+                          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                            {evmAddress ? `${baseBalanceEth.toFixed(4)} ETH` : "Not ready"}
+                          </p>
+                        )}
+                        <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                          {evmAddress
+                            ? ethPriceUsd > 0
+                              ? `≈ $${baseBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : "Base mainnet deposit rail"
+                            : "Provisioned through Privy on login"}
+                        </p>
+                      </div>
+                      {evmAddress && <AddressCopyButton address={evmAddress} />}
+                    </div>
+                    <p className="mt-3 font-mono text-[11px]" style={{ color: baseBalanceError ? "var(--down)" : "var(--text-2)" }}>
+                      {evmAddress ? shortenAddress(evmAddress) : "Embedded EVM wallet"}
+                    </p>
+                    {evmAddress && (
+                      <button
+                        type="button"
+                        onClick={() => { hapticLight(); setReceiveRail("base"); setReceiveOpen(true); }}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px]"
+                        style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                      >
+                        <QrCode className="h-3.5 w-3.5" />
+                        Receive on Base
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="rounded-[22px] border p-4 sm:col-span-2 xl:col-span-1" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
+                    <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--bags)" }}>
+                      Venue note
+                    </p>
+                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      Portfolio tracking is live immediately. Trading Kalshi markets still requires venue KYC and compliance approval before those orders can clear.
+                    </p>
+                  </div>
+                </div>
               </div>
               {swapOpen && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={() => { hapticLight(); setSwapOpen(false); }}>
@@ -1162,8 +1328,7 @@ export default function PortfolioPage() {
               )}
               {sendOpen && (
                 <SendSolModal
-                  balanceMainnet={balances?.mainnet ?? 0}
-                  balanceDevnet={balances?.devnet ?? 0}
+                  balance={balances?.mainnet ?? 0}
                   solPriceUsd={solPriceUsd}
                   onClose={() => { hapticLight(); setSendOpen(false); }}
                 />
@@ -1179,15 +1344,43 @@ export default function PortfolioPage() {
                     style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <div className="mb-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setReceiveRail("solana")}
+                        className="rounded-lg px-3 py-1.5 font-body text-[11px]"
+                        style={{
+                          background: receiveRail === "solana" ? "var(--accent-dim)" : "transparent",
+                          color: receiveRail === "solana" ? "var(--accent)" : "var(--text-3)",
+                          border: receiveRail === "solana" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        Solana
+                      </button>
+                      {evmAddress && (
+                        <button
+                          type="button"
+                          onClick={() => setReceiveRail("base")}
+                          className="rounded-lg px-3 py-1.5 font-body text-[11px]"
+                          style={{
+                            background: receiveRail === "base" ? "color-mix(in srgb, var(--polymarket) 14%, transparent)" : "transparent",
+                            color: receiveRail === "base" ? "var(--polymarket)" : "var(--text-3)",
+                            border: receiveRail === "base" ? "1px solid var(--polymarket)" : "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          Base
+                        </button>
+                      )}
+                    </div>
                     <p className="font-heading text-sm mb-1" style={{ color: "var(--text-1)" }}>
-                      Receive SOL & tokens
+                      {receiveTitle}
                     </p>
                     <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-3)" }}>
-                      Scan this code or share your address to receive funds.
+                      {receiveDescription}
                     </p>
                     <div className="flex justify-center mb-3">
                       <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=192x192&data=${encodeURIComponent(publicKey.toBase58())}`}
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=192x192&data=${encodeURIComponent(receiveAddress)}`}
                         alt="Wallet QR code"
                         className="rounded-lg border"
                         style={{ borderColor: "var(--border-subtle)" }}
@@ -1195,11 +1388,11 @@ export default function PortfolioPage() {
                     </div>
                     <div className="flex items-center gap-2 mb-3">
                       <code className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-2)" }}>
-                        {publicKey.toBase58()}
+                        {receiveAddress}
                       </code>
                       <button
                         type="button"
-                        onClick={() => { hapticLight(); navigator.clipboard.writeText(publicKey.toBase58()); }}
+                        onClick={() => { hapticLight(); navigator.clipboard.writeText(receiveAddress); }}
                         className="font-body text-xs font-medium px-3 py-1.5 rounded-lg shrink-0"
                         style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                       >
@@ -1211,6 +1404,49 @@ export default function PortfolioPage() {
                       onClick={() => { hapticLight(); setReceiveOpen(false); }}
                       className="mt-1 w-full font-body text-xs py-2 rounded-xl"
                       style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+              {(privateKeyValue || privateKeyError) && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => { setPrivateKeyValue(null); setPrivateKeyError(null); }}>
+                  <div className="w-full max-w-md rounded-2xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
+                    <p className="font-heading text-sm mb-1" style={{ color: "var(--text-1)" }}>
+                      Export embedded private key
+                    </p>
+                    {privateKeyError ? (
+                      <p className="font-body text-xs mt-2" style={{ color: "var(--down)" }}>
+                        {privateKeyError}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="font-body text-[11px] mb-3" style={{ color: "var(--down)" }}>
+                          Keep this key private. Anyone with it controls the embedded execution wallet.
+                        </p>
+                        <textarea
+                          readOnly
+                          value={privateKeyValue ?? ""}
+                          className="h-28 w-full rounded-xl border p-3 font-mono text-xs"
+                          style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { if (privateKeyValue) navigator.clipboard.writeText(privateKeyValue); }}
+                          className="mt-3 inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          Copy private key
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setPrivateKeyValue(null); setPrivateKeyError(null); }}
+                      className="mt-4 w-full rounded-xl border py-2.5 font-body text-xs"
+                      style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                     >
                       Close
                     </button>
@@ -1229,7 +1465,7 @@ export default function PortfolioPage() {
               }}
             >
               <div
-                className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 border-b"
+                className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -1238,104 +1474,89 @@ export default function PortfolioPage() {
                   </div>
                   <div className="min-w-0">
                     <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                      Wallet balance
+                      Wallet rails
                     </h2>
                     <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      Native SOL
+                      Embedded Solana + Base account access
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                {baseBalanceError ? (
                   <button
                     type="button"
-                    onClick={() => { hapticLight(); setBalanceView("mainnet"); }}
-                    className="font-body text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-colors"
-                    style={{
-                      background: balanceView === "mainnet" ? "var(--accent-dim)" : "transparent",
-                      color: balanceView === "mainnet" ? "var(--accent)" : "var(--text-3)",
-                      border: balanceView === "mainnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
-                    }}
+                    onClick={() => { hapticLight(); refetchBaseBalance(); }}
+                    className="rounded-lg border px-3 py-1.5 font-body text-[11px]"
+                    style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                   >
-                    Mainnet
+                    Retry Base
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { hapticLight(); setBalanceView("devnet"); }}
-                    className="font-body text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-colors"
-                    style={{
-                      background: balanceView === "devnet" ? "var(--accent-dim)" : "transparent",
-                      color: balanceView === "devnet" ? "var(--accent)" : "var(--text-3)",
-                      border: balanceView === "devnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
-                    }}
-                  >
-                    Devnet
-                  </button>
-                </div>
-              </div>
-              {publicKey && (
-                <div className="px-5 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                  <code className="font-mono text-[11px] truncate flex-1" style={{ color: "var(--text-2)" }}>
-                    {publicKey.toBase58()}
-                  </code>
-                  <AddressCopyButton address={publicKey.toBase58()} />
-                </div>
-              )}
-              <div className="p-5 grid grid-cols-2 gap-4">
-                {isLoading ? (
-                  <div className="col-span-2 font-body text-sm py-4" style={{ color: "var(--text-2)" }}>
-                    Loading…
-                  </div>
-                ) : isError ? (
-                  <div className="col-span-2 space-y-3 py-4">
-                    <p className="font-body text-sm" style={{ color: "var(--down)" }}>
-                      Failed to fetch balance.
-                    </p>
-                    <button
-                      onClick={() => refetch()}
-                      className="font-body text-sm px-4 py-2 rounded-xl transition-colors hover:opacity-90"
-                      style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : balances ? (
-                  <>
-                    <div
-                      className="rounded-xl border p-4"
-                      style={{
-                        borderColor: balanceView === "mainnet" ? "var(--border-active)" : "var(--border-subtle)",
-                        background: "var(--bg-elevated)",
-                      }}
-                    >
-                      <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Mainnet</p>
-                      <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
-                        {balances.mainnet.toFixed(4)} SOL
-                      </p>
-                      <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
-                        {solPriceUsd > 0
-                          ? `≈ $${(balances.mainnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
-                          : "— USD"}
-                      </p>
-                    </div>
-                    <div
-                      className="rounded-xl border p-4"
-                      style={{
-                        borderColor: balanceView === "devnet" ? "var(--border-active)" : "var(--border-subtle)",
-                        background: "var(--bg-elevated)",
-                      }}
-                    >
-                      <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Devnet</p>
-                      <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
-                        {balances.devnet.toFixed(4)} SOL
-                      </p>
-                      <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
-                        {solPriceUsd > 0
-                          ? `≈ $${(balances.devnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
-                          : "— USD"}
-                      </p>
-                    </div>
-                  </>
                 ) : null}
+              </div>
+              <div className="grid gap-4 p-5 sm:grid-cols-2">
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                      Solana
+                    </p>
+                    {publicKey && <AddressCopyButton address={publicKey.toBase58()} />}
+                  </div>
+                  {isLoading ? (
+                    <div className="mt-3 h-8 w-24 rounded bg-[var(--border-subtle)] animate-pulse" />
+                  ) : isError ? (
+                    <div className="mt-3 space-y-2">
+                      <p className="font-body text-sm" style={{ color: "var(--down)" }}>Balance unavailable</p>
+                      <button
+                        onClick={() => refetch()}
+                        className="rounded-lg px-3 py-2 font-body text-xs"
+                        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mt-3 font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {(balances?.mainnet ?? 0).toFixed(4)} SOL
+                      </p>
+                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Mainnet execution rail"}
+                      </p>
+                    </>
+                  )}
+                  {publicKey && (
+                    <p className="mt-3 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+                      {shortenAddress(publicKey.toBase58())}
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--polymarket)" }}>
+                      Base
+                    </p>
+                    {evmAddress && <AddressCopyButton address={evmAddress} />}
+                  </div>
+                  {baseBalanceLoading ? (
+                    <div className="mt-3 h-8 w-24 rounded bg-[var(--border-subtle)] animate-pulse" />
+                  ) : (
+                    <>
+                      <p className="mt-3 font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {evmAddress ? `${baseBalanceEth.toFixed(4)} ETH` : "No Base rail"}
+                      </p>
+                      <p className="mt-1 font-body text-[11px]" style={{ color: baseBalanceError ? "var(--down)" : "var(--text-3)" }}>
+                        {evmAddress
+                          ? ethPriceUsd > 0
+                            ? `≈ $${baseBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "Base balance live"
+                          : "Provisioned by Privy when available"}
+                      </p>
+                    </>
+                  )}
+                  <p className="mt-3 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+                    {evmAddress ? shortenAddress(evmAddress) : "Add funds through the Base receive rail"}
+                  </p>
+                </div>
               </div>
             </div>
 

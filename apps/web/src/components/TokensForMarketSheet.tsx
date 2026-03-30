@@ -88,44 +88,60 @@ export function TokensForMarketSheet({
                     <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
                       {canTradeInSiren
                         ? "Trade the market here or buy linked tokens below."
-                        : `Open ${venueLabel}, then buy linked tokens below.`}
+                        : `Use the linked token rail below, or open ${venueLabel} once if you need venue detail.`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        hapticLight();
-                        if (canTradeInSiren) {
-                          setBuyPanelOpen(true, "market");
-                          return;
-                        }
-                        window.open(marketUrl, "_blank", "noopener,noreferrer");
-                      }}
-                      className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
-                      style={{
-                        background: "var(--accent)",
-                        borderColor: "var(--accent)",
-                        color: "var(--accent-text)",
-                      }}
-                    >
-                      {canTradeInSiren ? "Trade market" : `Open ${venueLabel}`}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        hapticLight();
-                        window.open(marketUrl, "_blank", "noopener,noreferrer");
-                      }}
-                      className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
-                      style={{
-                        background: "var(--bg-elevated)",
-                        borderColor: "var(--border-default)",
-                        color: "var(--text-1)",
-                      }}
-                    >
-                      Open on {venueLabel}
-                    </button>
+                    {canTradeInSiren ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            hapticLight();
+                            setBuyPanelOpen(true, "market");
+                          }}
+                          className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                          style={{
+                            background: "var(--accent)",
+                            borderColor: "var(--accent)",
+                            color: "var(--accent-text)",
+                          }}
+                        >
+                          Trade market
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            hapticLight();
+                            window.open(marketUrl, "_blank", "noopener,noreferrer");
+                          }}
+                          className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                          style={{
+                            background: "var(--bg-elevated)",
+                            borderColor: "var(--border-default)",
+                            color: "var(--text-1)",
+                          }}
+                        >
+                          Open on {venueLabel}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          window.open(marketUrl, "_blank", "noopener,noreferrer");
+                        }}
+                        className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                        style={{
+                          background: "var(--bg-elevated)",
+                          borderColor: "var(--border-default)",
+                          color: "var(--text-1)",
+                        }}
+                      >
+                        Open on {venueLabel}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
