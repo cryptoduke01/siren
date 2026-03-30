@@ -14,6 +14,13 @@ export function TokensForMarketSheet({
   onClose: () => void;
 }) {
   const { selectedMarket, setBuyPanelOpen } = useSirenStore();
+  const canTradeInSiren = !!selectedMarket && selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
+  const venueLabel = selectedMarket?.source === "kalshi" ? "Kalshi" : "Polymarket";
+  const marketUrl = selectedMarket
+    ? selectedMarket.market_url ||
+      selectedMarket.kalshi_url ||
+      (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com")
+    : "https://www.onsiren.xyz";
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
@@ -79,7 +86,9 @@ export function TokensForMarketSheet({
                       {selectedMarket.probability.toFixed(0)}% YES
                     </p>
                     <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
-                      Trade the market here or buy linked tokens below.
+                      {canTradeInSiren
+                        ? "Trade the market here or buy linked tokens below."
+                        : `Open ${venueLabel}, then buy linked tokens below.`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -87,7 +96,11 @@ export function TokensForMarketSheet({
                       type="button"
                       onClick={() => {
                         hapticLight();
-                        setBuyPanelOpen(true, "market");
+                        if (canTradeInSiren) {
+                          setBuyPanelOpen(true, "market");
+                          return;
+                        }
+                        window.open(marketUrl, "_blank", "noopener,noreferrer");
                       }}
                       className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
                       style={{
@@ -96,14 +109,13 @@ export function TokensForMarketSheet({
                         color: "var(--accent-text)",
                       }}
                     >
-                      Trade market
+                      {canTradeInSiren ? "Trade market" : `Open ${venueLabel}`}
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         hapticLight();
-                        if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank", "noopener,noreferrer");
-                        else setBuyPanelOpen(true, "market");
+                        window.open(marketUrl, "_blank", "noopener,noreferrer");
                       }}
                       className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
                       style={{
@@ -112,7 +124,7 @@ export function TokensForMarketSheet({
                         color: "var(--text-1)",
                       }}
                     >
-                      Trade on Kalshi
+                      Open on {venueLabel}
                     </button>
                   </div>
                 </div>

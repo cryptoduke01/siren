@@ -43,7 +43,7 @@ export async function pollKalshiMarkets(): Promise<PredictionSignal[]> {
 
   return Promise.all(
     topCandidates.map(async ({ market, currentProb, previousProb, delta, timestamp }) => ({
-      id: `kalshi:${market.ticker}:${Date.parse(timestamp)}`,
+      id: `kalshi:${market.ticker}`,
       marketId: market.ticker,
       source: "kalshi" as const,
       question: market.title,

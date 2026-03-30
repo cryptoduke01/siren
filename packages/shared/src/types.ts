@@ -1,3 +1,5 @@
+export type SignalSource = "kalshi" | "polymarket";
+
 export interface KalshiMarket {
   ticker: string;
   event_ticker: string;
@@ -18,6 +20,9 @@ export interface KalshiMarket {
 }
 
 export interface MarketWithVelocity extends KalshiMarket {
+  source: SignalSource;
+  platform_id?: string;
+  market_url?: string;
   velocity_1h: number;
   probability: number;
   yes_mint?: string;
@@ -65,8 +70,6 @@ export interface SurfacedToken extends BagsToken {
   /** Launchpad detected from mint (Bags, Pump.fun, Bonk.fun, etc.). */
   launchpad?: LaunchpadId;
 }
-
-export type SignalSource = "kalshi" | "polymarket";
 
 export interface SignalOrderBookSnapshot {
   tokenId?: string;

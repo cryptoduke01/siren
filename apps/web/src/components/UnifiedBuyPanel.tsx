@@ -360,7 +360,7 @@ export function UnifiedBuyPanel() {
     staleTime: 5 * 60_000,
     retry: 1,
   });
-  const { data: marketActivity } = useMarketActivity(selectedMarket?.ticker);
+  const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],

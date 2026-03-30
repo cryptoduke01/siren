@@ -10,6 +10,7 @@ import { MarketDetailPanel } from "./MarketDetailPanel";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity, PredictionSignal } from "@siren/shared";
+import { toSelectedMarket } from "@/lib/marketSelection";
 
 const INITIAL_SHOWN = 16;
 const CATEGORIES = ["All", "Politics", "Crypto", "Sports", "Business", "Entertainment"];
@@ -44,52 +45,12 @@ function marketAvatar(title: string): string {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(letter)}&background=0b1220&color=e5e7eb&size=64`;
 }
 
-const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election", "world", "cup", "georgia", "purdue", "uae", "icc", "t20", "sol", "eth", "jpow", "pepe", "bonk"];
-const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
-
 function formatCompactStat(value?: number): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
-}
-
-function extractKeywords(title: string): string[] {
-  const lower = title.toLowerCase();
-  const fromKnown = MARKET_KEYWORDS.filter((kw) => lower.includes(kw)).slice(0, 2);
-  const words = lower.replace(/[^\w\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
-  const seen = new Set(fromKnown);
-  const out = [...fromKnown];
-  for (const w of words) {
-    if (!seen.has(w) && out.length < 4) {
-      seen.add(w);
-      out.push(w);
-    }
-  }
-  return out;
-}
-
-function toSelectedMarket(m: MarketWithVelocity) {
-  return {
-    ticker: m.ticker,
-    title: m.title,
-    probability: m.probability,
-    velocity_1h: m.velocity_1h,
-    volume: m.volume,
-    volume_24h: m.volume_24h,
-    liquidity: m.liquidity,
-    open_interest: m.open_interest,
-    close_time: m.close_time,
-    open_time: m.open_time,
-    event_ticker: m.event_ticker,
-    series_ticker: m.series_ticker,
-    subtitle: m.subtitle,
-    keywords: extractKeywords(m.title),
-    yes_mint: m.yes_mint,
-    no_mint: m.no_mint,
-    kalshi_url: m.kalshi_url,
-  };
 }
 
 function formatSignalTimestamp(timestamp: string): string {
@@ -182,9 +143,12 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
       (m) =>
         (m.title && m.title.toLowerCase().includes(q)) ||
         (m.ticker && m.ticker.toLowerCase().includes(q)) ||
+        (m.source && m.source.toLowerCase().includes(q)) ||
         (m.subtitle && m.subtitle.toLowerCase().includes(q)) ||
         (m.event_ticker && m.event_ticker.toLowerCase().includes(q)) ||
-        (m.kalshi_url && (m.kalshi_url.toLowerCase().includes(q) || m.kalshi_url.toLowerCase().includes(normalized)))
+        ((m.market_url || m.kalshi_url) &&
+          ((m.market_url || m.kalshi_url)!.toLowerCase().includes(q) ||
+            (m.market_url || m.kalshi_url)!.toLowerCase().includes(normalized)))
     );
   }, [categoryFiltered, marketSearchQuery]);
 
@@ -212,13 +176,15 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
 
   const handleSelectSignal = (signal: PredictionSignal) => {
     hapticLight();
-    if (signal.source === "kalshi") {
-      const linkedMarket = markets.find((market) => market.ticker === signal.marketId);
-      if (linkedMarket) {
-        setSelectedMarket(toSelectedMarket(linkedMarket));
-        onAfterSelectMarket?.(linkedMarket);
-        return;
-      }
+    const linkedMarket = markets.find(
+      (market) =>
+        market.source === signal.source &&
+        (market.platform_id === signal.marketId || market.ticker === signal.marketId)
+    );
+    if (linkedMarket) {
+      setSelectedMarket(toSelectedMarket(linkedMarket));
+      onAfterSelectMarket?.(linkedMarket);
+      return;
     }
     setSelectedSignal(signal);
   };
@@ -302,7 +268,8 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             filteredSignals.map((signal) => {
               const isSelected =
                 selectedSignal?.id === signal.id ||
-                (signal.source === "kalshi" && selectedMarket?.ticker === signal.marketId);
+                (selectedMarket?.source === signal.source &&
+                  (selectedMarket.platform_id === signal.marketId || selectedMarket.ticker === signal.marketId));
               return (
                 <button
                   key={signal.id}
@@ -455,10 +422,11 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                     onAfterSelectMarket?.(m);
                   }}
                 >
-                  <div className="flex items-center gap-2 mb-2 min-w-0">
+                  <div className="mb-2 flex items-center gap-2 min-w-0">
                     <img src={marketAvatar(m.title)} alt="" className="w-6 h-6 rounded-md object-cover shrink-0" />
+                    <SourceBadge source={m.source} />
                     <p
-                      className="font-heading font-bold text-[13px] leading-tight line-clamp-1 min-w-0"
+                      className="min-w-0 flex-1 font-heading text-[13px] font-bold leading-tight line-clamp-1"
                       style={{ color: "var(--text-1)" }}
                     >
                       {m.title}
@@ -500,7 +468,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                       className="font-body text-[10px] font-medium hover:underline"
                       style={{ color: "var(--accent)" }}
                     >
-                      Open market + tokens
+                      {m.source === "polymarket" ? "Open Poly + tokens" : "Open market + tokens"}
                     </button>
                   </div>
                 </motion.li>

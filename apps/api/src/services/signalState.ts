@@ -31,6 +31,22 @@ function snapshotKey(source: SignalSource, marketId: string) {
   return `${SNAPSHOT_KEY_PREFIX}:${source}:${marketId}`;
 }
 
+function compactSignals(signals: PredictionSignal[]): PredictionSignal[] {
+  const byMarketKey = new Map<string, PredictionSignal>();
+
+  for (const signal of signals) {
+    const dedupeKey = `${signal.source}:${signal.marketId}`;
+    const current = byMarketKey.get(dedupeKey);
+    if (!current || Date.parse(signal.timestamp) > Date.parse(current.timestamp)) {
+      byMarketKey.set(dedupeKey, signal);
+    }
+  }
+
+  return [...byMarketKey.values()]
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    .slice(0, MAX_SIGNAL_ITEMS);
+}
+
 function defaultStatuses(): SignalSourceStatus[] {
   return [
     memoryStatuses.get("kalshi") ?? { source: "kalshi", connected: false },
@@ -82,8 +98,12 @@ async function setStoredStatuses(statuses: SignalSourceStatus[]): Promise<void> 
 async function getStoredSignals(): Promise<PredictionSignal[]> {
   const redisSignals = await readJson<PredictionSignal[]>(SIGNAL_FEED_KEY);
   if (redisSignals?.length) {
-    memorySignals = redisSignals;
-    return redisSignals;
+    const compacted = compactSignals(redisSignals);
+    memorySignals = compacted;
+    if (compacted.length !== redisSignals.length) {
+      await writeJson(SIGNAL_FEED_KEY, compacted);
+    }
+    return compacted;
   }
   return memorySignals;
 }
@@ -200,10 +220,7 @@ export async function publishSignals(nextSignals: PredictionSignal[]): Promise<S
   if (nextSignals.length === 0) return getSignalFeedSnapshot();
 
   const existingSignals = await getStoredSignals();
-  const nextIds = new Set(nextSignals.map((signal) => signal.id));
-  const merged = [...nextSignals, ...existingSignals.filter((signal) => !nextIds.has(signal.id))]
-    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
-    .slice(0, MAX_SIGNAL_ITEMS);
+  const merged = compactSignals([...nextSignals, ...existingSignals]);
 
   await setStoredSignals(merged);
   return getSignalFeedSnapshot();

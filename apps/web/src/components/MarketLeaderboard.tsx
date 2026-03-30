@@ -6,14 +6,7 @@ import { useMarkets } from "@/hooks/useMarkets";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity } from "@siren/shared";
-
-const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election"];
-const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not"]);
-
-function extractKeywords(title: string): string[] {
-  const lower = title.toLowerCase();
-  return MARKET_KEYWORDS.filter((kw) => lower.includes(kw)).slice(0, 4);
-}
+import { toSelectedMarket } from "@/lib/marketSelection";
 
 export function MarketLeaderboard() {
   const { data: markets = [] } = useMarkets();
@@ -24,21 +17,7 @@ export function MarketLeaderboard() {
 
   const select = (m: MarketWithVelocity) => {
     hapticLight();
-    setSelectedMarket({
-      ticker: m.ticker,
-      title: m.title,
-      probability: m.probability,
-      velocity_1h: m.velocity_1h,
-      volume: m.volume,
-      open_interest: m.open_interest,
-      event_ticker: m.event_ticker,
-      series_ticker: m.series_ticker,
-      subtitle: m.subtitle,
-      keywords: extractKeywords(m.title),
-      yes_mint: m.yes_mint,
-      no_mint: m.no_mint,
-      kalshi_url: m.kalshi_url,
-    });
+    setSelectedMarket(toSelectedMarket(m));
   };
 
   const [collapsed, setCollapsed] = useState(false);

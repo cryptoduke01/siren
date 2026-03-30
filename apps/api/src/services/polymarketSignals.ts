@@ -36,7 +36,7 @@ export async function pollPolymarketMarkets(): Promise<PredictionSignal[]> {
           : null;
 
       return {
-        id: `polymarket:${signal.marketId}:${Date.parse(signal.timestamp)}`,
+        id: `polymarket:${signal.marketId}`,
         marketId: signal.marketId,
         source: "polymarket" as const,
         question: signal.question,

@@ -1,8 +1,11 @@
 import { create } from "zustand";
-import type { PredictionSignal } from "@siren/shared";
+import type { PredictionSignal, SignalSource } from "@siren/shared";
 
 export interface SelectedMarket {
+  source: SignalSource;
   ticker: string;
+  platform_id?: string;
+  market_url?: string;
   title: string;
   probability: number;
   velocity_1h: number;

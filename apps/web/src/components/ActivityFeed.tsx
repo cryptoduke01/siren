@@ -6,26 +6,9 @@ import { useMarkets } from "@/hooks/useMarkets";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import type { SurfacedToken } from "@siren/shared";
+import { toSelectedMarket } from "@/lib/marketSelection";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election", "world", "cup", "georgia", "purdue", "uae", "icc", "t20", "sol", "eth", "jpow", "pepe", "bonk"];
-const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
-
-function extractKeywords(title: string): string[] {
-  const lower = title.toLowerCase();
-  const fromKnown = MARKET_KEYWORDS.filter((kw) => lower.includes(kw)).slice(0, 2);
-  const words = lower.replace(/[^\w\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
-  const seen = new Set(fromKnown);
-  const out = [...fromKnown];
-  for (const w of words) {
-    if (!seen.has(w) && out.length < 4) {
-      seen.add(w);
-      out.push(w);
-    }
-  }
-  return out;
-}
 
 function fetchTrending(): Promise<SurfacedToken[]> {
   return fetch(`${API_URL}/api/tokens`, { credentials: "omit" })
@@ -69,21 +52,7 @@ export function ActivityFeed() {
             type="button"
             onClick={() => {
               hapticLight();
-              setSelectedMarket({
-                ticker: m.ticker,
-                title: m.title,
-                probability: m.probability,
-                velocity_1h: m.velocity_1h,
-                volume: m.volume,
-                open_interest: m.open_interest,
-                event_ticker: m.event_ticker,
-                series_ticker: m.series_ticker,
-                subtitle: m.subtitle,
-                keywords: extractKeywords(m.title),
-                yes_mint: m.yes_mint,
-                no_mint: m.no_mint,
-                kalshi_url: m.kalshi_url,
-              });
+              setSelectedMarket(toSelectedMarket(m));
             }}
             className="font-body text-[11px] px-3 py-2 rounded-[6px] truncate max-w-[160px] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-active)]"
             style={{ color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}

@@ -1,4 +1,5 @@
 import type { MarketTradeActivity, MarketWithVelocity } from "@siren/shared";
+import { getActiveMarkets } from "../lib/polymarket.js";
 
 const DFLOW_METADATA_URL =
   process.env.DFLOW_METADATA_API_URL ||
@@ -101,6 +102,10 @@ function parseTimestamp(value?: string): number | undefined {
   if (!value) return undefined;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function clampProbability(value: number): number {
+  return Math.min(100, Math.max(0, Number(value.toFixed(2))));
 }
 
 async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["events"]>> {
@@ -255,79 +260,142 @@ export async function getMarketTradeActivity(ticker: string): Promise<MarketTrad
   return promise;
 }
 
-/** Fetch markets from DFlow Metadata API and compute real 1h movement. */
+async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
+  const events = await fetchAllActiveEvents();
+  const markets: MarketWithVelocity[] = [];
+
+  for (const event of events) {
+    const eventMarkets = event.markets ?? [];
+    const seriesTicker = event.seriesTicker ?? event.ticker?.split("-").slice(0, -1).join("-") ?? "";
+    for (const m of eventMarkets) {
+      if (m.status !== "active" || (m.volume ?? 0) <= 0) continue;
+      const yesBid = m.yesBid ? parseFloat(m.yesBid) : undefined;
+      const yesAsk = m.yesAsk ? parseFloat(m.yesAsk) : undefined;
+      const prob = (yesBid ?? yesAsk ?? 0.5) * 100;
+
+      const accountValues = m.accounts ? Object.values(m.accounts) : [];
+      const firstAccount = accountValues.find((a) => a.yesMint && a.noMint);
+      const yes_mint = firstAccount?.yesMint;
+      const no_mint = firstAccount?.noMint;
+
+      const seriesSlug = seriesTicker.toLowerCase();
+      const marketTickerSlug = m.ticker.toLowerCase();
+      const titleSlug = (m.title || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .slice(0, 60);
+      const kalshi_url = titleSlug
+        ? `https://kalshi.com/markets/${seriesSlug}/${titleSlug}/${marketTickerSlug}`
+        : `https://kalshi.com/markets/${seriesSlug}/${marketTickerSlug}`;
+
+      markets.push({
+        source: "kalshi",
+        platform_id: m.ticker,
+        market_url: kalshi_url,
+        ticker: m.ticker,
+        event_ticker: m.eventTicker,
+        series_ticker: seriesTicker,
+        title: m.title,
+        subtitle: m.subtitle,
+        status: "open",
+        yes_bid: yesBid,
+        yes_ask: yesAsk,
+        volume: m.volume,
+        volume_24h: parseFiniteNumber(m.volume24hFp) ?? parseFiniteNumber(event.volume24h),
+        liquidity: parseFiniteNumber(event.liquidity),
+        open_interest: m.openInterest,
+        close_time: m.closeTime,
+        open_time: m.openTime,
+        probability: prob,
+        velocity_1h: 0,
+        yes_mint,
+        no_mint,
+        kalshi_url,
+      });
+    }
+  }
+
+  const velocityCandidates = [...markets]
+    .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+    .slice(0, VELOCITY_FETCH_LIMIT);
+
+  for (let i = 0; i < velocityCandidates.length; i += 12) {
+    const batch = velocityCandidates.slice(i, i + 12);
+    const velocities = await Promise.all(batch.map((market) => fetchMarketVelocity1h(market.ticker)));
+    batch.forEach((market, index) => {
+      market.velocity_1h = velocities[index] ?? 0;
+    });
+  }
+
+  return markets;
+}
+
+async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
+  const markets = await getActiveMarkets();
+
+  return markets
+    .filter((market) => market.question && ((market.volume ?? 0) > 0 || (market.liquidity ?? 0) > 0))
+    .map((market) => {
+      const marketUrl = market.slug ? `https://polymarket.com/event/${market.slug}` : "https://polymarket.com";
+      const probability = clampProbability((market.outcomePrices[0] ?? 0.5) * 100);
+
+      return {
+        source: "polymarket",
+        platform_id: market.id,
+        market_url: marketUrl,
+        ticker: `POLY-${market.id}`,
+        event_ticker: market.slug?.toUpperCase() ?? `POLY-${market.id}`,
+        series_ticker: "POLYMARKET",
+        title: market.question,
+        subtitle: "Polymarket live market",
+        status: "open",
+        yes_bid: market.bestBid,
+        yes_ask: market.bestAsk,
+        volume: market.volume,
+        volume_24h: market.volume,
+        liquidity: market.liquidity,
+        open_interest: 0,
+        close_time: parseTimestamp(market.endDate),
+        open_time: parseTimestamp(market.startDate),
+        probability,
+        velocity_1h: 0,
+      };
+    });
+}
+
+/** Fetch markets from Kalshi and Polymarket, keeping both sources independent. */
 export async function getMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
   if (marketsCache && marketsCache.expiresAt > Date.now()) return marketsCache.value;
   if (marketsInFlight) return marketsInFlight;
 
   marketsInFlight = (async () => {
     try {
-      const events = await fetchAllActiveEvents();
-      const markets: MarketWithVelocity[] = [];
+      const [kalshiResult, polymarketResult] = await Promise.allSettled([
+        getKalshiMarketsWithVelocity(),
+        getPolymarketMarketsWithVelocity(),
+      ]);
 
-      for (const event of events) {
-        const eventMarkets = event.markets ?? [];
-        const seriesTicker = event.seriesTicker ?? event.ticker?.split("-").slice(0, -1).join("-") ?? "";
-        for (const m of eventMarkets) {
-          if (m.status !== "active" || (m.volume ?? 0) <= 0) continue;
-          const yesBid = m.yesBid ? parseFloat(m.yesBid) : undefined;
-          const yesAsk = m.yesAsk ? parseFloat(m.yesAsk) : undefined;
-          const prob = (yesBid ?? yesAsk ?? 0.5) * 100;
+      const combined: MarketWithVelocity[] = [];
+      if (kalshiResult.status === "fulfilled") {
+        combined.push(...kalshiResult.value);
+      }
+      if (polymarketResult.status === "fulfilled") {
+        combined.push(...polymarketResult.value);
+      }
 
-          const accountValues = m.accounts ? Object.values(m.accounts) : [];
-          const firstAccount = accountValues.find((a) => a.yesMint && a.noMint);
-          const yes_mint = firstAccount?.yesMint;
-          const no_mint = firstAccount?.noMint;
-
-          const seriesSlug = seriesTicker.toLowerCase();
-          const marketTickerSlug = m.ticker.toLowerCase();
-          const titleSlug = (m.title || "")
-            .toLowerCase()
-            .replace(/[^a-z0-9\s-]/g, "")
-            .replace(/\s+/g, "-")
-            .replace(/-+/g, "-")
-            .slice(0, 60);
-          const kalshi_url = titleSlug
-            ? `https://kalshi.com/markets/${seriesSlug}/${titleSlug}/${marketTickerSlug}`
-            : `https://kalshi.com/markets/${seriesSlug}/${marketTickerSlug}`;
-
-          markets.push({
-            ticker: m.ticker,
-            event_ticker: m.eventTicker,
-            series_ticker: seriesTicker,
-            title: m.title,
-            subtitle: m.subtitle,
-            status: "open",
-            yes_bid: yesBid,
-            yes_ask: yesAsk,
-            volume: m.volume,
-            volume_24h: parseFiniteNumber(m.volume24hFp) ?? parseFiniteNumber(event.volume24h),
-            liquidity: parseFiniteNumber(event.liquidity),
-            open_interest: m.openInterest,
-            close_time: m.closeTime,
-            open_time: m.openTime,
-            probability: prob,
-            velocity_1h: 0,
-            yes_mint,
-            no_mint,
-            kalshi_url,
-          });
+      if (combined.length === 0) {
+        if (marketsCache?.value?.length) {
+          return marketsCache.value;
         }
+        const reasons = [kalshiResult, polymarketResult]
+          .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+          .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
+        throw new Error(reasons.join(" | ") || "No markets available");
       }
 
-      const velocityCandidates = [...markets]
-        .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
-        .slice(0, VELOCITY_FETCH_LIMIT);
-
-      for (let i = 0; i < velocityCandidates.length; i += 12) {
-        const batch = velocityCandidates.slice(i, i + 12);
-        const velocities = await Promise.all(batch.map((market) => fetchMarketVelocity1h(market.ticker)));
-        batch.forEach((market, index) => {
-          market.velocity_1h = velocities[index] ?? 0;
-        });
-      }
-
-      const sorted = markets.sort((a, b) => {
+      const sorted = combined.sort((a, b) => {
         const velocityDiff = Math.abs(b.velocity_1h) - Math.abs(a.velocity_1h);
         if (velocityDiff !== 0) return velocityDiff;
         return (b.volume ?? 0) - (a.volume ?? 0);

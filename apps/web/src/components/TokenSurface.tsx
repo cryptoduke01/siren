@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Copy, Check, ArrowUpRight, ExternalLink, Activity } from "lucide-react";
+import { Copy, Check, ArrowUpRight, ExternalLink, Activity, Share2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { useSirenStore, type SelectedMarket } from "@/store/useSirenStore";
@@ -108,18 +108,39 @@ function SignalSourcePill({ source }: { source: PredictionSignal["source"] }) {
   );
 }
 
+function getSelectedMarketVenueLabel(market: SelectedMarket): string {
+  return market.source === "kalshi" ? "Kalshi" : "Polymarket";
+}
+
+function getSelectedMarketRailLabel(market: SelectedMarket): string {
+  return market.source === "kalshi" ? "Kalshi rail" : "Polymarket rail";
+}
+
+function canTradeSelectedMarketInSiren(market: SelectedMarket): boolean {
+  return market.source === "kalshi" && !!(market.yes_mint || market.no_mint);
+}
+
+function getSelectedMarketUrl(market: SelectedMarket): string {
+  return market.market_url || market.kalshi_url || (market.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com");
+}
+
 function PredictionMarketFocusPanel({
   market,
-  onTrade,
-  onOpenKalshi,
+  onPrimaryAction,
+  onOpenVenue,
   onBrowseTokens,
+  onShare,
 }: {
   market: SelectedMarket;
-  onTrade: () => void;
-  onOpenKalshi: () => void;
+  onPrimaryAction: () => void;
+  onOpenVenue: () => void;
   onBrowseTokens: () => void;
+  onShare: () => void;
 }) {
-  const { data: marketActivity } = useMarketActivity(market.ticker);
+  const { data: marketActivity } = useMarketActivity(market.source === "kalshi" ? market.ticker : undefined);
+  const platformLabel = getSelectedMarketVenueLabel(market);
+  const canTradeInSiren = canTradeSelectedMarketInSiren(market);
+
   return (
     <section
       className="mb-5 overflow-hidden rounded-[22px] border"
@@ -129,33 +150,50 @@ function PredictionMarketFocusPanel({
           "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
       }}
     >
-      <div className="border-b px-5 py-5" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_320px] xl:items-start">
+      <div className="border-b px-4 py-4 sm:px-5 sm:py-5" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.3fr)_minmax(300px,360px)] 2xl:items-start">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-                Selected market
-              </p>
-              <span
-                className="inline-flex items-center rounded-full border px-2.5 py-1 font-body text-[10px] font-medium uppercase tracking-[0.12em]"
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                  Selected market
+                </p>
+                <span
+                  className="inline-flex items-center rounded-full border px-2.5 py-1 font-body text-[10px] font-medium uppercase tracking-[0.12em]"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)",
+                    background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                    color: "var(--accent)",
+                  }}
+                >
+                  {getSelectedMarketRailLabel(market)}
+                </span>
+                <span
+                  className="inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium"
+                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}
+                  title={market.ticker}
+                >
+                  {market.ticker}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onShare}
+                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
                 style={{
-                  borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)",
-                  background: "color-mix(in srgb, var(--accent) 10%, transparent)",
-                  color: "var(--accent)",
+                  borderColor: "var(--border-subtle)",
+                  background: "var(--bg-surface)",
+                  color: "var(--text-2)",
                 }}
+                aria-label="Share this Siren view"
               >
-                Kalshi rail
-              </span>
-              <span
-                className="inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium"
-                style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}
-              >
-                {market.ticker}
-              </span>
+                <Share2 className="h-3.5 w-3.5" />
+                onsiren.xyz
+              </button>
             </div>
 
             <h2
-              className="mt-4 max-w-4xl font-heading text-[2.1rem] font-bold leading-[0.96] tracking-[-0.04em] md:text-[2.85rem]"
+              className="mt-4 max-w-5xl break-words font-heading text-[clamp(2.4rem,6vw,4.8rem)] font-bold leading-[0.92] tracking-[-0.05em]"
               style={{ color: "var(--text-1)" }}
             >
               {market.title}
@@ -174,6 +212,12 @@ function PredictionMarketFocusPanel({
               >
                 YES probability {formatPercent(market.probability)}
               </span>
+              <span
+                className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]"
+                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+              >
+                Venue {platformLabel}
+              </span>
             </div>
 
             {market.subtitle && (
@@ -182,7 +226,9 @@ function PredictionMarketFocusPanel({
               </p>
             )}
             <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Hit the market rail for direct YES or NO execution, then sweep the linked tokens below from the same screen.
+              {canTradeInSiren
+                ? "Hit the market rail for direct YES or NO execution, then sweep the linked tokens below from the same screen."
+                : "Open the venue rail for the market itself, then sweep the linked Solana tokens below from the same screen."}
             </p>
           </div>
 
@@ -256,14 +302,14 @@ function PredictionMarketFocusPanel({
             <div className="mt-4 flex flex-col gap-2">
               <button
                 type="button"
-                onClick={onTrade}
+                onClick={onPrimaryAction}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
                 style={{ background: "var(--accent)", color: "var(--accent-text)" }}
               >
-                Trade market
+                {canTradeInSiren ? "Trade in Siren" : `Open on ${platformLabel}`}
                 <ArrowUpRight className="h-4 w-4" />
               </button>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1">
                 <button
                   type="button"
                   onClick={onBrowseTokens}
@@ -274,11 +320,11 @@ function PredictionMarketFocusPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={onOpenKalshi}
+                  onClick={onOpenVenue}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
                   style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                 >
-                  Trade on Kalshi
+                  Open on {platformLabel}
                   <ExternalLink className="h-4 w-4" />
                 </button>
               </div>
@@ -287,7 +333,7 @@ function PredictionMarketFocusPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 px-4 py-4 sm:px-5 sm:grid-cols-2 2xl:grid-cols-4">
         <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
             Lifetime volume
@@ -302,40 +348,44 @@ function PredictionMarketFocusPanel({
 
         <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            Volume 24h
+            {market.source === "kalshi" ? "Volume 24h" : "Liquidity"}
           </p>
           <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {formatCompactNumber(market.volume_24h, 1)}
+            {formatCompactNumber(market.source === "kalshi" ? market.volume_24h : market.liquidity, 1)}
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Contracts filled across the last 24 hours
+            {market.source === "kalshi"
+              ? "Contracts filled across the last 24 hours"
+              : "Venue liquidity on the active order book"}
           </p>
         </div>
 
         <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-            Trades 24h
+            {market.source === "kalshi" ? "Trades 24h" : "Venue"}
           </p>
           <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {formatCompactNumber(marketActivity?.recent_trades_24h, 0)}
+            {market.source === "kalshi" ? formatCompactNumber(marketActivity?.recent_trades_24h, 0) : platformLabel}
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Public fills, not unique traders
+            {market.source === "kalshi" ? "Public fills, not unique traders" : "Selected from the second live signal rail"}
           </p>
         </div>
 
         <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <div className="flex items-center justify-between gap-2">
             <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-              Open interest
+              {market.source === "kalshi" ? "Open interest" : "Closes"}
             </p>
             <Activity className="h-4 w-4" style={{ color: "var(--text-3)" }} />
           </div>
           <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-            {formatCompactNumber(market.open_interest, 1)}
+            {market.source === "kalshi" ? formatCompactNumber(market.open_interest, 1) : formatTimestampLabel(market.close_time)}
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Open contracts still exposed to resolution
+            {market.source === "kalshi"
+              ? "Open contracts still exposed to resolution"
+              : "Expected market close from the venue schedule"}
           </p>
         </div>
       </div>
@@ -495,7 +545,7 @@ function SignalNarrativePanel({
 }
 
 export function TokenSurface() {
-  const { selectedMarket, selectedSignal, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
+  const { selectedMarket, selectedSignal, setBuyPanelOpen } = useSirenStore();
   const { publicKey } = useSirenWallet();
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -558,6 +608,29 @@ export function TokenSurface() {
 
   const { setSelectedToken } = useSirenStore();
 
+  const shareSelectedMarket = async () => {
+    if (!selectedMarket || typeof window === "undefined") return;
+
+    const shareUrl = `${window.location.origin}/?market=${encodeURIComponent(selectedMarket.ticker)}`;
+    const sharePayload = {
+      title: `${selectedMarket.title} · Siren`,
+      text: `Track ${getSelectedMarketVenueLabel(selectedMarket)} market flow on Siren`,
+      url: shareUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(sharePayload);
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+      }
+      addToast("Siren link copied. Share it out.", "success");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      addToast("Unable to share right now. Try again in a second.", "error");
+    }
+  };
+
   return (
     <div
       ref={surfaceRef}
@@ -567,19 +640,23 @@ export function TokenSurface() {
       {selectedMarket ? (
         <PredictionMarketFocusPanel
           market={selectedMarket}
-          onTrade={() => {
+          onPrimaryAction={() => {
             hapticLight();
-            setBuyPanelOpen(true, "market");
+            if (canTradeSelectedMarketInSiren(selectedMarket)) {
+              setBuyPanelOpen(true, "market");
+              return;
+            }
+            window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
           }}
-          onOpenKalshi={() => {
+          onOpenVenue={() => {
             hapticLight();
-            if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank", "noopener,noreferrer");
-            else setBuyPanelOpen(true, "market");
+            window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
           }}
           onBrowseTokens={() => {
             hapticLight();
             tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
+          onShare={shareSelectedMarket}
         />
       ) : selectedSignal ? (
         <SignalNarrativePanel
@@ -627,7 +704,10 @@ export function TokenSurface() {
           DexScreener (Solana). Results appear as you type.
         </p>
       </div>
-      <div className="mb-3 rounded-[10px] border px-3 py-2 flex items-center justify-between gap-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+      <div
+        className="mb-3 flex flex-col gap-2 rounded-[10px] border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+      >
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hidden">
           {[
             { id: "all", label: "All", logoUrl: "", fallback: "A" },
@@ -669,30 +749,34 @@ export function TokenSurface() {
           Token filters
         </button>
       </div>
-      <div ref={tokenSectionRef} className="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <div ref={tokenSectionRef} className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h2
-          className="font-heading font-semibold text-sm truncate max-w-[200px] md:max-w-none"
+          className="font-heading text-sm font-semibold"
           style={{ color: "var(--text-2)" }}
         >
           {selectedMarket ? "Tokens exposed to this market" : selectedSignal ? "Tokens linked to this signal" : "Surfaced tokens"}
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
           {selectedMarket && (
             <>
               <button
                 type="button"
                 onClick={() => {
                   hapticLight();
-                  setBuyPanelOpen(true, "market");
+                  if (canTradeSelectedMarketInSiren(selectedMarket)) {
+                    setBuyPanelOpen(true, "market");
+                    return;
+                  }
+                  window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
                 }}
-                className="font-heading font-bold text-[11px] uppercase h-8 px-4 rounded-[6px] transition-all duration-[120ms] ease hover:opacity-90"
+                className="h-8 rounded-[6px] px-4 font-heading text-[11px] font-bold uppercase transition-all duration-[120ms] ease hover:opacity-90"
                 style={{
                   background: "var(--accent)",
                   color: "var(--accent-text)",
                   letterSpacing: "0.06em",
                 }}
               >
-                Trade market
+                {canTradeSelectedMarketInSiren(selectedMarket) ? "Trade market" : `Open ${getSelectedMarketVenueLabel(selectedMarket)}`}
               </button>
               <MarketAlertButton ticker={selectedMarket.ticker} probability={selectedMarket.probability} />
               <StarButton type="market" id={selectedMarket.ticker} />
@@ -768,7 +852,7 @@ export function TokenSurface() {
                 initial={{ opacity: 0, transform: "translateY(6px)" }}
                 animate={{ opacity: 1, transform: "translateY(0)" }}
                 transition={{ duration: 0.18, delay: i * 0.05, ease: "easeOut" }}
-                className="rounded-[14px] p-2.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] min-w-0 overflow-hidden"
+                className="min-w-0 cursor-pointer overflow-hidden rounded-[14px] p-3 transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)]"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border-subtle)",
@@ -801,7 +885,7 @@ export function TokenSurface() {
                   });
                 }}
               >
-                <div className="flex items-center gap-2.5 min-w-0">
+                <div className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)] xl:grid-cols-[56px_minmax(0,1fr)_auto] xl:items-center">
                   <div className="w-[56px] h-[56px] rounded-[10px] border shrink-0 overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
                     <img
                       src={t.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.symbol || t.name)}&background=0F172A&color=E2E8F0&size=64`}
@@ -862,7 +946,7 @@ export function TokenSurface() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex flex-wrap items-center gap-1.5 md:col-span-2 xl:col-span-1 xl:justify-end">
                     <TokenAlertButton mint={t.mint} symbol={t.symbol} price={t.price} />
                     <StarButton type="token" id={t.mint} />
                     <CopyCAButton mint={t.mint} />
@@ -889,7 +973,7 @@ export function TokenSurface() {
                         });
                         setBuyPanelOpen(true, "token");
                       }}
-                      className="h-9 px-4 rounded-[9px] font-heading font-semibold text-[11px] uppercase transition-all duration-[80ms] ease hover:brightness-[1.08] shrink-0"
+                      className="h-9 shrink-0 rounded-[9px] px-4 font-heading text-[11px] font-semibold uppercase transition-all duration-[80ms] ease hover:brightness-[1.08]"
                       style={{
                         background: "transparent",
                         color: "var(--text-1)",

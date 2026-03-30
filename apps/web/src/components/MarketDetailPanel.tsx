@@ -20,14 +20,19 @@ function VelocityBadge({ v }: { v: number }) {
 
 export function MarketDetailPanel() {
   const { selectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
-  const { data: marketActivity } = useMarketActivity(selectedMarket?.ticker);
+  const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
   const isOpen = !!selectedMarket && detailPanelOpen;
 
   if (!selectedMarket || !detailPanelOpen) return null;
 
   const yesPct = Math.min(100, Math.max(0, selectedMarket.probability));
   const noPct = 100 - yesPct;
-  const canTradeInApp = !!(selectedMarket.yes_mint || selectedMarket.no_mint);
+  const canTradeInApp = selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
+  const venueLabel = selectedMarket.source === "kalshi" ? "Kalshi" : "Polymarket";
+  const marketUrl =
+    selectedMarket.market_url ||
+    selectedMarket.kalshi_url ||
+    (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com");
 
   return (
     <AnimatePresence>
@@ -130,7 +135,7 @@ export function MarketDetailPanel() {
                     Trade In Siren
                   </button>
                   <a
-                    href={selectedMarket.kalshi_url || "https://kalshi.com"}
+                    href={marketUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
@@ -141,7 +146,7 @@ export function MarketDetailPanel() {
                       borderColor: "var(--border-subtle)",
                     }}
                   >
-                    Trade on Kalshi
+                    Open on {venueLabel}
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs" style={{ color: "var(--text-3)" }}>
@@ -151,18 +156,20 @@ export function MarketDetailPanel() {
               ) : (
                 <>
                   <a
-                    href={selectedMarket.kalshi_url || "https://kalshi.com"}
+                    href={marketUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
                     className="flex items-center justify-center gap-2 w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    Trade on Kalshi
+                    Open on {venueLabel}
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
-                    In-app trading requires outcome mints. Use Kalshi for this market.
+                    {selectedMarket.source === "kalshi"
+                      ? "In-app trading requires outcome mints. Use Kalshi for this market."
+                      : "Polymarket markets open on the venue while Siren handles the linked token flow here."}
                   </p>
                 </>
               )}

@@ -14,26 +14,9 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useRouter } from "next/navigation";
 import type { MarketWithVelocity } from "@siren/shared";
+import { toSelectedMarket } from "@/lib/marketSelection";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election", "world", "cup", "georgia", "purdue", "uae", "icc", "t20", "sol", "eth", "jpow", "pepe", "bonk"];
-const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
-
-function extractKeywords(title: string): string[] {
-  const lower = title.toLowerCase();
-  const fromKnown = MARKET_KEYWORDS.filter((kw) => lower.includes(kw)).slice(0, 2);
-  const words = lower.replace(/[^\w\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
-  const seen = new Set(fromKnown);
-  const out = [...fromKnown];
-  for (const w of words) {
-    if (!seen.has(w) && out.length < 4) {
-      seen.add(w);
-      out.push(w);
-    }
-  }
-  return out;
-}
 
 const SIDEBAR_MIN = 340;
 const SIDEBAR_MAX = 620;
@@ -84,21 +67,7 @@ export function HomeInner() {
       const m = markets.find((x) => x.ticker === marketTicker);
       if (m) {
         appliedShareRef.current.market = marketTicker;
-        setSelectedMarket({
-          ticker: m.ticker,
-          title: m.title,
-          probability: m.probability,
-          velocity_1h: m.velocity_1h,
-          volume: m.volume,
-          open_interest: m.open_interest,
-          event_ticker: m.event_ticker,
-          series_ticker: m.series_ticker,
-          subtitle: m.subtitle,
-          keywords: extractKeywords(m.title),
-          yes_mint: m.yes_mint,
-          no_mint: m.no_mint,
-          kalshi_url: m.kalshi_url,
-        });
+        setSelectedMarket(toSelectedMarket(m));
       }
     }
   }, [searchParams, markets, setSelectedMarket]);
@@ -137,21 +106,7 @@ export function HomeInner() {
   }, [searchParams, setSelectedToken, setBuyPanelOpen]);
 
   const handleSelectMarket = (m: MarketWithVelocity) => {
-    setSelectedMarket({
-      ticker: m.ticker,
-      title: m.title,
-      probability: m.probability,
-      velocity_1h: m.velocity_1h,
-      volume: m.volume,
-      open_interest: m.open_interest,
-      event_ticker: m.event_ticker,
-      series_ticker: m.series_ticker,
-      subtitle: m.subtitle,
-      keywords: extractKeywords(m.title),
-      yes_mint: m.yes_mint,
-      no_mint: m.no_mint,
-      kalshi_url: m.kalshi_url,
-    });
+    setSelectedMarket(toSelectedMarket(m));
   };
 
   if (!isReady || !connected) {

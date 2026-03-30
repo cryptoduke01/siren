@@ -20,6 +20,10 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
 
   if (!selectedMarket) return null;
 
+  const canTradeInSiren = selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
+  const venueLabel = selectedMarket.source === "kalshi" ? "Kalshi" : "Polymarket";
+  const marketUrl = selectedMarket.market_url || selectedMarket.kalshi_url || (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com");
+
   return (
     <div
       className="sticky top-0 z-10 flex items-center justify-between gap-4 px-4 py-3 mb-4"
@@ -45,12 +49,16 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
           type="button"
           onClick={() => {
             hapticLight();
-            setBuyPanelOpen(true, "market");
+            if (canTradeInSiren) {
+              setBuyPanelOpen(true, "market");
+              return;
+            }
+            window.open(marketUrl, "_blank", "noopener,noreferrer");
           }}
           className="h-9 rounded-[8px] px-3 text-[11px] font-heading font-semibold uppercase tracking-[0.08em]"
           style={{ background: "var(--accent)", color: "var(--accent-text)" }}
         >
-          Trade
+          {canTradeInSiren ? "Trade" : venueLabel}
         </button>
         <button
           type="button"
