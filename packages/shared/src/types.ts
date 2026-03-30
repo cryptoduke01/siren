@@ -27,6 +27,10 @@ export interface MarketWithVelocity extends KalshiMarket {
   probability: number;
   yes_mint?: string;
   no_mint?: string;
+  yes_token_id?: string;
+  no_token_id?: string;
+  condition_id?: string;
+  market_slug?: string;
   series_ticker?: string;
   kalshi_url?: string;
 }

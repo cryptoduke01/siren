@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@polymarket/clob-client": "^5.8.1",
     "@privy-io/react-auth": "^3.16.0",
     "@siren/shared": "workspace:*",
     "@solana-program/memo": "^0.8.0",

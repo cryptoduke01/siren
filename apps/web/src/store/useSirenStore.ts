@@ -6,6 +6,8 @@ export interface SelectedMarket {
   ticker: string;
   platform_id?: string;
   market_url?: string;
+  market_slug?: string;
+  condition_id?: string;
   title: string;
   probability: number;
   velocity_1h: number;
@@ -21,6 +23,8 @@ export interface SelectedMarket {
   keywords?: string[];
   yes_mint?: string;
   no_mint?: string;
+  yes_token_id?: string;
+  no_token_id?: string;
   kalshi_url?: string;
 }
 

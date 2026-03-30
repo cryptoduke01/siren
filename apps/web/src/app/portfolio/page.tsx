@@ -7,7 +7,7 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
-import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History, KeyRound } from "lucide-react";
+import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History, KeyRound, CreditCard, WalletCards, BadgeDollarSign } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
@@ -16,6 +16,9 @@ import { hapticLight } from "@/lib/haptics";
 import { fetchEthPriceUsd, fetchSolPriceUsd, isFiniteNumber } from "@/lib/pricing";
 import type { MarketWithVelocity } from "@siren/shared";
 import bs58 from "bs58";
+import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
+import { useFundWallet as useSolanaFundWallet } from "@privy-io/react-auth/solana";
+import { buildBaseFundingConfig, buildPolymarketFundingConfig, buildSolanaFundingConfig } from "@/lib/privyFunding";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const LAMPORTS_PER_SOL = 1e9;
@@ -92,6 +95,30 @@ async function fetchBaseBalance(address: string): Promise<number> {
   }
   const payload = await res.json();
   return Math.max(0, Number(payload?.data?.eth) || 0);
+}
+
+type PolymarketDepositAddresses = {
+  address?: {
+    evm?: string;
+    svm?: string;
+    tron?: string;
+    btc?: string;
+  };
+  note?: string;
+};
+
+async function fetchPolymarketDepositAddresses(address: string): Promise<PolymarketDepositAddresses> {
+  const res = await fetch(`${API_URL}/api/polymarket/deposit-addresses`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address }),
+    credentials: "omit",
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(payload?.error || "Unable to load Polymarket deposit addresses.");
+  }
+  return (payload?.data ?? {}) as PolymarketDepositAddresses;
 }
 
 function shortenAddress(value?: string | null): string {
@@ -471,6 +498,40 @@ function AddressCopyButton({ address }: { address: string }) {
   );
 }
 
+function DepositAddressCard({
+  label,
+  tone,
+  address,
+  description,
+}: {
+  label: string;
+  tone: string;
+  address?: string;
+  description: string;
+}) {
+  return (
+    <div
+      className="rounded-xl border p-3"
+      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: tone }}>
+            {label}
+          </p>
+          <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+            {description}
+          </p>
+        </div>
+        {address ? <AddressCopyButton address={address} /> : null}
+      </div>
+      <code className="mt-3 block break-all font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+        {address ?? "Address unavailable"}
+      </code>
+    </div>
+  );
+}
+
 function SendSolModal({
   balance,
   solPriceUsd,
@@ -593,10 +654,16 @@ export default function PortfolioPage() {
   const { connection } = useConnection();
   const queryClient = useQueryClient();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
+  const { fundWallet: fundEvmWallet } = useEvmFundWallet();
+  const { fundWallet: fundSolanaWallet } = useSolanaFundWallet();
+  const [fundingOpen, setFundingOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveRail, setReceiveRail] = useState<"solana" | "base">("solana");
   const [swapOpen, setSwapOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [fundingAction, setFundingAction] = useState<"solana" | "base" | "polymarket" | null>(null);
+  const [fundingMessage, setFundingMessage] = useState<string | null>(null);
+  const [fundingError, setFundingError] = useState<string | null>(null);
   const [privateKeyValue, setPrivateKeyValue] = useState<string | null>(null);
   const [privateKeyError, setPrivateKeyError] = useState<string | null>(null);
   const [exportingKey, setExportingKey] = useState(false);
@@ -675,6 +742,19 @@ export default function PortfolioPage() {
     enabled: !!evmAddress,
     refetchInterval: 30_000,
     staleTime: 15_000,
+  });
+
+  const {
+    data: polymarketDepositAddresses,
+    isLoading: polymarketDepositLoading,
+    isError: polymarketDepositError,
+    refetch: refetchPolymarketDepositAddresses,
+  } = useQuery({
+    queryKey: ["polymarket-deposit-addresses", evmAddress],
+    queryFn: () => fetchPolymarketDepositAddresses(evmAddress!),
+    enabled: fundingOpen && !!evmAddress,
+    staleTime: 5 * 60_000,
+    retry: 1,
   });
 
   const { data: tokenHoldings = [], isLoading: tokensLoading, refetch: refetchTokens } = useQuery({
@@ -1017,6 +1097,61 @@ export default function PortfolioPage() {
     setBuyPanelOpen(true, "token");
   };
 
+  const refreshWalletPanels = () => {
+    if (publicKey) {
+      queryClient.invalidateQueries({ queryKey: ["wallet-balance", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
+    }
+    if (evmAddress) {
+      queryClient.invalidateQueries({ queryKey: ["base-balance", evmAddress] });
+    }
+  };
+
+  const openFundingModal = () => {
+    hapticLight();
+    setFundingMessage(null);
+    setFundingError(null);
+    setFundingOpen(true);
+  };
+
+  const handleFundingAction = async (target: "solana" | "base" | "polymarket") => {
+    hapticLight();
+    setFundingAction(target);
+    setFundingMessage(null);
+    setFundingError(null);
+
+    try {
+      if (target === "solana") {
+        if (!publicKey) throw new Error("Your Solana wallet is still being created.");
+        await fundSolanaWallet({
+          address: publicKey.toBase58(),
+          options: buildSolanaFundingConfig(),
+        });
+        setFundingMessage("Solana funding is open. Card and Apple Pay options appear inside Privy when they are available on your device and in your region.");
+      } else {
+        if (!evmAddress) throw new Error("Your embedded EVM wallet is still being created.");
+        const result = await fundEvmWallet({
+          address: evmAddress,
+          options: target === "base" ? buildBaseFundingConfig() : buildPolymarketFundingConfig(),
+        });
+        setFundingMessage(
+          result?.status === "cancelled"
+            ? "Funding flow closed."
+            : target === "polymarket"
+              ? "Polymarket funding started. The venue trades from Polygon USDC, so that is the balance Siren is topping up."
+              : "Base funding started. Funds can take a few minutes to settle."
+        );
+      }
+      refreshWalletPanels();
+      window.setTimeout(() => refreshWalletPanels(), 20_000);
+    } catch (error) {
+      setFundingError(error instanceof Error ? error.message : "Unable to start the funding flow right now.");
+    } finally {
+      setFundingAction(null);
+    }
+  };
+
   const receiveAddress =
     receiveRail === "base"
       ? evmAddress ?? ""
@@ -1081,7 +1216,7 @@ export default function PortfolioPage() {
         ) : (
           <>
             <div
-              className="mb-6 overflow-hidden rounded-[28px] border p-6 md:p-8"
+              className="mb-6 overflow-hidden rounded-[24px] border p-4 md:p-5"
               style={{
                 borderColor: "color-mix(in srgb, var(--bags) 18%, var(--border-subtle))",
                 background:
@@ -1094,10 +1229,10 @@ export default function PortfolioPage() {
                   <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
                     Portfolio overview
                   </p>
-                  <h2 className="mt-2 font-heading text-[clamp(1.7rem,3vw,2.55rem)] font-bold leading-[0.92]" style={{ color: "var(--text-1)" }}>
-                    Solana wallet.
-                    <br />
-                    Base wallet.
+                  <h2 className="mt-2 font-heading text-[clamp(1.15rem,2vw,1.7rem)] font-bold leading-[0.98]" style={{ color: "var(--text-1)" }}>
+                    Solana.
+                    <span style={{ color: "var(--text-3)" }}> Base.</span>
+                    <span style={{ color: "var(--polymarket)" }}> Polymarket.</span>
                   </h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1110,7 +1245,7 @@ export default function PortfolioPage() {
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,360px)]">
+              <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(280px,340px)]">
                 <div>
                   <p className="font-body text-xs uppercase tracking-wider" style={{ color: "var(--text-3)" }}>
                     Total portfolio value
@@ -1118,7 +1253,7 @@ export default function PortfolioPage() {
                   {isLoading ? (
                     <div className="mt-3 h-12 w-40 rounded bg-[var(--border-subtle)] animate-pulse" />
                   ) : solPriceUsd > 0 || ethPriceUsd > 0 ? (
-                    <p className="mt-3 font-heading font-bold text-[clamp(2.35rem,5vw,4.35rem)] tabular-nums" style={{ color: "var(--accent)" }}>
+                    <p className="mt-3 font-heading font-bold text-[clamp(1.65rem,3.5vw,2.6rem)] tabular-nums" style={{ color: "var(--accent)" }}>
                       ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   ) : (
@@ -1128,7 +1263,7 @@ export default function PortfolioPage() {
                     </p>
                   )}
                   <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                    See your token exposure, prediction positions, fee earnings, and the wallet actions you actually use day to day.
+                    Add funds with card when available, receive on Solana or Base, and keep a Polymarket-ready balance without leaving Siren.
                   </p>
                   {walletVolumeSol > 0 && (
                     <p className="mt-3 font-body text-xs" style={{ color: "var(--text-2)" }}>
@@ -1149,7 +1284,16 @@ export default function PortfolioPage() {
                     </p>
                   )}
 
-                  <div className="mt-5 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={openFundingModal}
+                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                      style={{ borderColor: "color-mix(in srgb, var(--accent) 32%, var(--border-subtle))", background: "var(--accent-dim)", color: "var(--accent)" }}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      Add funds
+                    </button>
                     <button
                       type="button"
                       onClick={() => { hapticLight(); setReceiveRail("solana"); setReceiveOpen(true); }}
@@ -1242,15 +1386,31 @@ export default function PortfolioPage() {
                       {evmAddress ? shortenAddress(evmAddress) : "Embedded EVM wallet"}
                     </p>
                     {evmAddress && (
-                      <button
-                        type="button"
-                        onClick={() => { hapticLight(); setReceiveRail("base"); setReceiveOpen(true); }}
-                        className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px]"
-                        style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-                      >
-                        <QrCode className="h-3.5 w-3.5" />
-                        Receive on Base
-                      </button>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { hapticLight(); setReceiveRail("base"); setReceiveOpen(true); }}
+                          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px]"
+                          style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                          Receive on Base
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("base")}
+                          disabled={fundingAction === "base"}
+                          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px] disabled:opacity-60"
+                          style={{
+                            borderColor: "color-mix(in srgb, var(--polymarket) 38%, var(--border-subtle))",
+                            background: "color-mix(in srgb, var(--polymarket) 10%, transparent)",
+                            color: "var(--polymarket)",
+                          }}
+                        >
+                          {fundingAction === "base" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+                          Card / Apple Pay
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -1322,6 +1482,208 @@ export default function PortfolioPage() {
                     </div>
                     <div className="px-4 pb-4">
                       <button type="button" onClick={() => { hapticLight(); setSwapOpen(false); }} className="w-full py-2.5 rounded-xl font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {fundingOpen && (
+                <div
+                  className="fixed inset-0 z-40 flex items-center justify-center p-4"
+                  style={{ background: "rgba(0,0,0,0.68)" }}
+                  onClick={() => { hapticLight(); setFundingOpen(false); }}
+                >
+                  <div
+                    className="w-full max-w-2xl rounded-[24px] border overflow-hidden"
+                    style={{
+                      background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+                      borderColor: "var(--border-subtle)",
+                      boxShadow: "0 0 0 1px var(--border-subtle), 0 24px 48px -12px rgba(0,0,0,0.42)",
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="border-b px-5 py-4" style={{ borderColor: "var(--border-subtle)" }}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                            Add funds
+                          </p>
+                          <h3 className="mt-1 font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
+                            Card, Apple Pay, wallet deposit.
+                          </h3>
+                          <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            Privy handles card funding here. Apple Pay appears when MoonPay supports it on your device and in your region.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { hapticLight(); setFundingOpen(false); }}
+                          className="rounded-xl border px-3 py-2 font-body text-xs"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-5">
+                      {(fundingMessage || fundingError) && (
+                        <div
+                          className="mb-4 rounded-xl border px-4 py-3"
+                          style={{
+                            borderColor: fundingError ? "color-mix(in srgb, var(--down) 28%, var(--border-subtle))" : "color-mix(in srgb, var(--accent) 26%, var(--border-subtle))",
+                            background: fundingError ? "color-mix(in srgb, var(--down) 8%, transparent)" : "color-mix(in srgb, var(--accent) 8%, transparent)",
+                          }}
+                        >
+                          <p className="font-body text-xs leading-relaxed" style={{ color: fundingError ? "var(--down)" : "var(--text-2)" }}>
+                            {fundingError ?? fundingMessage}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("solana")}
+                          disabled={!publicKey || fundingAction !== null}
+                          className="rounded-2xl border p-4 text-left transition-all disabled:opacity-60"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: "var(--accent-dim)" }}>
+                              <BadgeDollarSign className="h-4 w-4" style={{ color: "var(--accent)" }} />
+                            </div>
+                            {fundingAction === "solana" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} /> : null}
+                          </div>
+                          <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                            Add SOL
+                          </p>
+                          <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Buy SOL straight into your Siren Solana wallet.
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("base")}
+                          disabled={!evmAddress || fundingAction !== null}
+                          className="rounded-2xl border p-4 text-left transition-all disabled:opacity-60"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--polymarket) 12%, transparent)" }}>
+                              <CreditCard className="h-4 w-4" style={{ color: "var(--polymarket)" }} />
+                            </div>
+                            {fundingAction === "base" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--polymarket)" }} /> : null}
+                          </div>
+                          <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                            Add Base ETH
+                          </p>
+                          <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Top up your embedded EVM wallet for Base activity and transfers.
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("polymarket")}
+                          disabled={!evmAddress || fundingAction !== null}
+                          className="rounded-2xl border p-4 text-left transition-all disabled:opacity-60"
+                          style={{
+                            borderColor: "color-mix(in srgb, var(--polymarket) 28%, var(--border-subtle))",
+                            background: "linear-gradient(180deg, color-mix(in srgb, var(--polymarket) 10%, transparent), var(--bg-surface))",
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--polymarket) 18%, transparent)" }}>
+                              <WalletCards className="h-4 w-4" style={{ color: "var(--polymarket)" }} />
+                            </div>
+                            {fundingAction === "polymarket" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--polymarket)" }} /> : null}
+                          </div>
+                          <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                            Fund Polymarket
+                          </p>
+                          <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Buy Polygon USDC for in-app Polymarket trades from the same embedded wallet.
+                          </p>
+                        </button>
+                      </div>
+
+                      <div className="mt-5 rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--polymarket)" }}>
+                              Polymarket deposit options
+                            </p>
+                            <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              Polymarket can take supported deposits from Solana and other chains, then convert them into Polygon USDC for trading.
+                            </p>
+                          </div>
+                          {evmAddress && (
+                            <button
+                              type="button"
+                              onClick={() => { hapticLight(); void refetchPolymarketDepositAddresses(); }}
+                              className="rounded-xl border px-3 py-2 font-body text-xs"
+                              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                            >
+                              Refresh
+                            </button>
+                          )}
+                        </div>
+
+                        {!evmAddress ? (
+                          <p className="mt-4 font-body text-xs" style={{ color: "var(--text-3)" }}>
+                            Your embedded EVM wallet is still being created. Once it is ready, Siren will show deposit addresses for Polymarket here.
+                          </p>
+                        ) : polymarketDepositLoading ? (
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            {[0, 1].map((index) => (
+                              <div key={index} className="h-28 animate-pulse rounded-xl bg-[var(--bg-elevated)]" />
+                            ))}
+                          </div>
+                        ) : polymarketDepositError ? (
+                          <p className="mt-4 font-body text-xs" style={{ color: "var(--down)" }}>
+                            Unable to load Polymarket deposit addresses right now.
+                          </p>
+                        ) : (
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            <DepositAddressCard
+                              label="EVM deposit"
+                              tone="var(--polymarket)"
+                              address={polymarketDepositAddresses?.address?.evm ?? evmAddress}
+                              description="Use this when sending from Base, Ethereum, Arbitrum, Optimism, or another supported EVM path."
+                            />
+                            <DepositAddressCard
+                              label="Solana deposit"
+                              tone="var(--accent)"
+                              address={polymarketDepositAddresses?.address?.svm}
+                              description="Use this when you want to fund Polymarket from Solana. The venue converts supported assets into Polygon USDC."
+                            />
+                          </div>
+                        )}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { hapticLight(); setReceiveRail("solana"); setReceiveOpen(true); setFundingOpen(false); }}
+                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 font-body text-xs"
+                            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                          >
+                            <QrCode className="h-3.5 w-3.5" />
+                            My Solana address
+                          </button>
+                          {evmAddress && (
+                            <button
+                              type="button"
+                              onClick={() => { hapticLight(); setReceiveRail("base"); setReceiveOpen(true); setFundingOpen(false); }}
+                              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 font-body text-xs"
+                              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                            >
+                              <QrCode className="h-3.5 w-3.5" />
+                              My Base address
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

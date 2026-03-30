@@ -118,7 +118,10 @@ function getSelectedMarketSourceLabel(market: SelectedMarket): string {
 }
 
 function canTradeSelectedMarketInSiren(market: SelectedMarket): boolean {
-  return market.source === "kalshi" && !!(market.yes_mint || market.no_mint);
+  if (market.source === "kalshi") {
+    return !!(market.yes_mint || market.no_mint);
+  }
+  return !!(market.yes_token_id || market.no_token_id);
 }
 
 function getSelectedMarketUrl(market: SelectedMarket): string {
@@ -157,14 +160,14 @@ function PredictionMarketFocusPanel({
         background:
           "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
       }}
-    >
-      <div
-        ref={exportRef}
-        data-market-card-export="true"
+      >
+        <div
+          ref={exportRef}
+          data-market-card-export="true"
         className="border-b px-4 py-4 sm:px-5 sm:py-5"
         style={{ borderColor: "var(--border-subtle)" }}
       >
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,340px)] xl:items-start">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(250px,300px)] xl:items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -189,20 +192,42 @@ function PredictionMarketFocusPanel({
                   {market.ticker}
                 </span>
               </div>
-              <div
-                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
-                style={{
-                  borderColor: "var(--border-subtle)",
-                  background: "var(--bg-surface)",
-                  color: "var(--text-2)",
-                }}
-              >
-                {exportBrandLabel}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={onShareCard}
+                  data-export-ignore="true"
+                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-medium"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                >
+                  {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
+                  {exportingCard ? "Preparing..." : "Share card"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onDownloadCard}
+                  data-export-ignore="true"
+                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-medium"
+                  style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                >
+                  {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  Save
+                </button>
+                <div
+                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background: "var(--bg-surface)",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  {exportBrandLabel}
+                </div>
               </div>
             </div>
 
             <h2
-              className="mt-4 max-w-[22ch] break-words font-heading text-[clamp(1.35rem,2.8vw,2.45rem)] font-bold leading-[0.94] tracking-[-0.04em]"
+              className="mt-4 max-w-[24ch] break-words font-heading text-[clamp(1.2rem,2.25vw,2rem)] font-bold leading-[0.96] tracking-[-0.04em]"
               style={{ color: "var(--text-1)" }}
             >
               {market.title}
@@ -230,19 +255,19 @@ function PredictionMarketFocusPanel({
             </div>
 
             {market.subtitle && (
-              <p className="mt-4 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+              <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                 {market.subtitle}
               </p>
             )}
             <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              {canTradeInSiren
-                ? "Trade this market here, then use the matched token list below if you want extra exposure."
-                : "See the live market details and use the matched token list below from the same screen."}
+              {market.source === "kalshi"
+                ? "Trade the market here, then use the matched token list below if you want extra exposure."
+                : "Trade this Polymarket market from inside Siren, then use the matched tokens below if you want extra exposure."}
             </p>
           </div>
 
           <div
-            className="rounded-[20px] border p-4 xl:self-stretch"
+            className="rounded-[20px] border p-3.5 xl:self-stretch"
             style={{
               borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
               background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), var(--bg-surface))",
@@ -348,33 +373,6 @@ function PredictionMarketFocusPanel({
                     <ExternalLink className="h-4 w-4" />
                   </button>
                 )}
-              </div>
-              {!canTradeInSiren && (
-                <p className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Polymarket data is live in Siren. Direct Polymarket order entry inside Siren is still being added, so the matched token flow stays primary for now.
-                </p>
-              )}
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={onShareCard}
-                  data-export-ignore="true"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                  {exportingCard ? "Preparing image..." : "Share image"}
-                </button>
-                <button
-                  type="button"
-                  onClick={onDownloadCard}
-                  data-export-ignore="true"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                  style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-                >
-                  {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {exportingCard ? "Preparing image..." : "Save image"}
-                </button>
               </div>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 import { usePrivy, useWallets as usePrivyWallets } from "@privy-io/react-auth";
-import { useWallets as useSolanaWallets, useSignTransaction } from "@privy-io/react-auth/solana";
+import { useWallets as useSolanaWallets, useSignMessage, useSignTransaction } from "@privy-io/react-auth/solana";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
@@ -22,6 +22,9 @@ type SirenWalletState = {
   evmAddress: string | null;
   embeddedWallets: EmbeddedWalletSummary[];
   signTransaction: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>;
+  signMessage: (message: string | Uint8Array) => Promise<Uint8Array>;
+  getEvmProvider: () => Promise<unknown>;
+  switchEvmChain: (chainId: number | `0x${string}`) => Promise<void>;
   disconnect: () => void | Promise<void>;
   isReady: boolean;
   canExportPrivateKey: boolean;
@@ -39,9 +42,14 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, logout } = usePrivy();
   const { wallets: privyWallets } = usePrivyWallets();
   const { wallets: solanaWallets } = useSolanaWallets();
+  const { signMessage: privySignMessage } = useSignMessage();
   const { signTransaction: privySignTransaction } = useSignTransaction();
 
   const solanaWallet = solanaWallets[0];
+  const evmWallet =
+    privyWallets.find((wallet) => wallet.type === "ethereum" && wallet.walletClientType?.startsWith("privy")) ??
+    privyWallets.find((wallet) => wallet.type === "ethereum") ??
+    null;
   const embeddedWallets = privyWallets
     .filter((wallet) => wallet.walletClientType?.startsWith("privy"))
     .map((wallet) => ({
@@ -81,6 +89,30 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
             return VersionedTransaction.deserialize(signedTransaction) as T;
           }
           return Transaction.from(new Uint8Array(signedTransaction)) as T;
+        },
+        signMessage: async (message: string | Uint8Array) => {
+          if (!solanaWallet) {
+            throw new Error("Solana wallet is still being provisioned.");
+          }
+
+          const encodedMessage = typeof message === "string" ? new TextEncoder().encode(message) : message;
+          const { signature } = await privySignMessage({
+            message: encodedMessage,
+            wallet: solanaWallet,
+          });
+          return signature;
+        },
+        getEvmProvider: async () => {
+          if (!evmWallet || !authenticated) {
+            throw new Error("Embedded EVM wallet is still being provisioned.");
+          }
+          return evmWallet.getEthereumProvider();
+        },
+        switchEvmChain: async (chainId: number | `0x${string}`) => {
+          if (!evmWallet || !authenticated) {
+            throw new Error("Embedded EVM wallet is still being provisioned.");
+          }
+          await evmWallet.switchChain(chainId);
         },
         disconnect: logout,
         isReady: !authenticated || Boolean(solanaWallet),
@@ -133,6 +165,19 @@ export function useSirenWallet(): SirenWalletState {
     authenticated: false,
     evmAddress: null,
     embeddedWallets: [],
+    signMessage: async (message: string | Uint8Array) => {
+      const encodedMessage = typeof message === "string" ? new TextEncoder().encode(message) : message;
+      if (typeof adapter.signMessage !== "function") {
+        throw new Error("Message signing is not available for this wallet.");
+      }
+      return adapter.signMessage(encodedMessage);
+    },
+    getEvmProvider: async () => {
+      throw new Error("Embedded EVM wallet support is only available when Privy is enabled.");
+    },
+    switchEvmChain: async () => {
+      throw new Error("Embedded EVM wallet support is only available when Privy is enabled.");
+    },
     isReady: true,
     canExportPrivateKey: false,
     exportPrivateKey: async () => {

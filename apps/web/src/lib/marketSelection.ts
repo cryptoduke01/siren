@@ -116,6 +116,10 @@ export function toSelectedMarket(market: MarketWithVelocity): SelectedMarket {
     keywords: extractMarketKeywords(market.title),
     yes_mint: market.yes_mint,
     no_mint: market.no_mint,
+    yes_token_id: market.yes_token_id,
+    no_token_id: market.no_token_id,
+    condition_id: market.condition_id,
+    market_slug: market.market_slug,
     kalshi_url: market.kalshi_url,
   };
 }

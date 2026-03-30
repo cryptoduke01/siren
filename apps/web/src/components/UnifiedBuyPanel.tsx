@@ -8,18 +8,28 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import { Copy, Check, Loader2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
+import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useSirenStore } from "@/store/useSirenStore";
 import { ResultModal } from "./ResultModal";
 import { TradePnLCard, type TradePnLToken } from "./TradePnLCard";
 import { useToastStore } from "@/store/useToastStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { hapticLight } from "@/lib/haptics";
+import {
+  buildProofDeepLink,
+  buildProofMessage,
+  buildProofRedirectUri,
+  encodeProofSignature,
+  DFLOW_PROOF_PORTAL_URL,
+} from "@/lib/dflowProof";
+import { buildPolymarketFundingConfig } from "@/lib/privyFunding";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const LAMPORTS_PER_SOL = 1e9;
-const DFLOW_PROOF_URL = "https://dflow.net/proof";
+const POLYMARKET_HOST = "https://clob.polymarket.com";
+const POLYGON_CHAIN_ID = 137;
 
 function formatCompactNumber(value?: number, digits = 1): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -55,6 +65,12 @@ function formatUsd(value?: number | null, digits = 2): string {
 function formatTokenAmount(value?: number | null, digits = 4): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return value.toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+function formatAddressShort(address?: string | null): string {
+  if (!address) return "—";
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 function parsePositiveNumber(value: string): number | null {
@@ -300,8 +316,9 @@ function CopyCAButton({ mint }: { mint: string }) {
 export function UnifiedBuyPanel() {
   const { selectedMarket, selectedToken, buyPanelOpen, buyPanelMode, setBuyPanelOpen, setSelectedToken, openForSell } =
     useSirenStore();
-  const { connected, publicKey, signTransaction } = useSirenWallet();
+  const { connected, publicKey, evmAddress, signTransaction, signMessage, getEvmProvider, switchEvmChain } = useSirenWallet();
   const { connection } = useConnection();
+  const { fundWallet: fundEvmWallet } = useEvmFundWallet();
   const addToast = useToastStore((s) => s.addToast);
   const queryClient = useQueryClient();
   const { data: solPriceUsd = 0 } = useQuery({
@@ -320,6 +337,7 @@ export function UnifiedBuyPanel() {
     actionHref?: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [polymarketFundingLoading, setPolymarketFundingLoading] = useState(false);
   const [solAmount, setSolAmount] = useState("");
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
@@ -339,6 +357,9 @@ export function UnifiedBuyPanel() {
   const [tradePnLModalOpen, setTradePnLModalOpen] = useState(false);
   const [tradePnLData, setTradePnLData] = useState<TradePnLCardModel | null>(null);
   const isPredictionToken = selectedToken?.assetType === "prediction";
+  const selectedMarketSource = selectedMarket?.source;
+  const isKalshiMarketTrade = buyPanelMode === "market" && selectedMarketSource === "kalshi";
+  const isPolymarketTrade = buyPanelMode === "market" && selectedMarketSource === "polymarket";
   const deferredSolAmount = useDeferredValue(solAmount);
   const deferredSellAmount = useDeferredValue(sellAmount);
 
@@ -356,8 +377,32 @@ export function UnifiedBuyPanel() {
         reason?: string | null;
       };
     },
-    enabled: buyPanelOpen && (buyPanelMode === "market" || isPredictionToken),
+    enabled: buyPanelOpen && (isKalshiMarketTrade || isPredictionToken),
     staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const {
+    data: dflowProofStatus,
+    isLoading: dflowProofLoading,
+    refetch: refetchDflowProofStatus,
+    isFetching: dflowProofFetching,
+  } = useQuery({
+    queryKey: ["dflow-proof-status", publicKey?.toBase58()],
+    queryFn: async () => {
+      if (!publicKey) {
+        return { verified: false };
+      }
+      const res = await fetch(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`, {
+        credentials: "omit",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Unable to check wallet verification.");
+      }
+      return (json?.data ?? { verified: false }) as { verified: boolean };
+    },
+    enabled: buyPanelOpen && isKalshiMarketTrade && !!publicKey,
+    staleTime: 60_000,
     retry: 1,
   });
   const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
@@ -400,15 +445,25 @@ export function UnifiedBuyPanel() {
   const marketNoPriceUsd = selectedMarket ? Math.min(1, Math.max(0, 1 - selectedMarket.probability / 100)) : null;
   const selectedMarketPriceUsd = marketSide === "yes" ? marketYesPriceUsd : marketNoPriceUsd;
   const selectedMarketMint = marketSide === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
+  const selectedPolymarketTokenId = marketSide === "yes" ? selectedMarket?.yes_token_id : selectedMarket?.no_token_id;
+  const selectedMarketInstrumentId = selectedMarket?.source === "polymarket" ? selectedPolymarketTokenId : selectedMarketMint;
+  const marketSpendAssetLabel = isPolymarketTrade ? "USDC" : "SOL";
+  const marketSpendPlaceholder = isPolymarketTrade ? "10.00" : "0.05";
   const parsedBuySolAmount = parsePositiveNumber(deferredSolAmount);
   const parsedSellTokenAmount = parsePositiveNumber(deferredSellAmount);
-  const predictionTradeBlocked = !!predictionEligibility?.blocked;
+  const predictionTradeBlocked = isKalshiMarketTrade && !!predictionEligibility?.blocked;
   const predictionTradeBlockReason =
     predictionEligibility?.reason ?? "Prediction market trading is not available in your jurisdiction right now.";
   const selectedTokenPriceUsd =
     typeof selectedToken?.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
   const tradeNotionalUsd =
-    parsedBuySolAmount != null && solPriceUsd > 0 ? parsedBuySolAmount * solPriceUsd : null;
+    parsedBuySolAmount != null
+      ? isPolymarketTrade
+        ? parsedBuySolAmount
+        : solPriceUsd > 0
+          ? parsedBuySolAmount * solPriceUsd
+          : null
+      : null;
   const estimatedContracts =
     selectedMarketPriceUsd && tradeNotionalUsd != null && tradeNotionalUsd > 0
       ? tradeNotionalUsd / selectedMarketPriceUsd
@@ -431,6 +486,7 @@ export function UnifiedBuyPanel() {
     tokenSellApproxSol != null ? tokenSellApproxSol * (1 - slippageBps / 10_000) : null;
   const tokenRouteLabel = isPredictionToken ? "DFlow" : isBagsMint(selectedToken?.mint) ? "Bags" : "Jupiter";
   const verificationRequired = isWalletVerificationError(error);
+  const proofVerified = !!dflowProofStatus?.verified;
 
   useEffect(() => {
     let cancelled = false;
@@ -829,7 +885,205 @@ export function UnifiedBuyPanel() {
           ? "Verify this wallet once on DFlow, then come back and submit the trade again."
           : friendly,
         actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
-        actionHref: requiresVerification ? DFLOW_PROOF_URL : undefined,
+        actionHref: requiresVerification ? DFLOW_PROOF_PORTAL_URL : undefined,
+      });
+      addToast(friendly, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openDflowProofFlow = async () => {
+    hapticLight();
+    if (!publicKey || !signMessage) {
+      const message = "Connect your Solana wallet to verify it on DFlow.";
+      setError(message);
+      addToast(message, "error");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const timestamp = Date.now();
+      const message = buildProofMessage(timestamp);
+      const signatureBytes = await signMessage(message);
+      const signature = encodeProofSignature(signatureBytes);
+      const redirectUri = buildProofRedirectUri(window.location.href, publicKey.toBase58());
+      const deepLink = buildProofDeepLink({
+        wallet: publicKey.toBase58(),
+        signature,
+        timestamp,
+        redirectUri,
+      });
+
+      window.open(deepLink, "_blank", "noopener,noreferrer");
+      addToast("Proof opened in a new tab. Finish verification there, then come back and trade.", "success");
+    } catch (e) {
+      const friendly = e instanceof Error ? e.message : "Unable to open Proof right now.";
+      setError(friendly);
+      addToast(friendly, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openPolymarketFundingFlow = async () => {
+    hapticLight();
+    if (!evmAddress) {
+      const message = "Log in with Privy to prepare your EVM wallet first.";
+      setError(message);
+      addToast(message, "error");
+      return;
+    }
+
+    try {
+      setPolymarketFundingLoading(true);
+      const result = await fundEvmWallet({
+        address: evmAddress,
+        options: buildPolymarketFundingConfig(solAmount.trim() || "50"),
+      });
+      if (result?.status === "cancelled") {
+        addToast("Funding flow closed.", "success");
+      } else {
+        addToast("Funding flow opened. Card and Apple Pay options appear inside Privy when available.", "success");
+      }
+    } catch (e) {
+      const friendly = e instanceof Error ? e.message : "Unable to open funding right now.";
+      setError(friendly);
+      addToast(friendly, "error");
+    } finally {
+      setPolymarketFundingLoading(false);
+    }
+  };
+
+  const executePolymarketTrade = async () => {
+    hapticLight();
+    if (!selectedMarket || selectedMarket.source !== "polymarket") {
+      setError("Pick a Polymarket market first.");
+      return;
+    }
+    if (!evmAddress) {
+      setError("Log in with Privy to provision your EVM wallet for Polymarket.");
+      return;
+    }
+    if (!selectedPolymarketTokenId) {
+      setError("This Polymarket outcome is missing a tradeable token id right now.");
+      return;
+    }
+
+    const amountNum = parseFloat(solAmount?.trim() || "");
+    if (!solAmount.trim() || amountNum <= 0 || !Number.isFinite(amountNum)) {
+      setError("Enter a valid USDC amount (for example 10.00).");
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
+
+    try {
+      await switchEvmChain(POLYGON_CHAIN_ID);
+      const provider = (await getEvmProvider()) as {
+        request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      };
+
+      const signer = {
+        getAddress: async () => evmAddress,
+        _signTypedData: async (
+          domain: Record<string, unknown>,
+          types: Record<string, Array<{ name: string; type: string }>>,
+          value: Record<string, unknown>
+        ) => {
+          const primaryType = Object.keys(types).find((entry) => entry !== "EIP712Domain") ?? "ClobOrder";
+          const typedData = {
+            domain,
+            types,
+            primaryType,
+            message: value,
+          };
+
+          const signature = await provider.request({
+            method: "eth_signTypedData_v4",
+            params: [evmAddress, JSON.stringify(typedData)],
+          });
+
+          if (typeof signature !== "string") {
+            throw new Error("Polymarket signing failed.");
+          }
+
+          return signature;
+        },
+      };
+
+      const { AssetType, ClobClient, OrderType, Side } = await import("@polymarket/clob-client");
+      const bootstrapClient = new ClobClient(POLYMARKET_HOST, POLYGON_CHAIN_ID, signer, undefined, 0, evmAddress);
+      const creds = await bootstrapClient.createOrDeriveApiKey();
+      const client = new ClobClient(POLYMARKET_HOST, POLYGON_CHAIN_ID, signer, creds, 0, evmAddress);
+      const [book, allowance] = await Promise.all([
+        client.getOrderBook(selectedPolymarketTokenId),
+        client.getBalanceAllowance({ asset_type: AssetType.COLLATERAL }),
+      ]);
+
+      const collateralBalance = Number(allowance?.balance ?? 0) / 1_000_000;
+      if (Number.isFinite(collateralBalance) && collateralBalance < amountNum) {
+        throw new Error(
+          `Not enough Polygon USDC in ${formatAddressShort(evmAddress)}. Fund the same EVM wallet on Polygon, then try again.`
+        );
+      }
+
+      const response = await client.createAndPostMarketOrder(
+        {
+          tokenID: selectedPolymarketTokenId,
+          amount: amountNum,
+          side: Side.BUY,
+          orderType: OrderType.FOK,
+        },
+        {
+          tickSize: book.tick_size as "0.1" | "0.01" | "0.001" | "0.0001",
+          negRisk: book.neg_risk,
+        },
+        OrderType.FOK
+      );
+
+      if (response?.success === false || response?.errorMsg) {
+        throw new Error(response?.errorMsg || "Polymarket order failed.");
+      }
+
+      const txSignature =
+        Array.isArray(response?.transactionsHashes) && typeof response.transactionsHashes[0] === "string"
+          ? response.transactionsHashes[0]
+          : undefined;
+
+      const tokenAmountApprox = selectedMarketPriceUsd && selectedMarketPriceUsd > 0 ? amountNum / selectedMarketPriceUsd : null;
+      recordLocalTrade({
+        mint: selectedPolymarketTokenId,
+        side: "buy",
+        volumeSol: null,
+        tokenAmount: tokenAmountApprox,
+        priceUsd: selectedMarketPriceUsd,
+        tokenName: `${selectedMarket.title} · ${marketSide.toUpperCase()}`,
+        tokenSymbol: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+        txSignature: txSignature ?? `poly-${Date.now()}`,
+      });
+
+      setResultModal({
+        type: "success",
+        title: "Polymarket order sent",
+        message: `Bought ${marketSide.toUpperCase()} for ${formatUsd(amountNum, 2)} from your embedded EVM wallet.`,
+        txSignature,
+        actionLabel: "Open market page",
+        actionHref: selectedMarket.market_url,
+      });
+      setSuccess(`Bought ${marketSide.toUpperCase()} on ${selectedMarket.title}.`);
+      setSolAmount("");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Polymarket trade failed";
+      const friendly = getFriendlyTradeError(msg, "Polymarket trade failed. Please try again.");
+      setError(friendly);
+      setResultModal({
+        type: "error",
+        title: "Polymarket trade failed",
+        message: friendly,
       });
       addToast(friendly, "error");
     } finally {
@@ -839,6 +1093,10 @@ export function UnifiedBuyPanel() {
 
   const executePredictionMarketTrade = async () => {
     hapticLight();
+    if (selectedMarket?.source === "polymarket") {
+      await executePolymarketTrade();
+      return;
+    }
     if (predictionTradeBlocked) {
       setError(predictionTradeBlockReason);
       setResultModal({ type: "error", title: "Trade unavailable", message: predictionTradeBlockReason });
@@ -860,6 +1118,17 @@ export function UnifiedBuyPanel() {
     if (marketPriceUsd == null || marketPriceUsd <= 0) {
       setError("This market does not have a usable YES/NO price yet.");
       return;
+    }
+
+    try {
+      const proofResult = await refetchDflowProofStatus();
+      const verified = proofResult.data?.verified ?? dflowProofStatus?.verified ?? false;
+      if (!verified) {
+        await openDflowProofFlow();
+        return;
+      }
+    } catch {
+      /* If Proof is temporarily unavailable, keep the current DFlow fallback path. */
     }
 
     setError(null);
@@ -958,7 +1227,7 @@ export function UnifiedBuyPanel() {
           ? "Verify this wallet once on DFlow, then come back and buy YES or NO again."
           : friendly,
         actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
-        actionHref: requiresVerification ? DFLOW_PROOF_URL : undefined,
+        actionHref: requiresVerification ? DFLOW_PROOF_PORTAL_URL : undefined,
       });
       addToast(friendly, "error");
     } finally {
@@ -1007,7 +1276,9 @@ export function UnifiedBuyPanel() {
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Trade market</p>
                     <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-3">{selectedMarket.title}</p>
                     <p className="font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
-                      Pick YES or NO, enter SOL, and we will build the order for you.
+                      {isPolymarketTrade
+                        ? "Pick YES or NO, enter a USDC amount, and Siren will route the order through your embedded EVM wallet."
+                        : "Pick YES or NO, enter SOL, and Siren will build the order for you."}
                     </p>
 
                     <div className="mt-4 grid grid-cols-2 gap-2">
@@ -1017,7 +1288,7 @@ export function UnifiedBuyPanel() {
                           hapticLight();
                           setMarketSide("yes");
                         }}
-                        disabled={!selectedMarket.yes_mint}
+                        disabled={!(selectedMarket.source === "polymarket" ? selectedMarket.yes_token_id : selectedMarket.yes_mint)}
                         className="rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-40"
                         style={{
                           background: marketSide === "yes" ? "color-mix(in srgb, var(--up) 12%, var(--bg-surface))" : "var(--bg-surface)",
@@ -1037,7 +1308,7 @@ export function UnifiedBuyPanel() {
                           hapticLight();
                           setMarketSide("no");
                         }}
-                        disabled={!selectedMarket.no_mint}
+                        disabled={!(selectedMarket.source === "polymarket" ? selectedMarket.no_token_id : selectedMarket.no_mint)}
                         className="rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-40"
                         style={{
                           background: marketSide === "no" ? "color-mix(in srgb, var(--down) 10%, var(--bg-surface))" : "var(--bg-surface)",
@@ -1067,26 +1338,34 @@ export function UnifiedBuyPanel() {
                         </p>
                       </div>
                       <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Trades 24h</p>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                          {selectedMarket.source === "polymarket" ? "Liquidity" : "Trades 24h"}
+                        </p>
                         <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                          {formatCompactNumber(marketActivity?.recent_trades_24h, 0)}
+                          {selectedMarket.source === "polymarket"
+                            ? formatCompactNumber(selectedMarket.liquidity, 1)
+                            : formatCompactNumber(marketActivity?.recent_trades_24h, 0)}
                         </p>
                       </div>
                       <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Open interest</p>
+                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                          {selectedMarket.source === "polymarket" ? "Wallet" : "Open interest"}
+                        </p>
                         <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                          {formatCompactNumber(selectedMarket.open_interest, 1)}
+                          {selectedMarket.source === "polymarket"
+                            ? formatAddressShort(evmAddress)
+                            : formatCompactNumber(selectedMarket.open_interest, 1)}
                         </p>
                       </div>
                     </div>
 
                     <div className="mt-4">
-                      <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount to spend (SOL)</label>
+                      <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount to spend ({marketSpendAssetLabel})</label>
                       <input
                         type="number"
-                        step="0.001"
-                        min="0.001"
-                        placeholder="0.05"
+                        step={isPolymarketTrade ? "0.01" : "0.001"}
+                        min={isPolymarketTrade ? "1" : "0.001"}
+                        placeholder={marketSpendPlaceholder}
                         value={solAmount}
                         onChange={(e) => setSolAmount(e.target.value)}
                         className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
@@ -1109,7 +1388,9 @@ export function UnifiedBuyPanel() {
                             {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
                           </p>
                           <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
-                            {parsedBuySolAmount != null ? `${formatTokenAmount(parsedBuySolAmount, 4)} SOL` : "Enter a SOL amount"}
+                            {parsedBuySolAmount != null
+                              ? `${formatTokenAmount(parsedBuySolAmount, isPolymarketTrade ? 2 : 4)} ${marketSpendAssetLabel}`
+                              : `Enter a ${marketSpendAssetLabel} amount`}
                           </p>
                         </div>
                         <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
@@ -1161,7 +1442,7 @@ export function UnifiedBuyPanel() {
 
                     <button
                       onClick={executePredictionMarketTrade}
-                      disabled={loading || !selectedMarketMint || predictionTradeBlocked}
+                      disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked}
                       className="mt-4 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
                       style={{
                         background: marketSide === "yes" ? "var(--accent-bags)" : "var(--down)",
@@ -1175,19 +1456,21 @@ export function UnifiedBuyPanel() {
                         </>
                       ) : predictionTradeBlocked ? (
                         "Unavailable in your region"
+                      ) : isKalshiMarketTrade && !proofVerified && !dflowProofLoading ? (
+                        "Verify wallet first"
                       ) : (
                         `Buy ${marketSide.toUpperCase()}`
                       )}
                     </button>
 
                     <a
-                      href={selectedMarket.kalshi_url || "https://kalshi.com"}
+                      href={selectedMarket.market_url || selectedMarket.kalshi_url || (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com")}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-3 w-full py-2.5 rounded-md font-body font-medium text-[13px] transition-all duration-100 hover:brightness-110 flex items-center justify-center gap-2 border"
                       style={{ background: "var(--bg-surface)", color: "var(--text-2)", borderColor: "var(--border-subtle)" }}
                     >
-                      Trade on Kalshi
+                      Open market page
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
 
@@ -1195,23 +1478,57 @@ export function UnifiedBuyPanel() {
                       className="mt-3 rounded-xl border px-3 py-3"
                       style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
                     >
-                      <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        First market trade on this wallet? DFlow can ask for a one-time verification before it lets you buy shares.
-                      </p>
-                      <a
-                        href={DFLOW_PROOF_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-2 text-xs font-medium"
-                        style={{ color: "var(--accent)" }}
-                      >
-                        Verify wallet on DFlow
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+                      {isKalshiMarketTrade ? (
+                        <>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: proofVerified ? "var(--up)" : "var(--bags)" }}>
+                            {proofVerified ? "Wallet verified" : "Wallet verification"}
+                          </p>
+                          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            {proofVerified
+                              ? "Your wallet passed the DFlow Proof check. You can submit Kalshi orders from Siren."
+                              : "Kalshi orders on DFlow need a one-time wallet verification before the first trade can go through."}
+                          </p>
+                          {!proofVerified && (
+                            <button
+                              type="button"
+                              onClick={openDflowProofFlow}
+                              className="mt-2 inline-flex items-center gap-2 text-xs font-medium"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              {dflowProofFetching ? "Checking wallet..." : "Verify wallet on DFlow"}
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--polymarket)" }}>
+                            Polymarket wallet
+                          </p>
+                          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            Siren uses your embedded EVM wallet for Polymarket orders. Fund it with Polygon USDC here, or deposit from Solana and let the venue convert it for trading.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={openPolymarketFundingFlow}
+                            disabled={polymarketFundingLoading || !evmAddress}
+                            className="mt-2 inline-flex items-center gap-2 text-xs font-medium disabled:opacity-60"
+                            style={{ color: "var(--polymarket)" }}
+                          >
+                            {polymarketFundingLoading ? "Opening funding..." : "Add Polygon USDC"}
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                          <p className="mt-2 text-[10px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Proof is only needed for Kalshi. Polymarket trades settle from the same EVM wallet.
+                          </p>
+                        </>
+                      )}
                     </div>
 
                     <p className="text-[11px] mt-3 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                      Orders can take a few seconds to finish after your wallet confirms.
+                      {isPolymarketTrade
+                        ? "Orders can take a few seconds while Siren signs, posts, and waits for the venue response."
+                        : "Orders can take a few seconds to finish after your wallet confirms."}
                     </p>
                   </div>
                 )}
@@ -1631,7 +1948,7 @@ export function UnifiedBuyPanel() {
               {!resultModal && error && <p className="text-sm mt-3" style={{ color: "var(--down)" }}>{error}</p>}
               {!resultModal && verificationRequired && (
                 <a
-                  href={DFLOW_PROOF_URL}
+                  href={DFLOW_PROOF_PORTAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-3 inline-flex items-center gap-2 text-sm font-medium"
@@ -1643,7 +1960,7 @@ export function UnifiedBuyPanel() {
               )}
               {!resultModal && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
               <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">
-                Use market mode for YES or NO shares and token mode for linked coins. Some market trades need a one-time wallet verification first.
+                Use market mode for YES or NO shares and token mode for linked coins. Kalshi trades may need a one-time DFlow wallet verification first.
               </p>
             </div>
           </motion.div>

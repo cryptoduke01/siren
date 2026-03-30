@@ -115,6 +115,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@polymarket/clob-client':
+        specifier: ^5.8.1
+        version: 5.8.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
       '@privy-io/react-auth':
         specifier: ^3.16.0
         version: 3.16.0(mkvizkcp4fpsb5c74di54dllhe)

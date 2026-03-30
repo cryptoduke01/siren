@@ -75,3 +75,15 @@ export interface PolymarketSignalCandidate {
   source: "polymarket";
   slug?: string;
 }
+
+export interface PolymarketDepositAddressMap {
+  evm?: string;
+  svm?: string;
+  tron?: string;
+  btc?: string;
+}
+
+export interface PolymarketDepositResponse {
+  address: PolymarketDepositAddressMap;
+  note?: string;
+}

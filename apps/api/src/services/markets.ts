@@ -345,6 +345,8 @@ async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]>
         source: "polymarket",
         platform_id: market.id,
         market_url: marketUrl,
+        market_slug: market.slug,
+        condition_id: market.conditionId,
         ticker: `POLY-${market.id}`,
         event_ticker: market.slug?.toUpperCase() ?? `POLY-${market.id}`,
         series_ticker: "POLYMARKET",
@@ -361,6 +363,8 @@ async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]>
         open_time: parseTimestamp(market.startDate),
         probability,
         velocity_1h: 0,
+        yes_token_id: market.clobTokenIds[0],
+        no_token_id: market.clobTokenIds[1],
       };
     });
 }

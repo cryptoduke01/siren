@@ -1,5 +1,6 @@
 import type { PolymarketSignalCandidate } from "../types/polymarket.js";
 import type {
+  PolymarketDepositResponse,
   PolymarketGammaMarketResponse,
   PolymarketMarket,
   PolymarketOrderBook,
@@ -10,6 +11,7 @@ import { getProbabilitySnapshot60sAgo, saveProbabilitySnapshot } from "../servic
 
 const POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets";
 const POLYMARKET_HOST = process.env.POLYMARKET_HOST?.trim() || "https://clob.polymarket.com";
+const POLYMARKET_BRIDGE_URL = "https://bridge.polymarket.com";
 const POLYMARKET_MARKET_LIMIT = Math.max(50, Number.parseInt(process.env.POLYMARKET_MARKET_LIMIT ?? "500", 10) || 500);
 const POLYMARKET_SIGNAL_THRESHOLD = Number.parseFloat(process.env.POLYMARKET_SIGNAL_THRESHOLD ?? "0.5") || 0.5;
 
@@ -199,4 +201,22 @@ export async function detectSignalMovements(markets: PolymarketMarket[]): Promis
   }
 
   return signals.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+export async function createDepositAddresses(address: string): Promise<PolymarketDepositResponse> {
+  const response = await fetch(`${POLYMARKET_BRIDGE_URL}/deposit`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ address }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Polymarket bridge deposit error: ${response.status}`);
+  }
+
+  return (await response.json()) as PolymarketDepositResponse;
 }

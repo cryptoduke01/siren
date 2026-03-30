@@ -6,6 +6,7 @@ import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getToke
 import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
+import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { sendWelcomeWithAccessCode, sendLaunchThreadEmail, canSendEmail } from "./services/email.js";
 import { getInMemorySignalFeedSnapshot, getSignalFeedSnapshot } from "./services/signalState.js";
@@ -19,6 +20,8 @@ const SIGNAL_ROUTE_TIMEOUT_MS = 1_500;
 const SIGNAL_ROUTE_CACHE_MS = 5_000;
 const SOL_PRICE_ROUTE_TIMEOUT_MS = 4_500;
 const SOL_PRICE_CACHE_MS = 60_000;
+const DFLOW_PROOF_ROUTE_TIMEOUT_MS = 5_000;
+const DFLOW_PROOF_VERIFY_URL = process.env.DFLOW_PROOF_VERIFY_URL?.trim() || "https://proof.dflow.net/verify";
 
 type SolPricePair = {
   chainId?: string;
@@ -214,6 +217,12 @@ function isHexEvmAddress(value: string): boolean {
 function parseEthFromHexWei(value: string): number {
   const wei = BigInt(value);
   return Number(wei) / 1e18;
+}
+
+function buildDflowVerifyUrl(address: string): string {
+  return DFLOW_PROOF_VERIFY_URL.endsWith("/")
+    ? `${DFLOW_PROOF_VERIFY_URL}${encodeURIComponent(address)}`
+    : `${DFLOW_PROOF_VERIFY_URL}/${encodeURIComponent(address)}`;
 }
 
 async function fetchBaseBalanceEth(address: string): Promise<number> {
@@ -752,6 +761,67 @@ export function registerRoutes(app: FastifyInstance) {
         reason: blocked ? "Prediction market trading is not available in your jurisdiction." : null,
       },
     });
+  });
+
+  app.get<{ Querystring: { address?: string } }>("/api/dflow/proof-status", async (req, reply) => {
+    const address = req.query.address?.trim();
+    if (!address) {
+      return reply.status(400).send({ success: false, error: "address required" });
+    }
+
+    try {
+      const response = await withTimeout(
+        fetch(buildDflowVerifyUrl(address), {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(DFLOW_PROOF_ROUTE_TIMEOUT_MS),
+        }),
+        DFLOW_PROOF_ROUTE_TIMEOUT_MS,
+        "dflow-proof-status"
+      );
+
+      if (!response.ok) {
+        return reply.status(503).send({
+          success: false,
+          error: `Proof verify failed: ${response.status}`,
+        });
+      }
+
+      const payload = (await response.json()) as { verified?: boolean };
+      return reply.send({
+        success: true,
+        data: {
+          address,
+          verified: Boolean(payload.verified),
+        },
+      });
+    } catch (error) {
+      app.log.warn(error, "Unable to verify DFlow proof status");
+      return reply.status(503).send({
+        success: false,
+        error: "Unable to verify wallet status right now.",
+      });
+    }
+  });
+
+  app.post<{ Body: { address?: string } }>("/api/polymarket/deposit-addresses", async (req, reply) => {
+    const address = req.body?.address?.trim();
+    if (!address) {
+      return reply.status(400).send({ success: false, error: "address required" });
+    }
+
+    try {
+      const payload = await withTimeout(createDepositAddresses(address), 10_000, "polymarket-deposit-addresses");
+      return reply.send({
+        success: true,
+        data: payload,
+      });
+    } catch (error) {
+      app.log.warn(error, "Unable to create Polymarket deposit addresses");
+      return reply.status(503).send({
+        success: false,
+        error: "Unable to create Polymarket deposit addresses right now.",
+      });
+    }
   });
 
   /** DFlow prediction market order: get quote + transaction. Geo-fenced for US/restricted. */
