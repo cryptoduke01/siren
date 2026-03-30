@@ -73,7 +73,7 @@ export function TerminalRightPanel() {
                   Wallet + Signals
                 </h3>
                 <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Native SOL, live USD conversion, and recent triggers in one rail.
+                  Native SOL, live USD conversion, and recent activity in one place.
                 </p>
               </div>
 
@@ -101,7 +101,7 @@ export function TerminalRightPanel() {
                   <Wallet2 className="h-5 w-5" />
                 </div>
                 <p className="mt-4 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-                  Connect your wallet to activate this rail.
+                  Connect your wallet to turn this on.
                 </p>
                 <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
                   Once connected, Siren will show your native SOL balance, current USD conversion, and the latest alert activity.

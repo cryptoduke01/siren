@@ -88,7 +88,7 @@ export function TokensForMarketSheet({
                     <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
                       {canTradeInSiren
                         ? "Trade the market here or buy linked tokens below."
-                        : `Use the linked token rail below, or open ${venueLabel} once if you need venue detail.`}
+                        : `Use the matched token list below, or open ${venueLabel} if you want to view the market page.`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -122,7 +122,7 @@ export function TokensForMarketSheet({
                             color: "var(--text-1)",
                           }}
                         >
-                          Open on {venueLabel}
+                          View market
                         </button>
                       </>
                     ) : (
@@ -138,8 +138,8 @@ export function TokensForMarketSheet({
                           borderColor: "var(--border-default)",
                           color: "var(--text-1)",
                         }}
-                      >
-                        Open on {venueLabel}
+                        >
+                        View market
                       </button>
                     )}
                   </div>

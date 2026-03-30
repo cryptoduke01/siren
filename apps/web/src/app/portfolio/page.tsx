@@ -1036,7 +1036,7 @@ export default function PortfolioPage() {
             Portfolio
           </h1>
           <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-            PnL, balances, prediction positions, token holdings & fee earnings in one place.
+            Your balances, positions, token holdings, and fee earnings in one place.
           </p>
         </div>
         <div
@@ -1092,12 +1092,12 @@ export default function PortfolioPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-                    Portfolio command center
+                    Portfolio overview
                   </p>
                   <h2 className="mt-2 font-heading text-[clamp(1.7rem,3vw,2.55rem)] font-bold leading-[0.92]" style={{ color: "var(--text-1)" }}>
-                    Solana execution.
+                    Solana wallet.
                     <br />
-                    Base account rail.
+                    Base wallet.
                   </h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1128,7 +1128,7 @@ export default function PortfolioPage() {
                     </p>
                   )}
                   <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                    One premium account surface for token exposure, prediction positions, fee earnings, and the fast receive / export controls you actually need.
+                    See your token exposure, prediction positions, fee earnings, and the wallet actions you actually use day to day.
                   </p>
                   {walletVolumeSol > 0 && (
                     <p className="mt-3 font-body text-xs" style={{ color: "var(--text-2)" }}>
@@ -1197,13 +1197,13 @@ export default function PortfolioPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
-                          Solana rail
+                          Solana wallet
                         </p>
                         <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
                           {(balances?.mainnet ?? 0).toFixed(4)} SOL
                         </p>
                         <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                          {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Mainnet execution rail"}
+                          {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Ready to trade on Solana"}
                         </p>
                       </div>
                       {publicKey && <AddressCopyButton address={publicKey.toBase58()} />}
@@ -1219,7 +1219,7 @@ export default function PortfolioPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--polymarket)" }}>
-                          Base rail
+                          Base wallet
                         </p>
                         {baseBalanceLoading ? (
                           <div className="mt-2 h-8 w-24 rounded bg-[var(--border-subtle)] animate-pulse" />
@@ -1232,7 +1232,7 @@ export default function PortfolioPage() {
                           {evmAddress
                             ? ethPriceUsd > 0
                               ? `≈ $${baseBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : "Base mainnet deposit rail"
+                              : "Base deposit address ready"
                             : "Provisioned through Privy on login"}
                         </p>
                       </div>
@@ -1256,7 +1256,7 @@ export default function PortfolioPage() {
 
                   <div className="rounded-[22px] border p-4 sm:col-span-2 xl:col-span-1" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
                     <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--bags)" }}>
-                      Venue note
+                      Kalshi note
                     </p>
                     <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                       Portfolio tracking is live immediately. Trading Kalshi markets still requires venue KYC and compliance approval before those orders can clear.
@@ -1474,10 +1474,10 @@ export default function PortfolioPage() {
                   </div>
                   <div className="min-w-0">
                     <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                      Wallet rails
+                      Your wallets
                     </h2>
                     <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      Embedded Solana + Base account access
+                      Solana and Base addresses in one place
                     </p>
                   </div>
                 </div>
@@ -1519,7 +1519,7 @@ export default function PortfolioPage() {
                         {(balances?.mainnet ?? 0).toFixed(4)} SOL
                       </p>
                       <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                        {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Mainnet execution rail"}
+                        {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Ready to trade on Solana"}
                       </p>
                     </>
                   )}
@@ -1542,7 +1542,7 @@ export default function PortfolioPage() {
                   ) : (
                     <>
                       <p className="mt-3 font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
-                        {evmAddress ? `${baseBalanceEth.toFixed(4)} ETH` : "No Base rail"}
+                        {evmAddress ? `${baseBalanceEth.toFixed(4)} ETH` : "Base wallet not ready"}
                       </p>
                       <p className="mt-1 font-body text-[11px]" style={{ color: baseBalanceError ? "var(--down)" : "var(--text-3)" }}>
                         {evmAddress
@@ -1554,7 +1554,7 @@ export default function PortfolioPage() {
                     </>
                   )}
                   <p className="mt-3 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
-                    {evmAddress ? shortenAddress(evmAddress) : "Add funds through the Base receive rail"}
+                    {evmAddress ? shortenAddress(evmAddress) : "Use Receive to fund this Base address"}
                   </p>
                 </div>
               </div>

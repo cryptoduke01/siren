@@ -94,7 +94,7 @@ export default function WaitlistPage() {
               {[
                 "Live Kalshi market data routed through DFlow.",
                 "Token surfacing that actually tracks real-world events.",
-                "Creator rails via Bags with fee-sharing built in.",
+                "Creator tools via Bags with fee-sharing built in.",
               ].map((text) => (
                 <li key={text} className="flex items-start gap-3">
                   <span

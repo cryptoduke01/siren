@@ -113,8 +113,8 @@ function getSelectedMarketVenueLabel(market: SelectedMarket): string {
   return market.source === "kalshi" ? "Kalshi" : "Polymarket";
 }
 
-function getSelectedMarketRailLabel(market: SelectedMarket): string {
-  return market.source === "kalshi" ? "Kalshi rail" : "Polymarket rail";
+function getSelectedMarketSourceLabel(market: SelectedMarket): string {
+  return market.source === "kalshi" ? "Kalshi" : "Polymarket";
 }
 
 function canTradeSelectedMarketInSiren(market: SelectedMarket): boolean {
@@ -179,7 +179,7 @@ function PredictionMarketFocusPanel({
                     color: "var(--accent)",
                   }}
                 >
-                  {getSelectedMarketRailLabel(market)}
+                  {getSelectedMarketSourceLabel(market)}
                 </span>
                 <span
                   className="inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium"
@@ -197,13 +197,12 @@ function PredictionMarketFocusPanel({
                   color: "var(--text-2)",
                 }}
               >
-                <Share2 className="h-3.5 w-3.5" />
                 {exportBrandLabel}
               </div>
             </div>
 
             <h2
-              className="mt-4 max-w-[18ch] break-words font-heading text-[clamp(1.55rem,3vw,2.95rem)] font-bold leading-[0.95] tracking-[-0.04em] sm:max-w-[20ch]"
+              className="mt-4 max-w-[22ch] break-words font-heading text-[clamp(1.35rem,2.8vw,2.45rem)] font-bold leading-[0.94] tracking-[-0.04em]"
               style={{ color: "var(--text-1)" }}
             >
               {market.title}
@@ -237,8 +236,8 @@ function PredictionMarketFocusPanel({
             )}
             <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
               {canTradeInSiren
-                ? "Hit the market rail for direct YES or NO execution, then sweep the linked tokens below from the same screen."
-                : "Open the venue rail for the market itself, then sweep the linked Solana tokens below from the same screen."}
+                ? "Trade this market here, then use the matched token list below if you want extra exposure."
+                : "See the live market details and use the matched token list below from the same screen."}
             </p>
           </div>
 
@@ -252,10 +251,10 @@ function PredictionMarketFocusPanel({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                  Command deck
+                  Quick view
                 </p>
                 <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Fast read on price, speed, and liquidity.
+                  Price, speed, and liquidity at a glance.
                 </p>
               </div>
               <div
@@ -316,7 +315,7 @@ function PredictionMarketFocusPanel({
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
                 style={{ background: "var(--accent)", color: "var(--accent-text)" }}
               >
-                {canTradeInSiren ? "Trade in Siren" : "Buy linked tokens"}
+                {canTradeInSiren ? "Trade this market" : "View matched tokens"}
                 <ArrowUpRight className="h-4 w-4" />
               </button>
               <div className={`grid gap-2 ${canTradeInSiren ? "sm:grid-cols-2 2xl:grid-cols-1" : ""}`}>
@@ -326,7 +325,7 @@ function PredictionMarketFocusPanel({
                   className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
                   style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
                 >
-                  Buy linked tokens
+                  View matched tokens
                 </button>
                 {canTradeInSiren ? (
                   <button
@@ -335,7 +334,7 @@ function PredictionMarketFocusPanel({
                     className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
                     style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                   >
-                    Open on {platformLabel}
+                    View market page
                     <ExternalLink className="h-4 w-4" />
                   </button>
                 ) : (
@@ -345,14 +344,14 @@ function PredictionMarketFocusPanel({
                     className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
                     style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                   >
-                    Open venue data
+                    View market page
                     <ExternalLink className="h-4 w-4" />
                   </button>
                 )}
               </div>
               {!canTradeInSiren && (
                 <p className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Polymarket is live in Siren as a signal and market-context rail. The direct in-terminal venue execution rail is still being wired, so linked token flow stays primary here.
+                  Polymarket data is live in Siren. Direct Polymarket order entry inside Siren is still being added, so the matched token flow stays primary for now.
                 </p>
               )}
               <div className="grid gap-2 sm:grid-cols-2">
@@ -364,7 +363,7 @@ function PredictionMarketFocusPanel({
                   style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
                 >
                   {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                  {exportingCard ? "Preparing card..." : "Share card"}
+                  {exportingCard ? "Preparing image..." : "Share image"}
                 </button>
                 <button
                   type="button"
@@ -374,11 +373,19 @@ function PredictionMarketFocusPanel({
                   style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                 >
                   {exportingCard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {exportingCard ? "Preparing card..." : "Download card"}
+                  {exportingCard ? "Preparing image..." : "Save image"}
                 </button>
               </div>
             </div>
           </div>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3" style={{ borderColor: "var(--border-subtle)" }}>
+          <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Shareable market card
+          </span>
+          <span className="font-heading text-sm font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-1)" }}>
+            {exportBrandLabel}
+          </span>
         </div>
       </div>
 
@@ -417,7 +424,7 @@ function PredictionMarketFocusPanel({
             {market.source === "kalshi" ? formatCompactNumber(marketActivity?.recent_trades_24h, 0) : platformLabel}
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            {market.source === "kalshi" ? "Public fills, not unique traders" : "Selected from the second live signal rail"}
+            {market.source === "kalshi" ? "Public fills, not unique traders" : "Pulled from live Polymarket market data"}
           </p>
         </div>
 
@@ -475,7 +482,7 @@ function SignalNarrativePanel({
               {signal.question}
             </h2>
             <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-              Siren mapped this {platformLabel} move into linked Solana meme tokens below so you can react from the same terminal.
+              Siren matched this {platformLabel} move to related Solana tokens below so you can react without jumping around the app.
             </p>
           </div>
 
@@ -499,7 +506,7 @@ function SignalNarrativePanel({
                 className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
                 style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
               >
-                Open on {platformLabel}
+                View market page
                 <ExternalLink className="h-4 w-4" />
               </button>
             )}
@@ -692,9 +699,9 @@ export function TokenSurface() {
         await navigator.share({
           files: [file],
           title: selectedMarket.title,
-          text: "Signal rail from onsiren.xyz",
+          text: `${selectedMarket.title} • onsiren.xyz`,
         });
-        addToast("Market card shared.", "success");
+        addToast("Market image shared.", "success");
         return;
       }
 
@@ -705,10 +712,10 @@ export function TokenSurface() {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      addToast(mode === "share" ? "Share is unavailable here, so the card was downloaded instead." : "Market card saved.", "success");
+      addToast(mode === "share" ? "Sharing is unavailable here, so the image was downloaded instead." : "Market image saved.", "success");
     } catch (error) {
       console.warn("Market card export failed", error);
-      addToast("Could not save the market card right now.", "error");
+      addToast("Could not save the market image right now.", "error");
     } finally {
       setExportingCard(false);
     }
@@ -764,7 +771,7 @@ export function TokenSurface() {
             Pick a market to center the terminal.
           </h2>
           <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Siren is built around live prediction markets. Select one from the left rail and we will map the relevant YES/NO trade plus the surrounding token flow underneath it.
+            Pick a market from the left and Siren will show the best matching tokens underneath it.
           </p>
         </div>
       )}
@@ -861,18 +868,7 @@ export function TokenSurface() {
                 >
                   Trade market
                 </button>
-              ) : (
-                <div
-                  className="inline-flex h-8 items-center rounded-[6px] border px-3 font-body text-[11px]"
-                  style={{
-                    borderColor: "var(--border-subtle)",
-                    background: "var(--bg-elevated)",
-                    color: "var(--text-2)",
-                  }}
-                >
-                  Polymarket rail live
-                </div>
-              )}
+              ) : null}
               <MarketAlertButton ticker={selectedMarket.ticker} probability={selectedMarket.probability} />
               <StarButton type="market" id={selectedMarket.ticker} />
             </>
@@ -894,10 +890,10 @@ export function TokenSurface() {
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
       <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
-          ? "These tokens are ranked by how closely they map to the selected market."
+          ? "These tokens are ranked by how closely they match the selected market."
           : selectedSignal
-            ? "These tokens were matched from the signal language and surfaced directly from the live feed."
-          : "Cross-market discovery mix from Bags, boosted DexScreener names, and broader search themes."}
+            ? "These tokens were matched from the signal text and surfaced from the live feed."
+          : "Browse tokens from Siren search, Bags launches, and DexScreener results."}
       </p>
       {riskyTokens.length > 0 && (
         <div

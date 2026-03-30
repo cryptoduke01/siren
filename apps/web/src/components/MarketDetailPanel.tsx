@@ -146,11 +146,11 @@ export function MarketDetailPanel() {
                       borderColor: "var(--border-subtle)",
                     }}
                   >
-                    Open on {venueLabel}
+                    View market page
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs" style={{ color: "var(--text-3)" }}>
-                    Outcome-token trades route through DFlow and may settle asynchronously.
+                    Market trades route through DFlow and may settle a little later than the token side.
                   </p>
                 </>
               ) : (
@@ -163,13 +163,13 @@ export function MarketDetailPanel() {
                     className="flex items-center justify-center gap-2 w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    Open venue page
+                    View market page
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
                     {selectedMarket.source === "kalshi"
-                      ? "In-app trading requires outcome mints. Use Kalshi for this market."
-                      : "Polymarket is live here as signal context while Siren keeps the linked token flow inside the terminal."}
+                      ? "This market is not available for in-app order entry right now."
+                      : "Polymarket market data is live here. Direct Polymarket trading inside Siren is still being added."}
                   </p>
                 </>
               )}

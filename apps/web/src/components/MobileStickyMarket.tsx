@@ -21,7 +21,6 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
   if (!selectedMarket) return null;
 
   const canTradeInSiren = selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
-  const venueLabel = selectedMarket.source === "kalshi" ? "Kalshi" : "Polymarket";
   const marketUrl = selectedMarket.market_url || selectedMarket.kalshi_url || (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com");
 
   return (
@@ -58,7 +57,7 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
           className="h-9 rounded-[8px] px-3 text-[11px] font-heading font-semibold uppercase tracking-[0.08em]"
           style={{ background: "var(--accent)", color: "var(--accent-text)" }}
         >
-          {canTradeInSiren ? "Trade" : "Venue"}
+          {canTradeInSiren ? "Trade" : "Details"}
         </button>
         <button
           type="button"

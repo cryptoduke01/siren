@@ -197,15 +197,26 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         borderRight: "1px solid var(--border-subtle)",
       }}
     >
-      <div className="flex-shrink-0 border-b px-4 pt-4 pb-3" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
-              Live Signals
-            </p>
-            <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Kalshi and Polymarket movements entering the same token matching flow.
-            </p>
+      <div className="flex-shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {signalStatus.map((status) => (
+              <div
+                key={status.source}
+                className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.12em]"
+                style={{
+                  borderColor: "var(--border-subtle)",
+                  background: "var(--bg-surface)",
+                  color: "var(--text-2)",
+                }}
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: status.connected ? "var(--up)" : "var(--down)" }}
+                />
+                {status.source === "kalshi" ? "Kalshi" : "Polymarket"}
+              </div>
+            ))}
           </div>
           <button
             type="button"
@@ -219,25 +230,6 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </button>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {signalStatus.map((status) => (
-            <div
-              key={status.source}
-              className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.12em]"
-              style={{
-                borderColor: "var(--border-subtle)",
-                background: "var(--bg-surface)",
-                color: "var(--text-2)",
-              }}
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ background: status.connected ? "var(--up)" : "var(--down)" }}
-              />
-              {status.source === "kalshi" ? "Kalshi" : "Polymarket"}
-            </div>
-          ))}
         </div>
         <div className="mt-3 flex gap-1.5 overflow-x-auto scrollbar-hidden">
           {[
@@ -293,7 +285,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                         {signal.question}
                       </p>
                       <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                        {signal.matchedTokens.length} linked tokens · Vol {formatSignalVolume(signal.volume)}
+                        {signal.matchedTokens.length} matched tokens · Vol {formatSignalVolume(signal.volume)}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -318,7 +310,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
             >
               <p className="font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-                No live signals yet. Siren will surface them here as Kalshi or Polymarket probabilities cross the live movement threshold.
+                No big live moves yet. When Kalshi or Polymarket starts moving, the strongest signals will show up here.
               </p>
             </div>
           )}

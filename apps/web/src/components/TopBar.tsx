@@ -26,7 +26,7 @@ export function TopBar() {
   const { theme, toggleTheme } = useThemeStore();
   const { authenticated } = usePrivy();
   const { connected } = useSirenWallet();
-  const showSignalSummary = pathname === "/" || pathname === "/onboarding";
+  const showSignalSummary = pathname === "/";
   const { signals } = useSignals({ enabled: showSignalSummary });
   const [menuOpen, setMenuOpen] = useState(false);
   const navItems = authenticated || connected ? NAV.filter((item) => item.href !== "/waitlist") : NAV;

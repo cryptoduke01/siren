@@ -28,14 +28,14 @@ const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 const SIGNAL_STACK = [
   { label: "KALSHI", tone: "var(--kalshi)" },
   { label: "POLYMARKET", tone: "var(--polymarket)" },
-  { label: "DEX MATCHING", tone: "var(--accent)" },
-  { label: "JUPITER FLOW", tone: "var(--text-1)" },
+  { label: "TOKEN MATCH", tone: "var(--accent)" },
+  { label: "JUPITER", tone: "var(--text-1)" },
 ];
 
 const HERO_STATS = [
-  { value: "02", label: "prediction venues running live" },
-  { value: "SOL", label: "execution stays on one fast rail" },
-  { value: "EVM", label: "Base, Ethereum, Polygon wallets provisioned" },
+  { value: "02", label: "live market sources" },
+  { value: "SOL", label: "built-in Solana trading wallet" },
+  { value: "BASE", label: "Base, Ethereum, and Polygon address ready" },
 ];
 
 const PIPELINE_STEPS: Array<{
@@ -48,25 +48,25 @@ const PIPELINE_STEPS: Array<{
   {
     icon: BarChart3,
     eyebrow: "Source",
-    title: "Narratives move in prediction markets first",
+    title: "See the move first",
     description:
-      "Siren watches Kalshi and Polymarket in parallel, tags which venue moved, and ranks the sharpest shifts before they flatten out.",
+      "Siren watches Kalshi and Polymarket at the same time and highlights the biggest moves first.",
     accent: "var(--kalshi)",
   },
   {
     icon: Zap,
     eyebrow: "Match",
-    title: "Event language becomes token context",
+    title: "Find the tokens that fit",
     description:
-      "Question text is turned into live keyword rails, DexScreener candidates, and signal-linked token surfaces without leaving the terminal.",
+      "Each market question is turned into token ideas so you can move from the event to the trade without leaving the page.",
     accent: "var(--accent)",
   },
   {
     icon: TrendingUp,
     eyebrow: "Trade",
-    title: "Execution lands in one clean flow",
+    title: "Act from one screen",
     description:
-      "Once the narrative is hot, Siren keeps the next step obvious: inspect matched tokens, route on Jupiter, and stay inside the same interface.",
+      "When something starts moving, Siren keeps the next step simple: review the token list, trade, and keep your place.",
     accent: "var(--polymarket)",
   },
 ];
@@ -79,30 +79,30 @@ const FEATURE_CARDS: Array<{
 }> = [
   {
     icon: Sparkles,
-    title: "A terminal built around narrative velocity",
+    title: "Built for speed, not setup screens",
     description:
-      "Not another wallet-first landing page. Siren is designed around signals, context, and speed, so the first thing you feel is momentum.",
+      "You land in the product fast, see what is moving, and get straight to the parts that matter.",
     accent: "var(--accent)",
   },
   {
     icon: Wallet2,
-    title: "Social-only access, no wallet ceremony",
+    title: "Log in with social, get wallets automatically",
     description:
-      "Google, GitHub, or X gets a trader in instantly. Privy handles the wallet layer after login, so onboarding feels like entering software, not setting up plumbing.",
+      "Use Google, GitHub, or X. Siren creates the wallets for you after login, so there is nothing extra to install first.",
     accent: "var(--text-1)",
   },
   {
     icon: Globe2,
-    title: "Solana-native execution with a broader account rail",
+    title: "Trade on Solana, keep a Base address ready",
     description:
-      "Siren keeps trading focused on Solana while still minting Base, Ethereum, and Polygon wallets behind the same Privy identity.",
+      "Siren keeps the trading flow on Solana while also giving you a Base, Ethereum, and Polygon address under the same account.",
     accent: "var(--polymarket)",
   },
   {
     icon: Shield,
-    title: "One screen, lower friction, clearer intent",
+    title: "Clear source labels and fewer clicks",
     description:
-      "Signal source badges, shared ranking logic, and embedded wallets reduce the noise between seeing a move and acting on it.",
+      "Every market clearly shows where it came from, and the path from signal to action stays short.",
     accent: "var(--kalshi)",
   },
 ];
@@ -133,22 +133,22 @@ function PrivyAccessCard() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-body text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: "var(--accent)" }}>
-              Mission Access
+              Log in
             </p>
             <h2 className="mt-3 max-w-sm font-heading text-[2rem] font-semibold leading-[0.95]" style={{ color: "var(--text-1)" }}>
-              Enter Siren through a social rail, not a wallet maze.
+              Log in fast. Siren builds the wallets for you.
             </h2>
           </div>
           <div
             className="rounded-full border px-3 py-1 font-body text-[11px]"
             style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)", color: "var(--text-2)" }}
           >
-            Privy embedded
+            Social login
           </div>
         </div>
 
         <p className="mt-4 max-w-md font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-          Continue with Google, GitHub, or X. Siren provisions the Solana wallet for execution and the EVM wallet set for the wider account rail after login.
+          Continue with Google, GitHub, or X. After login, Siren creates your built-in Solana wallet and your Base-compatible EVM wallet automatically.
         </p>
 
         <div className="mt-6 rounded-[24px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 94%, transparent)" }}>
@@ -175,7 +175,7 @@ function PrivyAccessCard() {
             </div>
             <div className="rounded-2xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-void)" }}>
               <p className="font-body text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
-                EVM rail
+                Base + EVM
               </p>
               <p className="mt-2 font-heading text-sm" style={{ color: "var(--text-1)" }}>
                 Base, Ethereum, Polygon
@@ -202,12 +202,12 @@ function PrivyAccessCard() {
           {provisioning ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Provisioning Wallets
+              Getting wallets ready
             </>
           ) : PRIVY_APP_ID ? (
-            ready ? "Open Privy" : "Loading Privy"
+            ready ? "Log in" : "Loading login"
           ) : (
-            "Privy not configured"
+            "Login unavailable"
           )}
         </button>
 
@@ -215,13 +215,13 @@ function PrivyAccessCard() {
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4" style={{ color: "var(--accent)" }} />
             <p className="font-body text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
-              Access flow
+              How it works
             </p>
           </div>
           <div className="mt-4 space-y-3">
             {[
               "Choose Google, GitHub, or X",
-              "Privy creates your Siren wallet set",
+              "Siren creates your wallets for you",
               "Land in the terminal ready to trade",
             ].map((item, index) => (
               <div key={item} className="flex items-start gap-3">
@@ -254,7 +254,7 @@ function PrivyAccessCard() {
 
           {!isReady && authenticated && (
             <p className="text-right font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-              Finalizing Siren wallet access.
+              Finishing your wallet setup.
             </p>
           )}
         </div>
@@ -282,7 +282,7 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen flex-col overflow-hidden" style={{ background: "var(--bg-void)" }}>
       <TopBar />
 
-      <main className="relative flex-1 px-4 py-8 md:px-6 md:py-12">
+      <main className="relative flex-1 px-4 py-4 md:px-6 md:py-10">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div
             className="absolute left-[-8%] top-16 h-72 w-72 rounded-full blur-3xl"
@@ -298,13 +298,22 @@ export default function OnboardingPage() {
           />
         </div>
 
-        <div className="relative mx-auto grid w-full max-w-7xl gap-8 lg:grid-cols-[minmax(0,1.1fr)_420px] xl:gap-12">
-          <div className="space-y-6">
+        <div className="relative mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[minmax(0,1.1fr)_420px] xl:gap-12">
+          <motion.aside
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.1 }}
+            className="order-1 lg:sticky lg:top-20 lg:order-2 lg:self-start"
+          >
+            <PrivyAccessCard />
+          </motion.aside>
+
+          <div className="order-2 space-y-5 lg:order-1 lg:space-y-6">
             <motion.section
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45 }}
-              className="relative overflow-hidden rounded-[34px] border p-6 md:p-8"
+              className="relative overflow-hidden rounded-[28px] border p-5 md:rounded-[34px] md:p-8"
               style={{
                 borderColor: "var(--border-default)",
                 background:
@@ -326,33 +335,36 @@ export default function OnboardingPage() {
                   <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-void) 76%, transparent)" }}>
                     <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
                     <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Signal cockpit
+                      Live markets
                     </p>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-void) 76%, transparent)" }}>
                     <Rocket className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
                     <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Privy-powered entry
+                      Social login
                     </p>
                   </div>
                 </div>
 
                 <h1
-                  className="mt-8 max-w-4xl font-heading text-[clamp(3.3rem,8vw,6.2rem)] font-semibold tracking-[-0.05em]"
+                  className="mt-6 max-w-4xl font-heading text-[clamp(2.6rem,8vw,5.8rem)] font-semibold tracking-[-0.05em]"
                   style={{ color: "var(--text-1)", lineHeight: 0.9 }}
                 >
-                  Trade the narrative before the chart catches up.
+                  See the move.
+                  <br />
+                  Find the token.
+                  <br />
+                  Trade faster.
                 </h1>
 
                 <p
-                  className="mt-6 max-w-3xl font-body text-base leading-relaxed md:text-[1.15rem]"
+                  className="mt-4 max-w-3xl font-body text-sm leading-relaxed md:mt-6 md:text-[1.1rem]"
                   style={{ color: "var(--text-2)" }}
                 >
-                  Siren watches event markets for meaningful movement, maps those shifts to live Solana meme tokens, and keeps the path from signal to execution brutally short.
-                  Kalshi and Polymarket now run together inside the same terminal.
+                  Siren watches Kalshi and Polymarket, turns those moves into token ideas, and keeps the path from signal to trade short and simple.
                 </p>
 
-                <div className="mt-8 flex flex-wrap gap-3">
+                <div className="mt-6 flex flex-wrap gap-2 md:mt-8 md:gap-3">
                   {SIGNAL_STACK.map((item) => (
                     <div
                       key={item.label}
@@ -368,7 +380,7 @@ export default function OnboardingPage() {
                   ))}
                 </div>
 
-                <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                <div className="mt-6 grid gap-3 sm:grid-cols-3 md:mt-8">
                   {HERO_STATS.map((item) => (
                     <div
                       key={item.label}
@@ -391,7 +403,7 @@ export default function OnboardingPage() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.08 }}
-              className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]"
+              className="hidden gap-6 xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]"
             >
               <div
                 className="rounded-[32px] border p-6 md:p-7"
@@ -404,11 +416,11 @@ export default function OnboardingPage() {
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" style={{ color: "var(--accent)" }} />
                   <p className="font-body text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: "var(--text-3)" }}>
-                    Signal Flow
+                    How Siren works
                   </p>
                 </div>
                 <h2 className="mt-4 max-w-2xl font-heading text-3xl font-semibold leading-tight" style={{ color: "var(--text-1)" }}>
-                  One story, three moves: detect, map, execute.
+                  See what moved, understand it, then act.
                 </h2>
 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -456,21 +468,21 @@ export default function OnboardingPage() {
                 }}
               >
                 <p className="font-body text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: "var(--text-3)" }}>
-                  What changes now
+                  What you get
                 </p>
                 <div className="mt-5 space-y-4">
                   {[
                     {
-                      title: "Both venues run at once",
-                      body: "Kalshi stays intact. Polymarket joins the exact same signal pipeline, feed, token matching path, and execution surface.",
+                      title: "Both sources in one feed",
+                      body: "Kalshi and Polymarket show up together, and every card tells you which one moved.",
                     },
                     {
-                      title: "Wallet creation happens after intent",
-                      body: "Users choose a social identity first. Siren creates the wallet layer afterwards, which feels lighter and faster than asking for extensions up front.",
+                      title: "Login first, wallets second",
+                      body: "You choose Google, GitHub, or X first. Siren creates the wallets after that, so the start feels fast.",
                     },
                     {
-                      title: "The interface stays source-aware",
-                      body: "Signals stay blended in one live stream, but every move still carries its badge, venue health, and source context.",
+                      title: "Clear labels everywhere",
+                      body: "You can always see which market moved, which tokens match it, and what to do next.",
                     },
                   ].map((item, index) => (
                     <motion.div
@@ -497,7 +509,7 @@ export default function OnboardingPage() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.16 }}
-              className="grid gap-4 md:grid-cols-2"
+              className="hidden gap-4 md:grid md:grid-cols-2"
             >
               {FEATURE_CARDS.map((card, index) => (
                 <div
@@ -531,14 +543,6 @@ export default function OnboardingPage() {
             </motion.section>
           </div>
 
-          <motion.aside
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.1 }}
-            className="lg:sticky lg:top-20 lg:self-start"
-          >
-            <PrivyAccessCard />
-          </motion.aside>
         </div>
       </main>
     </div>
