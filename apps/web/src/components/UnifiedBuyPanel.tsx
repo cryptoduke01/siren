@@ -127,6 +127,18 @@ function getFriendlyTradeError(message: string, fallback: string): string {
 
 function logTradeFailure(context: Record<string, unknown>) {
   console.warn("[siren-trade-failure]", context);
+  void fetch(`${API_URL}/api/trade-errors/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "omit",
+    keepalive: true,
+    body: JSON.stringify({
+      ...context,
+      timestamp: new Date().toISOString(),
+    }),
+  }).catch(() => {
+    // Ignore logging transport failures to avoid masking the user-facing trade error.
+  });
 }
 
 type DflowAsyncStatus = {

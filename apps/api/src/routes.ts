@@ -763,6 +763,33 @@ export function registerRoutes(app: FastifyInstance) {
     });
   });
 
+  app.post<{ Body: { venue?: string; mode?: string; market?: string; side?: string; inputAsset?: string; amount?: string; wallet?: string; message?: string } }>(
+    "/api/trade-errors/log",
+    async (req, reply) => {
+      const body = req.body ?? {};
+      const message = typeof body.message === "string" ? body.message : "";
+      const lower = message.toLowerCase();
+      const payload = {
+        venue: body.venue ?? "unknown",
+        mode: body.mode ?? "unknown",
+        market: body.market ?? null,
+        side: body.side ?? null,
+        inputAsset: body.inputAsset ?? null,
+        amount: body.amount ?? null,
+        wallet: typeof body.wallet === "string" ? `${body.wallet.slice(0, 6)}...${body.wallet.slice(-4)}` : null,
+        message,
+      };
+
+      if (lower.includes("insufficient")) {
+        app.log.info(payload, "Trade failure reported: insufficient funds");
+      } else {
+        app.log.warn(payload, "Trade failure reported");
+      }
+
+      return reply.send({ success: true });
+    }
+  );
+
   app.get<{ Querystring: { address?: string } }>("/api/dflow/proof-status", async (req, reply) => {
     const address = req.query.address?.trim();
     if (!address) {

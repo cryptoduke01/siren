@@ -25,6 +25,7 @@ import { formatProfileName, readProfileName, sanitizeProfileName, writeProfileNa
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const LAMPORTS_PER_SOL = 1e9;
+const BASE_CHAIN_ID = 8453;
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
@@ -129,6 +130,26 @@ function shortenAddress(value?: string | null): string {
   if (!value) return "—";
   if (value.length <= 12) return value;
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function parseUnitsToBigInt(amountStr: string, decimals: number): bigint {
+  const raw = amountStr.trim();
+  if (!raw) return BigInt(0);
+  const negative = raw.startsWith("-");
+  const normalized = negative ? raw.slice(1) : raw;
+  const [wholePart, fracPartRaw = ""] = normalized.split(".");
+  const whole = wholePart ? BigInt(wholePart) : BigInt(0);
+  const fracDigits = fracPartRaw.replace(/[^0-9]/g, "");
+  const fracTrunc = fracDigits.slice(0, decimals);
+  const fracPadded = fracTrunc.padEnd(decimals, "0");
+  const frac = fracPadded ? BigInt(fracPadded) : BigInt(0);
+  const scale = BigInt(10) ** BigInt(decimals);
+  const baseUnits = whole * scale + frac;
+  return negative ? -baseUnits : baseUnits;
+}
+
+function isValidEvmAddress(address: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(address.trim());
 }
 
 interface TokenHolding {
@@ -536,16 +557,23 @@ function DepositAddressCard({
   );
 }
 
-function SendSolModal({
-  balance,
+function WithdrawModal({
+  solBalance,
+  baseBalanceEth,
   solPriceUsd,
+  ethPriceUsd,
+  evmAddress,
   onClose,
 }: {
-  balance: number;
+  solBalance: number;
+  baseBalanceEth: number;
   solPriceUsd: number;
+  ethPriceUsd: number;
+  evmAddress: string | null;
   onClose: () => void;
 }) {
-  const { publicKey, signTransaction } = useSirenWallet();
+  const { publicKey, signTransaction, getEvmProvider, switchEvmChain } = useSirenWallet();
+  const [rail, setRail] = useState<"solana" | "base">(evmAddress ? "solana" : "solana");
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -554,50 +582,95 @@ function SendSolModal({
   const [resultModal, setResultModal] = useState<{ type: "success" | "error"; title: string; message: string; txSignature?: string } | null>(null);
   const queryClient = useQueryClient();
 
-  const balanceSol = balance;
   const conn = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta"), "confirmed");
   const amt = parseFloat(amount) || 0;
-  const usdEst = amt > 0 ? amt * solPriceUsd : undefined;
+  const usdEst = amt > 0 ? amt * (rail === "solana" ? solPriceUsd : ethPriceUsd) : undefined;
 
   const handleSend = async () => {
-    if (!signTransaction || !publicKey) return;
-    if (!toAddress.trim() || amt <= 0 || amt > balanceSol) {
-      setError("Enter valid address and amount");
-      return;
-    }
-    let to: PublicKey;
-    try {
-      to = new PublicKey(toAddress.trim());
-    } catch {
-      setError("Invalid address");
-      return;
-    }
     setError(null);
+    setSuccess(null);
     setLoading(true);
     try {
-      const lamports = BigInt(Math.floor(amt * LAMPORTS_PER_SOL));
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(publicKey.toBase58()),
-          toPubkey: to,
-          lamports,
-        })
-      );
-      const { blockhash } = await conn.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(publicKey.toBase58());
-      const signed = await signTransaction(tx);
-      const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-      await conn.confirmTransaction(sig, "confirmed");
-      setSuccess(`Sent ${amt} SOL. Tx: ${sig.slice(0, 8)}...`);
+      if (!toAddress.trim() || amt <= 0 || !Number.isFinite(amt)) {
+        throw new Error("Enter a valid recipient and amount.");
+      }
+
+      if (rail === "solana") {
+        if (!signTransaction || !publicKey) {
+          throw new Error("Solana wallet is not ready yet.");
+        }
+        if (amt > solBalance) {
+          throw new Error(`Insufficient SOL. Available: ${solBalance.toFixed(4)} SOL.`);
+        }
+        let to: PublicKey;
+        try {
+          to = new PublicKey(toAddress.trim());
+        } catch {
+          throw new Error("Invalid Solana recipient address.");
+        }
+
+        const lamports = BigInt(Math.floor(amt * LAMPORTS_PER_SOL));
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: new PublicKey(publicKey.toBase58()),
+            toPubkey: to,
+            lamports,
+          })
+        );
+        const { blockhash } = await conn.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = new PublicKey(publicKey.toBase58());
+        const signed = await signTransaction(tx);
+        const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+        await conn.confirmTransaction(sig, "confirmed");
+        setSuccess(`Sent ${amt} SOL. Tx: ${sig.slice(0, 8)}...`);
+        setResultModal({ type: "success", title: "Withdraw complete", message: `Sent ${amt} SOL on Solana.`, txSignature: sig });
+        queryClient.invalidateQueries({ queryKey: ["wallet-balance", publicKey.toBase58()] });
+        queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
+      } else {
+        if (!evmAddress) {
+          throw new Error("Embedded EVM wallet is not ready yet.");
+        }
+        if (amt > baseBalanceEth) {
+          throw new Error(`Insufficient Base ETH. Available: ${baseBalanceEth.toFixed(4)} ETH.`);
+        }
+        if (!isValidEvmAddress(toAddress)) {
+          throw new Error("Invalid Base recipient address.");
+        }
+
+        await switchEvmChain(BASE_CHAIN_ID);
+        const provider = (await getEvmProvider()) as {
+          request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+        };
+        const valueWei = parseUnitsToBigInt(amount, 18);
+        if (valueWei <= BigInt(0)) {
+          throw new Error("Enter a valid ETH amount.");
+        }
+        const valueHex = `0x${valueWei.toString(16)}`;
+        const txHash = await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: evmAddress,
+              to: toAddress.trim(),
+              value: valueHex,
+            },
+          ],
+        });
+        if (typeof txHash !== "string") {
+          throw new Error("Base withdrawal signature failed.");
+        }
+        setSuccess(`Sent ${amt} ETH on Base. Tx: ${txHash.slice(0, 10)}...`);
+        setResultModal({ type: "success", title: "Withdraw submitted", message: `Sent ${amt} ETH on Base.`, txSignature: txHash });
+        queryClient.invalidateQueries({ queryKey: ["base-balance", evmAddress] });
+      }
+
       setAmount("");
       setToAddress("");
-      if (publicKey) queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
-      setResultModal({ type: "success", title: "Send complete", message: `Sent ${amt} SOL on mainnet.`, txSignature: sig });
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "Send failed";
       setError(errMsg);
-      setResultModal({ type: "error", title: "Send failed", message: errMsg });
+      setResultModal({ type: "error", title: "Withdraw failed", message: errMsg });
     } finally {
       setLoading(false);
     }
@@ -607,22 +680,69 @@ function SendSolModal({
     <div className="fixed inset-0 z-40 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
       <div className="w-full max-w-sm rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Withdraw from Solana</p>
+          <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Withdraw</p>
           <span className="rounded-full border px-2.5 py-1 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
             Signed by Privy
           </span>
         </div>
+        <div className="mb-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRail("solana")}
+            className="rounded-lg px-3 py-1.5 font-body text-[11px]"
+            style={{
+              background: rail === "solana" ? "var(--accent-dim)" : "transparent",
+              color: rail === "solana" ? "var(--accent)" : "var(--text-3)",
+              border: rail === "solana" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+            }}
+          >
+            Solana
+          </button>
+          <button
+            type="button"
+            disabled={!evmAddress}
+            onClick={() => setRail("base")}
+            className="rounded-lg px-3 py-1.5 font-body text-[11px] disabled:opacity-50"
+            style={{
+              background: rail === "base" ? "color-mix(in srgb, var(--polymarket) 14%, transparent)" : "transparent",
+              color: rail === "base" ? "var(--polymarket)" : "var(--text-3)",
+              border: rail === "base" ? "1px solid var(--polymarket)" : "1px solid var(--border-subtle)",
+            }}
+          >
+            Base
+          </button>
+        </div>
         <p className="mb-3 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-          Send SOL out of your Siren wallet. USDC trade balances stay separate from this gas wallet.
+          {rail === "solana"
+            ? "Send SOL out of your Solana wallet. Trading still uses USDC."
+            : "Send ETH out of your embedded Base wallet using Privy signing."}
         </p>
-        <input type="text" placeholder="Recipient" value={toAddress} onChange={(e) => setToAddress(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-2 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
-        <input type="number" step="0.001" min="0" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-1 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
-        <p className={`font-body text-[11px] ${amt > 0 ? "mb-1" : "mb-3"}`} style={{ color: "var(--text-3)" }}>Balance: {balanceSol.toFixed(4)} SOL</p>
+        <input
+          type="text"
+          placeholder={rail === "solana" ? "Solana recipient" : "Base recipient (0x...)"}
+          value={toAddress}
+          onChange={(e) => setToAddress(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-2 border"
+          style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+        />
+        <input
+          type="number"
+          step={rail === "solana" ? "0.001" : "0.0001"}
+          min="0"
+          placeholder={rail === "solana" ? "Amount (SOL)" : "Amount (ETH)"}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-1 border"
+          style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+        />
+        <p className={`font-body text-[11px] ${amt > 0 ? "mb-1" : "mb-3"}`} style={{ color: "var(--text-3)" }}>
+          Balance: {rail === "solana" ? `${solBalance.toFixed(4)} SOL` : `${baseBalanceEth.toFixed(4)} ETH`}
+        </p>
         {amt > 0 && usdEst != null && <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-2)" }}>≈ ${usdEst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</p>}
         {!resultModal && error && <p className="text-xs mb-2" style={{ color: "var(--down)" }}>{error}</p>}
         {!resultModal && success && <p className="text-xs mb-2" style={{ color: "var(--bags)" }}>{success}</p>}
         <div className="flex gap-2">
-          <button type="button" onClick={handleSend} disabled={loading} className="flex-1 py-2 rounded-lg font-heading font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: "var(--bags)", color: "var(--accent-text)" }}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Withdraw</button>
+          <button type="button" onClick={handleSend} disabled={loading} className="flex-1 py-2 rounded-lg font-heading font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: rail === "solana" ? "var(--bags)" : "var(--polymarket)", color: rail === "solana" ? "var(--accent-text)" : "#fff" }}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Withdraw</button>
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Close</button>
         </div>
         {resultModal && (
@@ -1829,9 +1949,12 @@ export default function PortfolioPage() {
                 </div>
               )}
               {sendOpen && (
-                <SendSolModal
-                  balance={balances?.mainnet ?? 0}
+                <WithdrawModal
+                  solBalance={balances?.mainnet ?? 0}
+                  baseBalanceEth={baseBalanceEth}
                   solPriceUsd={solPriceUsd}
+                  ethPriceUsd={ethPriceUsd}
+                  evmAddress={evmAddress}
                   onClose={() => { hapticLight(); setSendOpen(false); }}
                 />
               )}
