@@ -7,7 +7,7 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
-import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History, KeyRound, CreditCard, WalletCards, BadgeDollarSign } from "lucide-react";
+import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, QrCode, Rocket, Loader2, Copy, Check, History, KeyRound, CreditCard, WalletCards, BadgeDollarSign } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
@@ -787,7 +787,6 @@ export default function PortfolioPage() {
   const [fundingOpen, setFundingOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveRail, setReceiveRail] = useState<"solana" | "base">("solana");
-  const [swapOpen, setSwapOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [fundingAction, setFundingAction] = useState<"solana" | "base" | "polymarket" | null>(null);
   const [fundingMessage, setFundingMessage] = useState<string | null>(null);
@@ -1500,25 +1499,7 @@ export default function PortfolioPage() {
                       style={{ borderColor: "color-mix(in srgb, var(--accent) 32%, var(--border-subtle))", background: "var(--accent-dim)", color: "var(--accent)" }}
                     >
                       <CreditCard className="w-3.5 h-3.5" />
-                      Add funds
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { hapticLight(); setReceiveRail("solana"); setReceiveOpen(true); }}
-                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                      Receive
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { hapticLight(); setSwapOpen(true); }}
-                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
-                    >
-                      <ArrowLeftRight className="w-3.5 h-3.5" />
-                      Swap
+                      Deposit
                     </button>
                     <button
                       type="button"
@@ -1684,68 +1665,6 @@ export default function PortfolioPage() {
                   </div>
                 </div>
               </div>
-              {swapOpen && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={() => { hapticLight(); setSwapOpen(false); }}>
-                  <div className="w-full max-w-md rounded-2xl border overflow-hidden shadow-2xl" style={{ background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)", borderColor: "var(--border-subtle)", boxShadow: "0 0 0 1px var(--border-subtle), 0 24px 48px -12px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
-                    <div className="px-5 py-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                      <h3 className="font-heading font-semibold text-base" style={{ color: "var(--text-1)" }}>Sell token</h3>
-                      <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>Select a token to sell</p>
-                    </div>
-                    <div className="p-4">
-                      {tokenHoldings.length === 0 ? (
-                        <p className="font-body text-sm py-6 text-center" style={{ color: "var(--text-3)" }}>No tokens. Buy from Terminal first.</p>
-                      ) : (
-                        <ul className="space-y-2 max-h-64 overflow-y-auto overflow-x-hidden">
-                          {tokenHoldings.map((t) => {
-                            const info = tokenInfoByMint.get(t.mint);
-                            const sym = getDisplaySymbol(info?.symbol, t.symbol, t.mint);
-                            const name = getDisplayName(info?.name, sym, t.mint);
-                            return (
-                              <li key={t.mint} className="flex items-center gap-3 rounded-xl border p-3 min-w-0" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{sym}</p>
-                                  <p className="font-mono text-xs tabular-nums truncate" style={{ color: "var(--text-3)" }}>{t.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    hapticLight();
-                                    setSelectedToken(
-                                      {
-                                        mint: t.mint,
-                                        name,
-                                        symbol: sym,
-                                        price: info?.priceUsd ?? undefined,
-                                        volume24h: info?.volume24h,
-                                        liquidityUsd: info?.liquidityUsd,
-                                        fdvUsd: info?.fdvUsd,
-                                        holders: info?.holders,
-                                        bondingCurveStatus: info?.bondingCurveStatus,
-                                        rugcheckScore: info?.rugcheckScore,
-                                        safe: info?.safe,
-                                      },
-                                      { openForSell: true }
-                                    );
-                                    setBuyPanelOpen(true, "token");
-                                    setSwapOpen(false);
-                                  }}
-                                  className="shrink-0 px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110"
-                                  style={{ background: "var(--bags)", color: "var(--accent-text)" }}
-                                >
-                                  Sell
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                    <div className="px-4 pb-4">
-                      <button type="button" onClick={() => { hapticLight(); setSwapOpen(false); }} className="w-full py-2.5 rounded-xl font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Cancel</button>
-                    </div>
-                  </div>
-                </div>
-              )}
               {fundingOpen && (
                 <div
                   className="fixed inset-0 z-40 flex items-center justify-center p-4"
@@ -1765,10 +1684,10 @@ export default function PortfolioPage() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
-                            Add funds
+                            Deposit
                           </p>
                           <h3 className="mt-1 font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
-                            Card, transfer, or receive.
+                            Choose a deposit option.
                           </h3>
                           <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                             Use card when it is available, top up from another wallet, or copy your receive address. Trades use USDC.

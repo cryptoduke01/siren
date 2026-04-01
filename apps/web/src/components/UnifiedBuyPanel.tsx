@@ -98,6 +98,9 @@ function isWalletVerificationError(message?: string | null): boolean {
 
 function getFriendlyTradeError(message: string, fallback: string): string {
   const lower = message.toLowerCase();
+  if (lower.includes("user rejected") || lower.includes("rejected the request") || lower.includes("4001")) {
+    return "Wallet signature was canceled.";
+  }
   if (lower.includes("not tradable")) {
     return "This market is not routable right now. Refresh and try again in a moment.";
   }
@@ -123,6 +126,18 @@ function getFriendlyTradeError(message: string, fallback: string): string {
     return "Prediction market trading is not available in your jurisdiction right now. Use the Kalshi link instead.";
   }
   return fallback;
+}
+
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  if (typeof error === "object" && error !== null) {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === "string" && maybeMessage) return maybeMessage;
+    const maybeReason = (error as { reason?: unknown }).reason;
+    if (typeof maybeReason === "string" && maybeReason) return maybeReason;
+  }
+  return "Trade failed";
 }
 
 function logTradeFailure(context: Record<string, unknown>) {
@@ -1030,6 +1045,7 @@ export function UnifiedBuyPanel() {
       const provider = (await getEvmProvider()) as {
         request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
       };
+      await provider.request({ method: "eth_requestAccounts" });
 
       const signer = {
         getAddress: async () => evmAddress,
@@ -1121,7 +1137,7 @@ export function UnifiedBuyPanel() {
       setSuccess(`Bought ${marketSide.toUpperCase()} on ${selectedMarket.title}.`);
       setSolAmount("");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Polymarket trade failed";
+      const msg = extractErrorMessage(e);
       const friendly = getFriendlyTradeError(msg, "Polymarket trade failed. Please try again.");
       logTradeFailure({
         venue: "polymarket",
