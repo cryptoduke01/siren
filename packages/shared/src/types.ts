@@ -22,6 +22,16 @@ export interface MarketWithVelocity extends KalshiMarket {
   no_mint?: string;
   series_ticker?: string;
   kalshi_url?: string;
+  /** Mixed Kalshi / Polymarket unified feed (optional). */
+  source?: string;
+  platform_id?: string;
+  market_url?: string;
+  volume_24h?: number;
+  liquidity?: number;
+  yes_token_id?: string;
+  no_token_id?: string;
+  condition_id?: string;
+  market_slug?: string;
 }
 
 export interface BagsToken {
@@ -51,6 +61,46 @@ export interface SurfacedToken extends BagsToken {
   launchpad?: LaunchpadId;
 }
 
+export type SignalSource = "kalshi" | "polymarket";
+
+export interface SignalSourceStatus {
+  source: SignalSource;
+  connected: boolean;
+  lastFailureAt?: string;
+  lastError?: string;
+}
+
+export interface PolymarketBookSnapshot {
+  tokenId: string;
+  bestBid?: number;
+  bestAsk?: number;
+  spread?: number;
+  lastTradePrice?: number;
+  updatedAt?: string;
+}
+
+export interface PredictionSignal {
+  id: string;
+  marketId: string;
+  source: SignalSource;
+  question: string;
+  currentProb: number;
+  previousProb: number;
+  delta: number;
+  direction: "up" | "down";
+  volume: number;
+  timestamp: string;
+  matchedTokens: SurfacedToken[];
+  marketUrl?: string;
+  book?: PolymarketBookSnapshot;
+}
+
+export interface SignalFeedSnapshot {
+  signals: PredictionSignal[];
+  status: SignalSourceStatus[];
+  updatedAt: string;
+}
+
 export interface DFlowMarket {
   ticker: string;
   eventTicker: string;
@@ -64,4 +114,25 @@ export interface DFlowMarket {
   volume: number;
   openInterest: number;
   accounts: Record<string, { yesMint: string; noMint: string; isInitialized: boolean }>;
+}
+
+/** One fill line for Kalshi-style market activity (optional rows in `recentTrades`). */
+export interface MarketTradeFill {
+  side: "yes" | "no";
+  priceCents?: number;
+  count?: number;
+  ts?: string;
+}
+
+/**
+ * Response shape for `GET /api/markets/:ticker/activity` (Kalshi trade activity summary).
+ * Fields are optional where the API may omit them during rollout.
+ */
+export interface MarketTradeActivity {
+  ticker: string;
+  tradeCount24h?: number;
+  tradeCount1h?: number;
+  lastTradeAt?: string | null;
+  volumeUsd24h?: number;
+  recentTrades?: MarketTradeFill[];
 }
