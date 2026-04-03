@@ -1844,12 +1844,13 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/dflow/positions", async (req, reply) => {
-    const { wallet } = req.query as { wallet?: string };
-    if (!wallet?.trim()) {
-      return reply.status(400).send({ success: false, error: "wallet query param required" });
+    const { address, wallet } = req.query as { address?: string; wallet?: string };
+    const addr = (address ?? wallet ?? "").trim();
+    if (!addr) {
+      return reply.status(400).send({ success: false, error: "address query param required" });
     }
     try {
-      const positions = await getDflowPositionsForWallet(wallet.trim());
+      const positions = await getDflowPositionsForWallet(addr);
       return reply.send({ success: true, data: positions });
     } catch (e) {
       app.log.error(e);
