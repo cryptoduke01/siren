@@ -4,11 +4,11 @@ import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
 import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
-  ChevronDown, ArrowUpRight, ArrowDownLeft, CreditCard, Pencil,
+  ChevronDown, ArrowUpRight, ArrowDownLeft, CreditCard, Pencil, ArrowRightLeft,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
@@ -135,6 +135,179 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Swap Panel ──────────────────────────────────────────────────────
+
+const SWAP_TOKENS = [
+  { symbol: "SOL", mint: "So11111111111111111111111111111111111111112", decimals: 9 },
+  { symbol: "USDC", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
+  { symbol: "USDT", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6 },
+];
+
+function SwapPanel() {
+  const { publicKey, signTransaction } = useSirenWallet();
+  const { connection } = useConnection();
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+
+  const [fromIdx, setFromIdx] = useState(0);
+  const [toIdx, setToIdx] = useState(1);
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [quoteData, setQuoteData] = useState<{ outAmount: string; priceImpactPct: string } | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  const fromToken = SWAP_TOKENS[fromIdx];
+  const toToken = SWAP_TOKENS[toIdx];
+
+  const flipTokens = useCallback(() => {
+    hapticLight();
+    setFromIdx(toIdx);
+    setToIdx(fromIdx);
+    setQuoteData(null);
+  }, [fromIdx, toIdx]);
+
+  const fetchQuote = useCallback(async (inputAmount: string) => {
+    if (!inputAmount || parseFloat(inputAmount) <= 0) { setQuoteData(null); return; }
+    setQuoting(true);
+    try {
+      const lamports = Math.floor(parseFloat(inputAmount) * 10 ** fromToken.decimals);
+      const res = await fetch(
+        `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken.mint}&outputMint=${toToken.mint}&amount=${lamports}&slippageBps=50`,
+      );
+      if (!res.ok) throw new Error("Quote failed");
+      const data = await res.json();
+      setQuoteData({ outAmount: data.outAmount, priceImpactPct: data.priceImpactPct });
+    } catch {
+      setQuoteData(null);
+    } finally {
+      setQuoting(false);
+    }
+  }, [fromToken, toToken]);
+
+  const executeSwap = useCallback(async () => {
+    if (!publicKey || !signTransaction || !quoteData || !amount) return;
+    setLoading(true);
+    try {
+      const lamports = Math.floor(parseFloat(amount) * 10 ** fromToken.decimals);
+      const quoteRes = await fetch(
+        `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken.mint}&outputMint=${toToken.mint}&amount=${lamports}&slippageBps=50`,
+      );
+      if (!quoteRes.ok) throw new Error("Quote failed");
+      const quote = await quoteRes.json();
+
+      const swapRes = await fetch("https://quote-api.jup.ag/v6/swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quoteResponse: quote,
+          userPublicKey: publicKey.toBase58(),
+          wrapAndUnwrapSol: true,
+        }),
+      });
+      if (!swapRes.ok) throw new Error("Swap transaction build failed");
+      const { swapTransaction } = await swapRes.json();
+
+      const txBuf = Buffer.from(swapTransaction, "base64");
+      const tx = VersionedTransaction.deserialize(txBuf);
+      const signed = await signTransaction(tx as unknown as Transaction);
+      const sig = await connection.sendRawTransaction((signed as unknown as VersionedTransaction).serialize());
+      await connection.confirmTransaction(sig, "confirmed");
+
+      fetch(`${API_URL}/api/volume/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: parseFloat(amount) }),
+      }).catch(() => {});
+
+      addToast(`Swapped ${amount} ${fromToken.symbol} → ${toToken.symbol}`, "success");
+      setAmount("");
+      setQuoteData(null);
+      queryClient.invalidateQueries({ queryKey: ["portfolio-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : "Swap failed", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [publicKey, signTransaction, quoteData, amount, fromToken, toToken, connection, addToast, queryClient]);
+
+  const outDisplay = quoteData
+    ? (parseInt(quoteData.outAmount, 10) / 10 ** toToken.decimals).toFixed(toToken.decimals === 9 ? 6 : 2)
+    : "—";
+
+  return (
+    <div className="space-y-3">
+      {/* From */}
+      <div className="rounded-lg border p-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="font-body text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>From</span>
+          <select
+            value={fromIdx}
+            onChange={(e) => { setFromIdx(Number(e.target.value)); setQuoteData(null); }}
+            className="bg-transparent font-heading text-xs font-semibold outline-none cursor-pointer"
+            style={{ color: "var(--text-1)" }}
+          >
+            {SWAP_TOKENS.map((t, i) => i !== toIdx && <option key={t.mint} value={i}>{t.symbol}</option>)}
+          </select>
+        </div>
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => { setAmount(e.target.value); fetchQuote(e.target.value); }}
+          placeholder="0.00"
+          step="any"
+          min="0"
+          className="w-full bg-transparent font-mono text-xl font-bold outline-none placeholder:text-[var(--text-3)]"
+          style={{ color: "var(--text-1)" }}
+        />
+      </div>
+
+      {/* Flip */}
+      <div className="flex justify-center -my-1">
+        <button type="button" onClick={flipTokens}
+          className="rounded-full border p-1.5 hover:bg-[var(--bg-elevated)] transition-colors"
+          style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+          <ArrowRightLeft className="h-3.5 w-3.5 rotate-90" />
+        </button>
+      </div>
+
+      {/* To */}
+      <div className="rounded-lg border p-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="font-body text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>To</span>
+          <select
+            value={toIdx}
+            onChange={(e) => { setToIdx(Number(e.target.value)); setQuoteData(null); }}
+            className="bg-transparent font-heading text-xs font-semibold outline-none cursor-pointer"
+            style={{ color: "var(--text-1)" }}
+          >
+            {SWAP_TOKENS.map((t, i) => i !== fromIdx && <option key={t.mint} value={i}>{t.symbol}</option>)}
+          </select>
+        </div>
+        <p className="font-mono text-xl font-bold" style={{ color: quoteData ? "var(--text-1)" : "var(--text-3)" }}>
+          {quoting ? <Loader2 className="h-5 w-5 animate-spin inline" /> : outDisplay}
+        </p>
+      </div>
+
+      {quoteData && parseFloat(quoteData.priceImpactPct) > 1 && (
+        <p className="text-center font-body text-[10px]" style={{ color: "var(--down)" }}>
+          Price impact: {parseFloat(quoteData.priceImpactPct).toFixed(2)}%
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={executeSwap}
+        disabled={loading || !quoteData || !publicKey || !amount}
+        className="w-full rounded-lg py-3 font-heading text-sm font-bold disabled:opacity-40 transition-all"
+        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+      >
+        {loading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : `Swap ${fromToken.symbol} → ${toToken.symbol}`}
+      </button>
     </div>
   );
 }
@@ -547,18 +720,18 @@ export default function PortfolioPage() {
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
           <button type="button" className="flex w-full items-center justify-between px-4 py-3"
             onClick={() => { hapticLight(); setSwapOpen(!swapOpen); }}>
-            <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Swap Tokens
-            </span>
+            <div className="flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4" style={{ color: "var(--accent)" }} />
+              <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Swap
+              </span>
+            </div>
             <ChevronDown style={{ color: "var(--text-3)" }}
               className={`h-4 w-4 transition-transform duration-200 ${swapOpen ? "rotate-180" : ""}`} />
           </button>
           {swapOpen && (
             <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
-              <div id="jupiter-terminal" className="w-full" />
-              <p className="mt-2 text-center font-body text-[10px]" style={{ color: "var(--text-3)" }}>
-                Powered by Jupiter. Connect your wallet above to swap.
-              </p>
+              <SwapPanel />
             </div>
           )}
         </div>

@@ -58,15 +58,14 @@ function SourceBadge({ source }: { source?: string }) {
   if (source === "polymarket") {
     return (
       <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(46,92,255,0.12)" }}>
-        <img src="/brand/polymarket/icon-white.svg" alt="" className="h-3 w-3" />
+        <img src="/brand/polymarket/icon-white.svg" alt="" className="h-2.5 w-2.5" />
         <span className="font-body text-[9px] font-bold" style={{ color: "#5B8AFF" }}>Poly</span>
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(0,200,83,0.10)" }}>
-      <span className="font-heading text-[9px] font-extrabold italic" style={{ color: "#00C853" }}>K</span>
-      <span className="font-body text-[9px] font-bold" style={{ color: "#00C853" }}>Kalshi</span>
+    <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(9,194,133,0.10)" }}>
+      <img src="/brand/kalshi/logo-green.svg" alt="Kalshi" className="h-2.5 w-auto" />
     </span>
   );
 }

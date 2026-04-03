@@ -91,8 +91,8 @@ export function TopBar() {
               <span style={{ color: "#5B8AFF" }}>{polymarketCount}</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="font-heading text-[9px] font-extrabold italic" style={{ color: "#00C853" }}>K</span>
-              <span style={{ color: "#00C853" }}>{kalshiCount}</span>
+              <img src="/brand/kalshi/logo-green.svg" alt="" className="h-2.5 w-auto" />
+              <span style={{ color: "#09C285" }}>{kalshiCount}</span>
             </span>
           </div>
         )}
