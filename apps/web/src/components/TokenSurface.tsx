@@ -916,8 +916,8 @@ export function TokenSurface() {
                   });
                 }}
               >
-                <div className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)] xl:grid-cols-[56px_minmax(0,1fr)_auto] xl:items-center">
-                  <div className="w-[56px] h-[56px] rounded-[10px] border shrink-0 overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl shrink-0 overflow-hidden" style={{ background: "var(--bg-base)", border: "1px solid var(--border-subtle)" }}>
                     <img
                       src={t.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.symbol || t.name)}&background=0F172A&color=E2E8F0&size=64`}
                       alt=""
@@ -930,54 +930,53 @@ export function TokenSurface() {
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>
-                        ${t.symbol}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
+                          ${t.symbol}
+                        </p>
+                        <LaunchpadBadge launchpad={t.launchpad} />
+                        {isUserLaunch && (
+                          <span className="font-body text-[9px] font-semibold" style={{ color: "var(--bags)" }}>
+                            Yours
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-mono text-xs font-semibold tabular-nums shrink-0" style={{ color: "var(--text-1)" }}>
+                        ${t.price != null ? (t.price < 0.001 ? t.price.toExponential(1) : t.price.toFixed(4)) : "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <p className="font-body text-[10px] truncate" style={{ color: "var(--text-3)" }}>
+                        {t.name}
                       </p>
-                      <LaunchpadBadge launchpad={t.launchpad} />
-                      {isUserLaunch && (
-                        <span className="font-body text-[10px]" style={{ color: "var(--bags)" }}>
-                          Yours
-                        </span>
-                      )}
-                    </div>
-                    <p className="font-body text-[11px] truncate mt-0.5" style={{ color: "var(--text-2)" }}>
-                      {t.name}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="font-body text-[11px] tabular-nums" style={{ color: "var(--text-1)" }}>
-                        ${t.price != null ? t.price.toFixed(4) : "—"}
-                      </span>
-                      <span className="font-body text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
-                        Vol ${t.volume24h?.toLocaleString() ?? "—"}
+                      <span className="font-body text-[10px] tabular-nums shrink-0" style={{ color: "var(--text-3)" }}>
+                        Vol ${formatCompactNumber(t.volume24h)}
                       </span>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
-                        {t.bondingCurveStatus === "bonded" ? "Bonded" : t.bondingCurveStatus === "bonding" ? "Curve" : "Status —"}
+                    <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                      <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
+                        {t.bondingCurveStatus === "bonded" ? "Bonded" : t.bondingCurveStatus === "bonding" ? "Curve" : "—"}
                       </span>
-                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
-                        Holders {formatCompactNumber(t.holders, 0)}
+                      <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
+                        {formatCompactNumber(t.holders, 0)} holders
                       </span>
-                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+                      <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
                         Liq ${formatCompactNumber(t.liquidityUsd)}
                       </span>
-                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
-                        FDV ${formatCompactNumber(t.fdvUsd)}
-                      </span>
                       <span
-                        className="rounded-full border px-2 py-0.5 text-[10px] font-body"
+                        className="rounded px-1.5 py-px text-[9px] font-body font-medium"
                         style={{
-                          borderColor: t.safe === false ? "color-mix(in srgb, var(--down) 35%, var(--border-subtle))" : "var(--border-subtle)",
-                          color: t.safe === false ? "var(--down)" : "var(--bags)",
+                          background: t.safe === false ? "rgba(255,69,96,0.1)" : "rgba(0,255,133,0.08)",
+                          color: t.safe === false ? "var(--down)" : "var(--up)",
                         }}
                       >
-                        {t.rugcheckScore != null ? `Rug ${t.rugcheckScore}` : t.safe === false ? "Watch" : "Safe"}
+                        {t.rugcheckScore != null ? `Rug ${t.rugcheckScore}` : t.safe === false ? "Risky" : "Safe"}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 md:col-span-2 xl:col-span-1 xl:justify-end">
+                  <div className="mt-2 flex items-center gap-1.5 justify-end">
                     <TokenAlertButton mint={t.mint} symbol={t.symbol} price={t.price} />
                     <StarButton type="token" id={t.mint} />
                     <CopyCAButton mint={t.mint} />
@@ -1004,12 +1003,10 @@ export function TokenSurface() {
                         });
                         setBuyPanelOpen(true, "token");
                       }}
-                      className="h-9 shrink-0 rounded-[9px] px-4 font-heading text-[11px] font-semibold uppercase transition-all duration-[80ms] ease hover:brightness-[1.08]"
+                      className="h-8 shrink-0 rounded-lg px-5 font-heading text-[11px] font-bold uppercase tracking-wide transition-all duration-100 hover:brightness-110 active:scale-95"
                       style={{
-                        background: "transparent",
-                        color: "var(--text-1)",
-                        border: "1px solid var(--border-default)",
-                        letterSpacing: "0.06em",
+                        background: "var(--accent)",
+                        color: "var(--accent-text)",
                       }}
                     >
                       Buy

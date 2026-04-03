@@ -73,23 +73,26 @@ export function TopBar() {
             return <Link key={href} {...linkProps}>{label}</Link>;
           })}
         </nav>
-        {showSignalSummary && (
+        {showSignalSummary && liveSignals.length > 0 && (
           <div
-            className="hidden xl:flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[11px]"
+            className="hidden lg:flex items-center gap-3 rounded-full border px-3 py-1.5 font-mono text-[10px] tabular-nums"
             style={{
               borderColor: "var(--border-subtle)",
               background: "var(--bg-elevated)",
-              color: "var(--text-2)",
             }}
           >
-            <span style={{ color: "var(--text-1)" }}>
-              {liveSignals.length} signals
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--up)" }} />
+              <span style={{ color: "var(--text-1)" }}>{liveSignals.length} live</span>
             </span>
-            <span style={{ color: "var(--text-3)" }}>—</span>
-            <span>
-              <span style={{ color: "#00C853" }}>{kalshiCount} Kalshi</span>
-              {" · "}
-              <span style={{ color: "#5B8AFF" }}>{polymarketCount} Polymarket</span>
+            <span className="h-3 w-px" style={{ background: "var(--border-subtle)" }} />
+            <span className="flex items-center gap-1">
+              <img src="/brand/polymarket/icon-white.svg" alt="" className="h-3 w-3 opacity-70" />
+              <span style={{ color: "#5B8AFF" }}>{polymarketCount}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="font-heading text-[9px] font-extrabold italic" style={{ color: "#00C853" }}>K</span>
+              <span style={{ color: "#00C853" }}>{kalshiCount}</span>
             </span>
           </div>
         )}

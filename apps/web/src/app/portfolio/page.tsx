@@ -399,143 +399,167 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-md flex-1 px-4 pb-12 pt-8">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-12 pt-6 md:pt-8">
 
-        {/* ── Balance Card ──────────────────────────────────── */}
-        <div className="rounded-xl border p-6"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-          <p className="font-body text-xs uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
-            Total Balance
-          </p>
-          {loading ? (
-            <div className="mt-3 flex items-center gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
-              <span className="font-body text-sm" style={{ color: "var(--text-3)" }}>Loading…</span>
-            </div>
-          ) : (
-            <p className="mt-2 font-mono text-3xl font-bold" style={{ color: "var(--text-1)" }}>
-              ${fmtUsd(totalUsd)}
+        {/* ── Top row: Balance + Username ─────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Balance Card */}
+          <div className="rounded-xl border p-5"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+            <p className="font-body text-[10px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
+              Total Balance
             </p>
-          )}
+            {loading ? (
+              <div className="mt-3 flex items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
+              </div>
+            ) : (
+              <p className="mt-1.5 font-mono text-3xl font-bold" style={{ color: "var(--text-1)" }}>
+                ${fmtUsd(totalUsd)}
+              </p>
+            )}
 
-          {/* Action Buttons */}
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            <button type="button" onClick={handleDeposit} disabled={!connected}
-              className="flex flex-col items-center gap-1.5 rounded-lg py-3 font-heading text-xs font-semibold disabled:opacity-40"
-              style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
-              <CreditCard className="h-4 w-4" /> Deposit
-            </button>
-            <button type="button" disabled={!connected}
-              onClick={() => { hapticLight(); setReceiveOpen(!receiveOpen); }}
-              className="flex flex-col items-center gap-1.5 rounded-lg border py-3 font-heading text-xs font-semibold disabled:opacity-40"
-              style={{
-                borderColor: receiveOpen ? "var(--accent)" : "var(--border-subtle)",
-                color: receiveOpen ? "var(--accent)" : "var(--text-1)",
-              }}>
-              <ArrowDownLeft className="h-4 w-4" /> Receive
-            </button>
-            <button type="button" disabled={!connected}
-              onClick={() => { hapticLight(); setWithdrawOpen(true); }}
-              className="flex flex-col items-center gap-1.5 rounded-lg border py-3 font-heading text-xs font-semibold disabled:opacity-40"
-              style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
-              <ArrowUpRight className="h-4 w-4" /> Send
-            </button>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <button type="button" onClick={handleDeposit} disabled={!connected}
+                className="flex flex-col items-center gap-1 rounded-lg py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
+                style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
+                <CreditCard className="h-3.5 w-3.5" /> Deposit
+              </button>
+              <button type="button" disabled={!connected}
+                onClick={() => { hapticLight(); setReceiveOpen(!receiveOpen); }}
+                className="flex flex-col items-center gap-1 rounded-lg border py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
+                style={{
+                  borderColor: receiveOpen ? "var(--accent)" : "var(--border-subtle)",
+                  color: receiveOpen ? "var(--accent)" : "var(--text-1)",
+                }}>
+                <ArrowDownLeft className="h-3.5 w-3.5" /> Receive
+              </button>
+              <button type="button" disabled={!connected}
+                onClick={() => { hapticLight(); setWithdrawOpen(true); }}
+                className="flex flex-col items-center gap-1 rounded-lg border py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
+                style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
+                <ArrowUpRight className="h-3.5 w-3.5" /> Send
+              </button>
+            </div>
+
+            {receiveOpen && walletKey && (
+              <div className="mt-3 rounded-lg border p-3"
+                style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <p className="mb-1 font-body text-[10px]" style={{ color: "var(--text-3)" }}>
+                  Send SOL or USDC to this address
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 select-all break-all font-mono text-[10px]"
+                    style={{ color: "var(--text-1)" }}>
+                    {walletKey}
+                  </code>
+                  <button type="button" onClick={copyAddress}
+                    className="shrink-0 rounded-md p-1 hover:bg-[var(--bg-elevated)]"
+                    style={{ color: "var(--text-2)" }}>
+                    {addressCopied
+                      ? <Check className="h-3 w-3" style={{ color: "var(--up)" }} />
+                      : <Copy className="h-3 w-3" />}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Receive Address */}
-          {receiveOpen && walletKey && (
-            <div className="mt-3 rounded-lg border p-3"
-              style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-              <p className="mb-1.5 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                Send SOL or USDC to this address
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 select-all break-all font-mono text-[11px]"
-                  style={{ color: "var(--text-1)" }}>
-                  {walletKey}
-                </code>
-                <button type="button" onClick={copyAddress}
-                  className="shrink-0 rounded-md p-1.5 hover:bg-[var(--bg-elevated)]"
-                  style={{ color: "var(--text-2)" }}>
-                  {addressCopied
-                    ? <Check className="h-3.5 w-3.5" style={{ color: "var(--up)" }} />
-                    : <Copy className="h-3.5 w-3.5" />}
-                </button>
-              </div>
+          {/* Right column: tokens + username + identity */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <TokenRow symbol="SOL" balance={sol} usdValue={solUsd} />
+              <TokenRow symbol="USDC" balance={usdc} usdValue={usdc} />
+              <TokenRow symbol="USDT" balance={usdt} usdValue={usdt} />
             </div>
-          )}
 
-          {/* Token Balances */}
-          <div className="mt-5 flex flex-col gap-2">
-            <TokenRow symbol="SOL" balance={sol} usdValue={solUsd} />
-            <TokenRow symbol="USDC" balance={usdc} usdValue={usdc} />
-            <TokenRow symbol="USDT" balance={usdt} usdValue={usdt} />
+            {/* Username */}
+            {connected && (
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2.5"
+                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                {editingUsername ? (
+                  <div className="flex flex-1 items-center gap-2">
+                    <input
+                      type="text"
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_.\-]/g, "").slice(0, 20))}
+                      placeholder="Pick a username"
+                      autoFocus
+                      maxLength={20}
+                      className="flex-1 rounded-md border bg-transparent px-2.5 py-1 font-body text-xs outline-none"
+                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveUsername(); if (e.key === "Escape") setEditingUsername(false); }}
+                    />
+                    <button type="button" onClick={saveUsername} disabled={usernameSaving || usernameInput.trim().length < 2}
+                      className="rounded-md px-2.5 py-1 font-heading text-[11px] font-semibold disabled:opacity-40"
+                      style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
+                      {usernameSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full"
+                        style={{ background: "linear-gradient(135deg, var(--accent), #00C853)" }}>
+                        <span className="font-heading text-[10px] font-bold" style={{ color: "var(--bg-base)" }}>
+                          {(profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="font-heading text-xs font-medium" style={{ color: "var(--text-1)" }}>
+                        {profile?.display_name || profile?.username || "Set username"}
+                      </span>
+                    </div>
+                    <button type="button"
+                      onClick={() => { hapticLight(); setUsernameInput(profile?.username || ""); setEditingUsername(true); }}
+                      className="rounded-md p-1 hover:bg-[var(--bg-elevated)]"
+                      style={{ color: "var(--text-3)" }}>
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Identity */}
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2.5"
+              style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex items-center gap-2">
+                <Shield className="h-3.5 w-3.5" style={{ color: verified ? "var(--up)" : "var(--text-3)" }} />
+                <span className="font-body text-xs"
+                  style={{ color: verified ? "var(--up)" : "var(--text-2)" }}>
+                  {verified ? "Kalshi KYC Verified" : "Kalshi KYC Not Verified"}
+                </span>
+              </div>
+              {!verified && connected && (
+                <button type="button" onClick={openVerify} disabled={proofLoading}
+                  className="flex items-center gap-1 font-body text-[11px] font-medium disabled:opacity-50"
+                  style={{ color: "var(--accent)" }}>
+                  {proofLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verify"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* ── Username ──────────────────────────────────────── */}
-        {connected && (
-          <div className="mt-4 flex items-center justify-between rounded-xl border px-4 py-3"
-            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-            {editingUsername ? (
-              <div className="flex flex-1 items-center gap-2">
-                <input
-                  type="text"
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_.\-]/g, "").slice(0, 20))}
-                  placeholder="Pick a username"
-                  autoFocus
-                  maxLength={20}
-                  className="flex-1 rounded-md border bg-transparent px-3 py-1.5 font-body text-sm outline-none"
-                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                  onKeyDown={(e) => { if (e.key === "Enter") saveUsername(); if (e.key === "Escape") setEditingUsername(false); }}
-                />
-                <button type="button" onClick={saveUsername} disabled={usernameSaving || usernameInput.trim().length < 2}
-                  className="rounded-md px-3 py-1.5 font-heading text-xs font-semibold disabled:opacity-40"
-                  style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
-                  {usernameSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full"
-                    style={{ background: "linear-gradient(135deg, var(--accent), #00C853)" }}>
-                    <span className="font-heading text-xs font-bold" style={{ color: "var(--bg-base)" }}>
-                      {(profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <span className="font-heading text-sm font-medium" style={{ color: "var(--text-1)" }}>
-                    {profile?.display_name || profile?.username || "Set username"}
-                  </span>
-                </div>
-                <button type="button"
-                  onClick={() => { hapticLight(); setUsernameInput(profile?.username || ""); setEditingUsername(true); }}
-                  className="rounded-md p-1.5 hover:bg-[var(--bg-elevated)]"
-                  style={{ color: "var(--text-3)" }}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── Jupiter Swap ──────────────────────────────────── */}
-        <div className="mt-4 overflow-hidden rounded-xl border"
+        {/* ── Swap ──────────────────────────────────────────── */}
+        <div className="mt-4 rounded-xl border overflow-hidden"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
           <button type="button" className="flex w-full items-center justify-between px-4 py-3"
             onClick={() => { hapticLight(); setSwapOpen(!swapOpen); }}>
             <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Swap
+              Swap Tokens
             </span>
             <ChevronDown style={{ color: "var(--text-3)" }}
               className={`h-4 w-4 transition-transform duration-200 ${swapOpen ? "rotate-180" : ""}`} />
           </button>
           {swapOpen && (
-            <iframe src="https://jup.ag/swap/SOL-USDC" title="Jupiter Swap"
-              className="w-full border-t" allow="clipboard-write"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation"
-              style={{ height: 500, borderColor: "var(--border-subtle)", background: "#131318" }} />
+            <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
+              <div id="jupiter-terminal" className="w-full" />
+              <p className="mt-2 text-center font-body text-[10px]" style={{ color: "var(--text-3)" }}>
+                Powered by Jupiter. Connect your wallet above to swap.
+              </p>
+            </div>
           )}
         </div>
 
@@ -553,7 +577,6 @@ export default function PortfolioPage() {
             )}
           </div>
 
-          {/* Tabs */}
           <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>
             {(["open", "settled"] as const).map((tab) => (
               <button key={tab} type="button"
@@ -571,14 +594,13 @@ export default function PortfolioPage() {
             ))}
           </div>
 
-          {/* Position List */}
-          <div className="mt-3 flex flex-col gap-2">
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
             {positionsLoading ? (
-              <div className="flex items-center justify-center py-8">
+              <div className="col-span-full flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
               </div>
             ) : activeTab.length === 0 ? (
-              <p className="py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
+              <p className="col-span-full py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
                 {positionTab === "open" ? "No open positions yet." : "No settled positions yet."}
               </p>
             ) : (
@@ -587,26 +609,6 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* ── Identity ──────────────────────────────────────── */}
-        <div className="mt-4 flex items-center justify-between rounded-xl border px-4 py-3"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4" style={{ color: verified ? "var(--up)" : "var(--text-3)" }} />
-            <span className="font-body text-sm"
-              style={{ color: verified ? "var(--up)" : "var(--text-2)" }}>
-              {verified ? "Verified" : "Not verified"}
-            </span>
-          </div>
-          {!verified && connected && (
-            <button type="button" onClick={openVerify} disabled={proofLoading}
-              className="flex items-center gap-1 font-body text-xs font-medium disabled:opacity-50"
-              style={{ color: "var(--accent)" }}>
-              {proofLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verify"}
-            </button>
-          )}
-        </div>
-
-        {/* ── Back ──────────────────────────────────────────── */}
         <Link href="/" className="mt-6 inline-flex items-center gap-1.5 font-body text-xs"
           style={{ color: "var(--text-3)" }}>
           <ArrowLeft className="h-3 w-3" /> Back to Terminal

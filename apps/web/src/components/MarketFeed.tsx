@@ -30,6 +30,19 @@ function formatCompact(value?: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
+function formatCloseTime(ts: number): string {
+  const now = Date.now();
+  const diff = ts - now;
+  if (diff < 0) return "Ended";
+  if (diff < 60 * 60 * 1000) return `${Math.ceil(diff / (60 * 1000))}m`;
+  if (diff < 24 * 60 * 60 * 1000) return `${Math.ceil(diff / (60 * 60 * 1000))}h`;
+  if (diff < 7 * 24 * 60 * 60 * 1000) return `${Math.ceil(diff / (24 * 60 * 60 * 1000))}d`;
+  const d = new Date(ts);
+  const thisYear = new Date().getFullYear();
+  if (d.getFullYear() === thisYear) return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function VelocityBadge({ v }: { v: number }) {
   if (Math.abs(v) < 0.1) return null;
   const color = v > 0 ? "var(--up)" : "var(--down)";
@@ -41,36 +54,18 @@ function VelocityBadge({ v }: { v: number }) {
   );
 }
 
-function PolymarketIcon({ size = 12 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M200 0L400 200L200 400L0 200L200 0Z" fill="#2E5CFF" />
-      <path d="M100 200L200 100L300 200L200 300L100 200Z" fill="white" />
-    </svg>
-  );
-}
-
-function KalshiIcon({ size = 12 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100" height="100" rx="16" fill="#00C853" />
-      <text x="50" y="68" textAnchor="middle" fontFamily="system-ui" fontWeight="800" fontSize="48" fill="white">K</text>
-    </svg>
-  );
-}
-
 function SourceBadge({ source }: { source?: string }) {
   if (source === "polymarket") {
     return (
       <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(46,92,255,0.12)" }}>
-        <PolymarketIcon size={11} />
+        <img src="/brand/polymarket/icon-white.svg" alt="" className="h-3 w-3" />
         <span className="font-body text-[9px] font-bold" style={{ color: "#5B8AFF" }}>Poly</span>
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(0,200,83,0.10)" }}>
-      <KalshiIcon size={11} />
+      <span className="font-heading text-[9px] font-extrabold italic" style={{ color: "#00C853" }}>K</span>
       <span className="font-body text-[9px] font-bold" style={{ color: "#00C853" }}>Kalshi</span>
     </span>
   );
@@ -137,13 +132,16 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
       case "newest":
         sorted.sort((a, b) => (b.open_time ?? 0) - (a.open_time ?? 0));
         break;
-      case "ending_soon":
-        sorted.sort((a, b) => {
-          const ac = a.close_time ?? Number.MAX_SAFE_INTEGER;
-          const bc = b.close_time ?? Number.MAX_SAFE_INTEGER;
-          return ac - bc;
-        });
+      case "ending_soon": {
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        const cutoff = Date.now() + thirtyDaysMs;
+        const endingSoon = sorted.filter((m) => m.close_time && m.close_time > Date.now() && m.close_time <= cutoff);
+        const theRest = sorted.filter((m) => !m.close_time || m.close_time > cutoff || m.close_time <= Date.now());
+        endingSoon.sort((a, b) => (a.close_time ?? 0) - (b.close_time ?? 0));
+        sorted.length = 0;
+        sorted.push(...endingSoon, ...theRest);
         break;
+      }
       case "hot":
       default:
         sorted.sort((a, b) => {
@@ -433,7 +431,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                     <div className="mt-1.5 flex items-center justify-between">
                       <span className="font-body text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
                         Vol {formatCompact(m.volume)}
-                        {m.close_time ? ` · Ends ${new Date(m.close_time).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                        {m.close_time ? ` · Ends ${formatCloseTime(m.close_time)}` : ""}
                       </span>
                     </div>
                   )}
