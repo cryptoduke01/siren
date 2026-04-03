@@ -8,7 +8,7 @@ import { PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@so
 import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
-  ChevronDown, ArrowUpRight, ArrowDownLeft, CreditCard, Pencil, ArrowRightLeft,
+  ChevronDown, ArrowUp, ArrowDown, CreditCard, Pencil, ArrowRightLeft, RefreshCw,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
@@ -152,7 +152,6 @@ const SWAP_TOKENS = [
 
 function SwapPanel() {
   const { publicKey, signTransaction } = useSirenWallet();
-  const { connection } = useConnection();
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
 
@@ -160,7 +159,7 @@ function SwapPanel() {
   const [toIdx, setToIdx] = useState(1);
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
-  const [quoteData, setQuoteData] = useState<{ outAmount: string; priceImpactPct: string } | null>(null);
+  const [quoteData, setQuoteData] = useState<{ outAmount: string; requestId?: string } | null>(null);
   const [quoting, setQuoting] = useState(false);
 
   const fromToken = SWAP_TOKENS[fromIdx];
@@ -178,12 +177,16 @@ function SwapPanel() {
     setQuoting(true);
     try {
       const lamports = Math.floor(parseFloat(inputAmount) * 10 ** fromToken.decimals);
-      const res = await fetch(
-        `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken.mint}&outputMint=${toToken.mint}&amount=${lamports}&slippageBps=50`,
-      );
+      const params = new URLSearchParams({
+        inputMint: fromToken.mint,
+        outputMint: toToken.mint,
+        amount: String(lamports),
+        slippageBps: "50",
+      });
+      const res = await fetch(`${API_URL}/api/swap/order?${params.toString()}`, { credentials: "omit" });
       if (!res.ok) throw new Error("Quote failed");
       const data = await res.json();
-      setQuoteData({ outAmount: data.outAmount, priceImpactPct: data.priceImpactPct });
+      setQuoteData({ outAmount: data.outAmount, requestId: data.requestId });
     } catch {
       setQuoteData(null);
     } finally {
@@ -192,33 +195,34 @@ function SwapPanel() {
   }, [fromToken, toToken]);
 
   const executeSwap = useCallback(async () => {
-    if (!publicKey || !signTransaction || !quoteData || !amount) return;
+    if (!publicKey || !signTransaction || !amount) return;
     setLoading(true);
     try {
       const lamports = Math.floor(parseFloat(amount) * 10 ** fromToken.decimals);
-      const quoteRes = await fetch(
-        `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken.mint}&outputMint=${toToken.mint}&amount=${lamports}&slippageBps=50`,
-      );
-      if (!quoteRes.ok) throw new Error("Quote failed");
-      const quote = await quoteRes.json();
-
-      const swapRes = await fetch("https://quote-api.jup.ag/v6/swap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          quoteResponse: quote,
-          userPublicKey: publicKey.toBase58(),
-          wrapAndUnwrapSol: true,
-        }),
+      const params = new URLSearchParams({
+        inputMint: fromToken.mint,
+        outputMint: toToken.mint,
+        amount: String(lamports),
+        taker: publicKey.toBase58(),
+        slippageBps: "50",
       });
-      if (!swapRes.ok) throw new Error("Swap transaction build failed");
-      const { swapTransaction } = await swapRes.json();
+      const orderRes = await fetch(`${API_URL}/api/swap/order?${params.toString()}`, { credentials: "omit" });
+      if (!orderRes.ok) throw new Error("Order failed");
+      const order = await orderRes.json();
+      if (!order.transaction) throw new Error("No transaction returned");
 
-      const txBuf = Buffer.from(swapTransaction, "base64");
+      const txBuf = Buffer.from(order.transaction, "base64");
       const tx = VersionedTransaction.deserialize(txBuf);
       const signed = await signTransaction(tx as unknown as Transaction);
-      const sig = await connection.sendRawTransaction((signed as unknown as VersionedTransaction).serialize());
-      await connection.confirmTransaction(sig, "confirmed");
+      const signedBase64 = Buffer.from((signed as unknown as VersionedTransaction).serialize()).toString("base64");
+
+      const execRes = await fetch(`${API_URL}/api/swap/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signedTransaction: signedBase64, requestId: order.requestId }),
+      });
+      const result = await execRes.json();
+      if (result.status !== "Success") throw new Error(result.error || "Swap failed on-chain");
 
       fetch(`${API_URL}/api/volume/log`, {
         method: "POST",
@@ -236,7 +240,7 @@ function SwapPanel() {
     } finally {
       setLoading(false);
     }
-  }, [publicKey, signTransaction, quoteData, amount, fromToken, toToken, connection, addToast, queryClient]);
+  }, [publicKey, signTransaction, amount, fromToken, toToken, addToast, queryClient]);
 
   const outDisplay = quoteData
     ? (parseInt(quoteData.outAmount, 10) / 10 ** toToken.decimals).toFixed(toToken.decimals === 9 ? 6 : 2)
@@ -591,9 +595,20 @@ export default function PortfolioPage() {
           {/* Balance Card */}
           <div className="rounded-xl border p-5"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-            <p className="font-body text-[10px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
-              Total Balance
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="font-body text-[10px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
+                Total Balance
+              </p>
+              <button type="button" onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ["portfolio-balances"] });
+                queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
+                queryClient.invalidateQueries({ queryKey: ["sol-price"] });
+              }}
+                className="rounded p-1 hover:bg-[var(--bg-elevated)] transition-colors"
+                style={{ color: "var(--text-3)" }}>
+                <RefreshCw className="h-3 w-3" />
+              </button>
+            </div>
             {loading ? (
               <div className="mt-3 flex items-center gap-2">
                 <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
@@ -617,13 +632,13 @@ export default function PortfolioPage() {
                   borderColor: receiveOpen ? "var(--accent)" : "var(--border-subtle)",
                   color: receiveOpen ? "var(--accent)" : "var(--text-1)",
                 }}>
-                <ArrowDownLeft className="h-3.5 w-3.5" /> Receive
+                <ArrowDown className="h-3.5 w-3.5" /> Receive
               </button>
               <button type="button" disabled={!connected}
                 onClick={() => { hapticLight(); setWithdrawOpen(true); }}
                 className="flex flex-col items-center gap-1 rounded-lg border py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
-                <ArrowUpRight className="h-3.5 w-3.5" /> Send
+                <ArrowUp className="h-3.5 w-3.5" /> Send
               </button>
             </div>
 

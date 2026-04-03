@@ -63,8 +63,9 @@ export async function searchPairs(query: string): Promise<DexPair[]> {
 /** Get top boosted tokens (trending). Rate limit 60/min. */
 export async function getTopBoostedTokens(): Promise<BoostedToken[]> {
   const url = `${BASE_URL}/token-boosts/top/v1`;
-  const json = await fetchDexScreener<BoostedResponse>(url);
-  return (json.data ?? []).filter((t) => t.chainId === "solana");
+  const json = await fetchDexScreener<BoostedToken[] | BoostedResponse>(url);
+  const arr = Array.isArray(json) ? json : (json as BoostedResponse).data ?? [];
+  return arr.filter((t) => t.chainId === "solana");
 }
 
 /** Get latest boosted tokens (new uprising). Returns raw array. Rate limit 60/min. */

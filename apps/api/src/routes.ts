@@ -994,12 +994,41 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  // ─── Real trending tokens (DexScreener top boosted) ──────────
+  // ─── Real trending tokens (DexScreener top boosted with fallback) ──
   app.get("/api/trending", async (_req, reply) => {
     try {
-      const { getTopBoostedTokens, getTokenPairs } = await import("./services/dexscreener.js");
-      const boosted = await withTimeout(getTopBoostedTokens(), 8_000, "trending-boosted");
-      const top = boosted.slice(0, 20);
+      const { getTopBoostedTokens, getLatestBoostedTokens, getTokenPairs, searchPairs } = await import("./services/dexscreener.js");
+
+      let boosted = await withTimeout(getTopBoostedTokens(), 8_000, "trending-boosted");
+      if (boosted.length === 0) {
+        boosted = await withTimeout(getLatestBoostedTokens(), 8_000, "trending-latest");
+      }
+
+      let top = boosted.slice(0, 20);
+
+      if (top.length === 0) {
+        const fallbackPairs = await withTimeout(searchPairs("SOL"), 6_000, "trending-fallback");
+        const seen = new Set<string>();
+        const data = fallbackPairs
+          .filter((p) => {
+            if (seen.has(p.baseToken.address)) return false;
+            seen.add(p.baseToken.address);
+            return true;
+          })
+          .slice(0, 16)
+          .map((p) => ({
+            mint: p.baseToken.address,
+            symbol: p.baseToken.symbol,
+            name: p.baseToken.name,
+            imageUrl: p.info?.imageUrl,
+            priceUsd: p.priceUsd ? parseFloat(p.priceUsd) : undefined,
+            volume24h: p.volume?.h24,
+            marketCap: p.marketCap ?? p.fdv,
+            liquidity: p.liquidity?.usd,
+          }));
+        return reply.send({ success: true, data });
+      }
+
       const enriched = await Promise.allSettled(
         top.map(async (t) => {
           const pairs = await getTokenPairs(t.tokenAddress).catch(() => []);
@@ -1302,6 +1331,62 @@ export function registerRoutes(app: FastifyInstance) {
         return reply.status(500).send({ success: false, error: "Server error" });
       }
     }
+  );
+
+  // ─── Jupiter Swap V2 Proxy ──────────────────────────────────
+  const JUP_BASE = "https://api.jup.ag/swap/v2";
+  const JUP_API_KEY = process.env.JUPITER_API_KEY || "";
+  const jupHeaders = (): Record<string, string> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (JUP_API_KEY) h["x-api-key"] = JUP_API_KEY;
+    return h;
+  };
+
+  app.get<{ Querystring: { inputMint: string; outputMint: string; amount: string; taker?: string; slippageBps?: string } }>(
+    "/api/swap/order",
+    async (req, reply) => {
+      const { inputMint, outputMint, amount, taker, slippageBps } = req.query;
+      if (!inputMint || !outputMint || !amount) {
+        return reply.status(400).send({ success: false, error: "inputMint, outputMint, amount required" });
+      }
+      const params = new URLSearchParams({ inputMint, outputMint, amount });
+      if (taker) params.set("taker", taker);
+      if (slippageBps) params.set("slippageBps", slippageBps);
+      try {
+        const res = await fetch(`${JUP_BASE}/order?${params.toString()}`, { headers: jupHeaders() });
+        if (!res.ok) {
+          const text = await res.text();
+          return reply.status(res.status).send({ success: false, error: text });
+        }
+        const data = await res.json();
+        return reply.send(data);
+      } catch (e) {
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: (e as Error).message });
+      }
+    },
+  );
+
+  app.post<{ Body: { signedTransaction: string; requestId: string } }>(
+    "/api/swap/execute",
+    async (req, reply) => {
+      const { signedTransaction, requestId } = req.body || {};
+      if (!signedTransaction || !requestId) {
+        return reply.status(400).send({ success: false, error: "signedTransaction and requestId required" });
+      }
+      try {
+        const res = await fetch(`${JUP_BASE}/execute`, {
+          method: "POST",
+          headers: jupHeaders(),
+          body: JSON.stringify({ signedTransaction, requestId }),
+        });
+        const data = await res.json();
+        return reply.send(data);
+      } catch (e) {
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: (e as Error).message });
+      }
+    },
   );
 
   /** Log volume (called by client after swaps). No auth for simplicity; can add later. */

@@ -701,17 +701,14 @@ export function TokenSurface() {
         />
       ) : (
         <div
-          className="mb-5 rounded-[20px] border px-5 py-5"
+          className="mb-4 rounded-xl border px-4 py-3"
           style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
         >
-          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-            Prediction Markets First
+          <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+            Pick a market to see matching tokens.
           </p>
-          <h2 className="mt-2 font-heading text-2xl font-bold" style={{ color: "var(--text-1)" }}>
-            Pick a market to center the terminal.
-          </h2>
-          <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Pick a market from the left and Siren will show the best matching tokens underneath it.
+          <p className="mt-0.5 font-body text-xs" style={{ color: "var(--text-3)" }}>
+            Select an event from the left panel.
           </p>
         </div>
       )}
@@ -958,9 +955,11 @@ export function TokenSurface() {
                       <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
                         {t.bondingCurveStatus === "bonded" ? "Bonded" : t.bondingCurveStatus === "bonding" ? "Curve" : "—"}
                       </span>
-                      <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
-                        {formatCompactNumber(t.holders, 0)} holders
-                      </span>
+                      {t.holders != null && t.holders > 0 && (
+                        <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
+                          {formatCompactNumber(t.holders, 0)} holders
+                        </span>
+                      )}
                       <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
                         Liq ${formatCompactNumber(t.liquidityUsd)}
                       </span>

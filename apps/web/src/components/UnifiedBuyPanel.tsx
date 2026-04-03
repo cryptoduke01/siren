@@ -1358,12 +1358,12 @@ export function UnifiedBuyPanel() {
             style={{
               background: "var(--bg-surface)",
               borderLeft: "1px solid var(--border-subtle)",
-              boxShadow: "-8px 0 32px rgba(0,0,0,0.4)",
+              boxShadow: "-8px 0 32px rgba(0,0,0,0.35)",
             }}
           >
             <div className="flex justify-between items-center px-4 py-3 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-              <h3 className="font-heading font-bold text-sm uppercase tracking-wider" style={{ color: "var(--accent)" }}>Trade</h3>
-              <button onClick={onClose} className="p-2 -m-2 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors" style={{ color: "var(--text-3)" }} aria-label="Close">✕</button>
+              <h3 className="font-heading font-bold text-sm" style={{ color: "var(--accent)" }}>Trade</h3>
+              <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-[var(--bg-elevated)] transition-colors" style={{ color: "var(--text-3)" }} aria-label="Close">✕</button>
             </div>
             <div className="p-4 overflow-y-auto flex-1 min-h-0">
               <div className="flex flex-col gap-4">
