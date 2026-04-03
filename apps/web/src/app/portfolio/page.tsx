@@ -108,21 +108,21 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
         <h3 className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
           Send SOL
         </h3>
-        <label className="mt-4 block font-body text-xs" style={{ color: "var(--text-3)" }}>
+        <label className="mt-4 block font-sub text-xs" style={{ color: "var(--text-3)" }}>
           Recipient address
         </label>
         <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
           placeholder="Solana address…"
-          className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none"
+          className="mt-1 w-full rounded-lg border px-3 py-2 font-label text-sm outline-none"
           style={inputStyle} />
-        <label className="mt-3 block font-body text-xs" style={{ color: "var(--text-3)" }}>
+        <label className="mt-3 block font-sub text-xs" style={{ color: "var(--text-3)" }}>
           Amount (SOL)
         </label>
         <input type="number" inputMode="decimal" value={amount}
           onChange={(e) => setAmount(e.target.value)} placeholder="0.00" min={0} step="any"
-          className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none"
+          className="mt-1 w-full rounded-lg border px-3 py-2 font-money tabular-nums text-sm outline-none"
           style={inputStyle} />
-        <div className="mt-1 flex items-center justify-between font-body text-[11px]"
+        <div className="mt-1 flex items-center justify-between font-sub text-[11px]"
           style={{ color: "var(--text-3)" }}>
           <span>Available: {fmtToken(solBalance)} SOL</span>
           {usdEst > 0 && <span>≈ ${fmtUsd(usdEst)}</span>}
@@ -253,7 +253,7 @@ function SwapPanel() {
       {/* From */}
       <div className="rounded-lg border p-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="font-body text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>From</span>
+          <span className="font-sub text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>From</span>
           <select
             value={fromIdx}
             onChange={(e) => { setFromIdx(Number(e.target.value)); setQuoteData(null); }}
@@ -270,7 +270,7 @@ function SwapPanel() {
           placeholder="0.00"
           step="any"
           min="0"
-          className="w-full bg-transparent font-mono text-xl font-bold outline-none placeholder:text-[var(--text-3)]"
+          className="w-full bg-transparent font-money tabular-nums text-xl font-bold outline-none placeholder:text-[var(--text-3)]"
           style={{ color: "var(--text-1)" }}
         />
       </div>
@@ -287,7 +287,7 @@ function SwapPanel() {
       {/* To */}
       <div className="rounded-lg border p-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="font-body text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>To</span>
+          <span className="font-sub text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>To</span>
           <select
             value={toIdx}
             onChange={(e) => { setToIdx(Number(e.target.value)); setQuoteData(null); }}
@@ -297,7 +297,7 @@ function SwapPanel() {
             {SWAP_TOKENS.map((t, i) => i !== fromIdx && <option key={t.mint} value={i}>{t.symbol}</option>)}
           </select>
         </div>
-        <p className="font-mono text-xl font-bold" style={{ color: quoteData ? "var(--text-1)" : "var(--text-3)" }}>
+        <p className="font-money tabular-nums text-xl font-bold" style={{ color: quoteData ? "var(--text-1)" : "var(--text-3)" }}>
           {quoting ? <Loader2 className="h-5 w-5 animate-spin inline" /> : outDisplay}
         </p>
       </div>
@@ -329,10 +329,10 @@ function TokenRow({ symbol, balance, usdValue }: {
         {symbol}
       </span>
       <div className="text-right">
-        <p className="font-mono text-sm" style={{ color: "var(--text-1)" }}>
+        <p className="font-money tabular-nums text-sm font-semibold" style={{ color: "var(--text-1)" }}>
           {fmtToken(balance, symbol === "SOL" ? 4 : 2)}
         </p>
-        <p className="font-mono text-[11px]" style={{ color: "var(--text-3)" }}>
+        <p className="font-money tabular-nums text-[11px] font-medium" style={{ color: "var(--text-3)" }}>
           ${fmtUsd(usdValue)}
         </p>
       </div>
@@ -417,8 +417,8 @@ function PositionRow({ position: p }: { position: Position }) {
           <p className="truncate font-heading text-sm font-medium" style={{ color: "var(--text-1)" }}>
             {p.title || p.ticker}
           </p>
-          <div className="mt-1 flex items-center gap-2 font-body text-xs" style={{ color: "var(--text-3)" }}>
-            <span className="rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase"
+          <div className="mt-1 flex items-center gap-2 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+            <span className="rounded px-1.5 py-0.5 font-sub text-[10px] font-semibold uppercase"
               style={{
                 background: p.side === "yes" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
                 color: p.side === "yes" ? "var(--up)" : "var(--down)",
@@ -436,21 +436,34 @@ function PositionRow({ position: p }: { position: Position }) {
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <p className="font-mono text-sm font-semibold" style={{ color: pnlColor(pnl) }}>
+          <p className="font-money tabular-nums text-sm font-semibold" style={{ color: pnlColor(pnl) }}>
             {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
           </p>
           {pnlPct !== 0 && (
-            <p className="font-mono text-[11px]" style={{ color: pnlColor(pnlPct) }}>
+            <p className="font-money tabular-nums text-[11px] font-medium" style={{ color: pnlColor(pnlPct) }}>
               {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%
             </p>
           )}
         </div>
       </div>
-      <div className="mt-2 flex gap-4 border-t pt-2 font-mono text-[11px]"
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 font-sub text-[11px]"
         style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
-        {entry > 0 && <span>Entry ${fmtUsd(entry)}</span>}
-        {current > 0 && <span>{settled ? "Final" : "Current"} ${fmtUsd(current)}</span>}
-        <span>Prob {probPct.toFixed(0)}%</span>
+        {entry > 0 && (
+          <span>
+            Entry{" "}
+            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>${fmtUsd(entry)}</span>
+          </span>
+        )}
+        {current > 0 && (
+          <span>
+            {settled ? "Final" : "Current"}{" "}
+            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>${fmtUsd(current)}</span>
+          </span>
+        )}
+        <span>
+          Prob{" "}
+          <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>{probPct.toFixed(0)}%</span>
+        </span>
       </div>
 
       {expanded && (
@@ -484,7 +497,7 @@ function PositionRow({ position: p }: { position: Position }) {
               Sell
             </button>
           )}
-          <span className="font-mono text-[10px] self-center" style={{ color: "var(--text-3)" }}>
+          <span className="font-sub text-[10px] self-center" style={{ color: "var(--text-3)" }}>
             {p.ticker}
           </span>
         </div>
@@ -720,7 +733,7 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-12 pt-6 md:pt-8">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-12 pt-6 md:pt-8 font-body">
 
         {/* ── Top row: Balance + Username ─────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -729,7 +742,7 @@ export default function PortfolioPage() {
           <div className="rounded-xl border p-5"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
             <div className="flex items-center justify-between">
-              <p className="font-body text-[10px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
+              <p className="font-sub text-[10px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
                 Total Balance
               </p>
               <button type="button" onClick={() => {
@@ -747,7 +760,7 @@ export default function PortfolioPage() {
                 <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
               </div>
             ) : (
-              <p className="mt-1.5 font-mono text-3xl font-bold" style={{ color: "var(--text-1)" }}>
+              <p className="mt-1.5 font-money tabular-nums text-3xl font-bold tracking-tight" style={{ color: "var(--text-1)" }}>
                 ${fmtUsd(totalUsd)}
               </p>
             )}
@@ -778,11 +791,11 @@ export default function PortfolioPage() {
             {receiveOpen && walletKey && (
               <div className="mt-3 rounded-lg border p-3"
                 style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                <p className="mb-1 font-body text-[10px]" style={{ color: "var(--text-3)" }}>
+                <p className="mb-1 font-sub text-[10px]" style={{ color: "var(--text-3)" }}>
                   Send SOL or USDC to this address
                 </p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 select-all break-all font-mono text-[10px]"
+                  <code className="flex-1 select-all break-all font-label text-[10px]"
                     style={{ color: "var(--text-1)" }}>
                     {walletKey}
                   </code>
@@ -838,7 +851,7 @@ export default function PortfolioPage() {
                           {(profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
                         </span>
                       </div>
-                      <span className="font-heading text-xs font-medium" style={{ color: "var(--text-1)" }}>
+                      <span className="font-body text-xs font-medium" style={{ color: "var(--text-1)" }}>
                         {profile?.display_name || profile?.username || "Set username"}
                       </span>
                     </div>
@@ -903,7 +916,7 @@ export default function PortfolioPage() {
               Positions
             </h2>
             {positions.length > 0 && (
-              <span className="font-mono text-xs font-semibold" style={{ color: pnlColor(totalPnl) }}>
+              <span className="font-money tabular-nums text-xs font-semibold" style={{ color: pnlColor(totalPnl) }}>
                 {totalPnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(totalPnl))}
               </span>
             )}
@@ -919,7 +932,7 @@ export default function PortfolioPage() {
                   color: positionTab === tab ? "var(--text-1)" : "var(--text-3)",
                 }}>
                 {tab}{" "}
-                <span className="font-mono text-[10px]">
+                <span className="font-sub text-[10px] tabular-nums">
                   ({tab === "open" ? openPositions.length : settledPositions.length})
                 </span>
               </button>
