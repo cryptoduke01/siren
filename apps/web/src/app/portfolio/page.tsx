@@ -30,13 +30,16 @@ interface Position {
   ticker: string;
   title: string;
   side: string;
-  probability: number;
-  entryPrice: number;
-  currentPrice: number;
-  quantity: number;
-  pnlUsd: number;
-  pnlPct: number;
-  status: string;
+  probability?: number;
+  entryPrice?: number;
+  currentPrice?: number;
+  quantity?: number;
+  balance?: number;
+  pnlUsd?: number;
+  pnlPct?: number;
+  status?: string;
+  mint?: string;
+  kalshi_url?: string;
 }
 
 const fmtUsd = (n: number) =>
@@ -339,6 +342,12 @@ function TokenRow({ symbol, balance, usdValue }: {
 
 function PositionRow({ position: p }: { position: Position }) {
   const settled = p.status === "settled";
+  const pnl = p.pnlUsd ?? 0;
+  const pnlPct = p.pnlPct ?? 0;
+  const shares = p.quantity ?? p.balance ?? 0;
+  const prob = p.probability ?? 0;
+  const entry = p.entryPrice ?? 0;
+  const current = p.currentPrice ?? (prob / 100);
   return (
     <div className="rounded-lg border px-4 py-3"
       style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
@@ -355,7 +364,7 @@ function PositionRow({ position: p }: { position: Position }) {
               }}>
               {p.side}
             </span>
-            <span>{p.quantity} shares</span>
+            <span>{shares.toFixed(shares >= 1 ? 0 : 2)} shares</span>
             {settled && (
               <span className="rounded px-1.5 py-0.5 text-[10px]"
                 style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-3)" }}>
@@ -365,19 +374,21 @@ function PositionRow({ position: p }: { position: Position }) {
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <p className="font-mono text-sm font-semibold" style={{ color: pnlColor(p.pnlUsd) }}>
-            {p.pnlUsd >= 0 ? "+" : ""}${fmtUsd(Math.abs(p.pnlUsd))}
+          <p className="font-mono text-sm font-semibold" style={{ color: pnlColor(pnl) }}>
+            {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
           </p>
-          <p className="font-mono text-[11px]" style={{ color: pnlColor(p.pnlPct) }}>
-            {p.pnlPct >= 0 ? "+" : ""}{p.pnlPct.toFixed(1)}%
-          </p>
+          {pnlPct !== 0 && (
+            <p className="font-mono text-[11px]" style={{ color: pnlColor(pnlPct) }}>
+              {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%
+            </p>
+          )}
         </div>
       </div>
       <div className="mt-2 flex gap-4 border-t pt-2 font-mono text-[11px]"
         style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
-        <span>Entry ${fmtUsd(p.entryPrice)}</span>
-        <span>{settled ? "Final" : "Current"} ${fmtUsd(p.currentPrice)}</span>
-        <span>Prob {(p.probability * 100).toFixed(0)}%</span>
+        {entry > 0 && <span>Entry ${fmtUsd(entry)}</span>}
+        {current > 0 && <span>{settled ? "Final" : "Current"} ${fmtUsd(current)}</span>}
+        <span>Prob {prob > 1 ? prob.toFixed(0) : (prob * 100).toFixed(0)}%</span>
       </div>
     </div>
   );
@@ -503,7 +514,7 @@ export default function PortfolioPage() {
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");
   const activeTab = positionTab === "open" ? openPositions : settledPositions;
-  const totalPnl = positions.reduce((sum, p) => sum + p.pnlUsd, 0);
+  const totalPnl = positions.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0);
 
   // ── Identity ──────────────────────────────────────────────────
 
