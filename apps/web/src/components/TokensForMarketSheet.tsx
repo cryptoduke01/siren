@@ -13,7 +13,14 @@ export function TokensForMarketSheet({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const { selectedMarket, setBuyPanelOpen, setDetailPanelOpen } = useSirenStore();
+  const { selectedMarket, setBuyPanelOpen } = useSirenStore();
+  const canTradeInSiren = !!selectedMarket && selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
+  const venueLabel = selectedMarket?.source === "kalshi" ? "Kalshi" : "Polymarket";
+  const marketUrl = selectedMarket
+    ? selectedMarket.market_url ||
+      selectedMarket.kalshi_url ||
+      (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com")
+    : "https://www.onsiren.xyz";
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
@@ -78,36 +85,63 @@ export function TokensForMarketSheet({
                     <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--accent)" }}>
                       {selectedMarket.probability.toFixed(0)}% YES
                     </p>
+                    <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
+                      {canTradeInSiren
+                        ? "Trade the market here or buy linked tokens below."
+                        : `Use the matched token list below, or open ${venueLabel} if you want to view the market page.`}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        hapticLight();
-                        setDetailPanelOpen(true);
-                      }}
-                      className="p-2 rounded-[6px] transition-colors hover:bg-[var(--bg-elevated)]"
-                      style={{ color: "var(--text-2)" }}
-                      title="Market details"
-                    >
-                      &#9432;
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        hapticLight();
-                        if (selectedMarket.kalshi_url) window.open(selectedMarket.kalshi_url, "_blank");
-                        else setBuyPanelOpen(true, "market");
-                      }}
-                      className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
-                      style={{
-                        background: "var(--bg-elevated)",
-                        borderColor: "var(--border-default)",
-                        color: "var(--text-1)",
-                      }}
-                    >
-                      View on Kalshi
-                    </button>
+                    {canTradeInSiren ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            hapticLight();
+                            setBuyPanelOpen(true, "market");
+                          }}
+                          className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                          style={{
+                            background: "var(--accent)",
+                            borderColor: "var(--accent)",
+                            color: "var(--accent-text)",
+                          }}
+                        >
+                          Trade market
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            hapticLight();
+                            window.open(marketUrl, "_blank", "noopener,noreferrer");
+                          }}
+                          className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                          style={{
+                            background: "var(--bg-elevated)",
+                            borderColor: "var(--border-default)",
+                            color: "var(--text-1)",
+                          }}
+                        >
+                          View market
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          window.open(marketUrl, "_blank", "noopener,noreferrer");
+                        }}
+                        className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                        style={{
+                          background: "var(--bg-elevated)",
+                          borderColor: "var(--border-default)",
+                          color: "var(--text-1)",
+                        }}
+                        >
+                        View market
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

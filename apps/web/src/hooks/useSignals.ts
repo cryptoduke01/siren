@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PredictionSignal, SignalSourceStatus } from "@siren/shared";
 import { API_URL, WS_URL } from "@/lib/apiUrl";
-
 const QUERY_KEY = ["signals-feed"] as const;
 
 export interface SignalFeedResponse {

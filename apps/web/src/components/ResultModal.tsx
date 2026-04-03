@@ -8,20 +8,31 @@ export function ResultModal({
   message,
   onClose,
   txSignature,
+  actionLabel,
+  actionHref,
 }: {
   type: "success" | "error";
   title: string;
   message: string;
   onClose: () => void;
   txSignature?: string;
+  actionLabel?: string;
+  actionHref?: string;
 }) {
   const Icon = type === "success" ? CheckCircle : XCircle;
   const color = type === "success" ? "var(--up)" : "var(--down)";
+  const txHref =
+    txSignature?.startsWith("0x")
+      ? `https://basescan.org/tx/${txSignature}`
+      : txSignature
+        ? `https://solscan.io/tx/${txSignature}`
+        : null;
+  const txLabel = txSignature?.startsWith("0x") ? "View on BaseScan" : "View on Solscan";
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-[2px]"
-      style={{ background: "rgba(6,6,9,0.85)" }}
+      style={{ background: "rgba(6,6,9,0.55)" }}
       onClick={onClose}
     >
       <div
@@ -42,9 +53,9 @@ export function ResultModal({
             {message}
           </p>
         </div>
-        {txSignature && (
+        {txSignature && txHref && (
           <a
-            href={`https://solscan.io/tx/${txSignature}`}
+            href={txHref}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-body text-sm font-medium mb-3 transition-colors hover:opacity-90"
@@ -54,7 +65,23 @@ export function ResultModal({
               border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
             }}
           >
-            View on Solscan
+            {txLabel}
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        )}
+        {actionLabel && actionHref && (
+          <a
+            href={actionHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-body text-sm font-medium mb-3 transition-colors hover:opacity-90"
+            style={{
+              background: "var(--bg-elevated)",
+              color: "var(--text-1)",
+              border: "1px solid var(--border-subtle)",
+            }}
+          >
+            {actionLabel}
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         )}

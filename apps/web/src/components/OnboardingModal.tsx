@@ -22,8 +22,8 @@ const STEPS = [
     body: "Tokens here match your selected market or show trending picks. Click Buy to trade via Jupiter.",
   },
   {
-    title: "Sign in",
-    body: "Log in with email or social. Siren provisions an embedded Solana wallet so you can trade without a browser extension.",
+    title: "Connect wallet",
+    body: "Use Phantom, Solflare, or Torus to connect. Then trade markets (YES/NO) and tokens from the same panel.",
   },
 ];
 

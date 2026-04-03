@@ -16,6 +16,7 @@ export interface TradePnLCardProps {
   percent: number;
   kalshiMarket: string;
   wallet?: string | null;
+  displayName?: string | null;
   showUSD?: boolean;
   /** Timestamp of the trade (used for "Closed on" line). */
   executedAt?: number | null;
@@ -50,6 +51,7 @@ export function TradePnLCard({
   percent,
   kalshiMarket,
   wallet,
+  displayName,
   showUSD = true,
   executedAt,
 }: TradePnLCardProps) {
@@ -260,9 +262,16 @@ export function TradePnLCard({
           <div className="mt-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <img src="/brand/mark.svg" alt="Siren" className="h-7 w-auto" style={{ filter: "brightness(1.1)" }} />
-              <span className="font-heading font-bold text-sm" style={{ color: "var(--text-1)" }}>
-                SIREN
-              </span>
+              <div>
+                <span className="font-heading font-bold text-sm" style={{ color: "var(--text-1)" }}>
+                  SIREN
+                </span>
+                {displayName && (
+                  <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+                    {displayName}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="font-mono text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -307,4 +316,3 @@ export function TradePnLCard({
     </div>
   );
 }
-

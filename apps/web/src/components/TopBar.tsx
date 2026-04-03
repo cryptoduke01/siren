@@ -12,20 +12,27 @@ import { hapticLight } from "@/lib/haptics";
 import { WaitlistHeader } from "./WaitlistHeader";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
+import { useSignals } from "@/hooks/useSignals";
 
 const NAV = [
   { href: "/", label: "Terminal", icon: Rocket },
   { href: "/trending", label: "Trending", icon: TrendingUp },
   { href: "/waitlist", label: "Waitlist", icon: ClipboardList },
 ];
+const LIVE_SIGNAL_WINDOW_MS = 30 * 60 * 1000;
 
 export function TopBar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useThemeStore();
   const { authenticated } = usePrivy();
   const { connected } = useSirenWallet();
+  const showSignalSummary = pathname === "/";
+  const { signals } = useSignals({ enabled: showSignalSummary });
   const [menuOpen, setMenuOpen] = useState(false);
   const navItems = authenticated || connected ? NAV.filter((item) => item.href !== "/waitlist") : NAV;
+  const liveSignals = signals.filter((signal) => Date.now() - Date.parse(signal.timestamp) <= LIVE_SIGNAL_WINDOW_MS);
+  const kalshiCount = liveSignals.filter((signal) => signal.source === "kalshi").length;
+  const polymarketCount = liveSignals.filter((signal) => signal.source === "polymarket").length;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -76,6 +83,26 @@ export function TopBar() {
             return <Link key={href} {...linkProps}>{label}</Link>;
           })}
         </nav>
+        {showSignalSummary && (
+          <div
+            className="hidden xl:flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[11px]"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--bg-elevated)",
+              color: "var(--text-2)",
+            }}
+          >
+            <span style={{ color: "var(--text-1)" }}>
+              {liveSignals.length} signals
+            </span>
+            <span style={{ color: "var(--text-3)" }}>—</span>
+            <span>
+              <span style={{ color: "#00B2FF" }}>{kalshiCount} Kalshi</span>
+              {" · "}
+              <span style={{ color: "#6B3FDB" }}>{polymarketCount} Polymarket</span>
+            </span>
+          </div>
+        )}
         <div className="hidden md:flex items-center gap-2">
           <NavbarBalance />
           <Link

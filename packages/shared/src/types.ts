@@ -59,6 +59,12 @@ export interface SurfacedToken extends BagsToken {
   matchType: "name" | "volume" | "ct";
   /** Launchpad detected from mint (Bags, Pump.fun, Bonk.fun, etc.). */
   launchpad?: LaunchpadId;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
+  rugcheckScore?: number;
+  safe?: boolean;
 }
 
 export type SignalSource = "kalshi" | "polymarket";

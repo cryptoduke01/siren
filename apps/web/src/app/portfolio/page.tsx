@@ -1,54 +1,154 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSirenWallet, type WalletSessionGate } from "@/contexts/SirenWalletContext";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
-import { Wallet, TrendingUp, TrendingDown, Minus, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
+import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, QrCode, Rocket, Loader2, Copy, Check, History, KeyRound, CreditCard, WalletCards, BadgeDollarSign } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
+import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
-import type { DflowPositionRow, MarketWithVelocity } from "@siren/shared";
+import { fetchEthPriceUsd, fetchSolPriceUsd, isFiniteNumber } from "@/lib/pricing";
+import type { MarketWithVelocity } from "@siren/shared";
 import bs58 from "bs58";
-
+import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
+import { useFundWallet as useSolanaFundWallet } from "@privy-io/react-auth/solana";
+import { buildBaseFundingConfig, buildPolymarketFundingConfig, buildSolanaFundingConfig } from "@/lib/privyFunding";
+import { buildProofDeepLink, buildProofMessage, buildProofRedirectUri, encodeProofSignature } from "@/lib/dflowProof";
+import { formatProfileName, readProfileName, sanitizeProfileName, writeProfileName } from "@/lib/profilePrefs";
 import { API_URL } from "@/lib/apiUrl";
 const LAMPORTS_PER_SOL = 1e9;
+const BASE_CHAIN_ID = 8453;
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
+const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 async function fetchSolPrice(): Promise<number> {
-  const res = await fetch(`${API_URL}/api/sol-price`, { credentials: "omit" });
-  if (!res.ok) return 0;
-  const j = await res.json();
-  return j.usd ?? 0;
+  return fetchSolPriceUsd(API_URL);
 }
 
-async function fetchTokenInfo(mint: string): Promise<{ name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null> {
+async function fetchEthPrice(): Promise<number> {
+  return fetchEthPriceUsd(API_URL);
+}
+
+async function fetchTokenInfo(mint: string): Promise<TokenInfoSnapshot | null> {
   const res = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
   if (!res.ok) return null;
   const j = await res.json();
   const d = j.data;
   if (!d) return null;
-  return { name: d.name, symbol: d.symbol, imageUrl: d.imageUrl, priceUsd: d.priceUsd };
+  return {
+    name: d.name,
+    symbol: d.symbol,
+    imageUrl: d.imageUrl,
+    priceUsd: d.priceUsd,
+    volume24h: d.volume24h,
+    liquidityUsd: d.liquidityUsd,
+    fdvUsd: d.fdvUsd,
+    holders: d.holders,
+    bondingCurveStatus: d.bondingCurveStatus,
+    rugcheckScore: d.rugcheckScore,
+    safe: d.safe,
+  };
+}
+
+function hasUsableLabel(value?: string | null): value is string {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  return !["-", "—", "unknown", "token", "to"].includes(lower);
+}
+
+function getDisplayName(name?: string | null, symbol?: string | null, mint?: string): string {
+  if (hasUsableLabel(name)) return name.trim();
+  if (hasUsableLabel(symbol)) return symbol.trim();
+  return mint ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : "Token";
+}
+
+function getDisplaySymbol(symbol?: string | null, name?: string | null, mint?: string): string {
+  if (hasUsableLabel(symbol)) return symbol.trim();
+  if (hasUsableLabel(name)) return name.trim();
+  return mint ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : "Token";
+}
+
+function getPnlTone(pnlUsd: number | null | undefined): string {
+  if (pnlUsd == null) return "var(--text-3)";
+  return pnlUsd >= 0 ? "var(--up)" : "var(--down)";
 }
 
 async function fetchBalances(publicKey: string) {
   const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
   const mainnet = new Connection(rpcUrl, "confirmed");
-  const devnet = new Connection(clusterApiUrl("devnet"), "confirmed");
   const pubkey = new PublicKey(publicKey);
-  const [mainnetBal, devnetBal] = await Promise.all([
-    mainnet.getBalance(pubkey),
-    devnet.getBalance(pubkey),
-  ]);
+  const mainnetBal = await mainnet.getBalance(pubkey);
   return {
     mainnet: mainnetBal / LAMPORTS_PER_SOL,
-    devnet: devnetBal / LAMPORTS_PER_SOL,
   };
+}
+
+async function fetchBaseBalance(address: string): Promise<number> {
+  const res = await fetch(`${API_URL}/api/base/balance?address=${encodeURIComponent(address)}`, { credentials: "omit" });
+  if (!res.ok) {
+    throw new Error("Base balance fetch failed");
+  }
+  const payload = await res.json();
+  return Math.max(0, Number(payload?.data?.eth) || 0);
+}
+
+type PolymarketDepositAddresses = {
+  address?: {
+    evm?: string;
+    svm?: string;
+    tron?: string;
+    btc?: string;
+  };
+  note?: string;
+};
+
+async function fetchPolymarketDepositAddresses(address: string): Promise<PolymarketDepositAddresses> {
+  const res = await fetch(`${API_URL}/api/polymarket/deposit-addresses`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address }),
+    credentials: "omit",
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(payload?.error || "Unable to load Polymarket deposit addresses.");
+  }
+  return (payload?.data ?? {}) as PolymarketDepositAddresses;
+}
+
+function shortenAddress(value?: string | null): string {
+  if (!value) return "—";
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function parseUnitsToBigInt(amountStr: string, decimals: number): bigint {
+  const raw = amountStr.trim();
+  if (!raw) return BigInt(0);
+  const negative = raw.startsWith("-");
+  const normalized = negative ? raw.slice(1) : raw;
+  const [wholePart, fracPartRaw = ""] = normalized.split(".");
+  const whole = wholePart ? BigInt(wholePart) : BigInt(0);
+  const fracDigits = fracPartRaw.replace(/[^0-9]/g, "");
+  const fracTrunc = fracDigits.slice(0, decimals);
+  const fracPadded = fracTrunc.padEnd(decimals, "0");
+  const frac = fracPadded ? BigInt(fracPadded) : BigInt(0);
+  const scale = BigInt(10) ** BigInt(decimals);
+  const baseUnits = whole * scale + frac;
+  return negative ? -baseUnits : baseUnits;
+}
+
+function isValidEvmAddress(address: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(address.trim());
 }
 
 interface TokenHolding {
@@ -57,6 +157,20 @@ interface TokenHolding {
   name: string;
   balance: number;
   decimals: number;
+}
+
+interface TokenInfoSnapshot {
+  name: string;
+  symbol: string;
+  imageUrl?: string;
+  priceUsd?: number;
+  volume24h?: number;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
+  rugcheckScore?: number;
+  safe?: boolean;
 }
 
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -96,18 +210,32 @@ interface PredictionPosition {
   side: "yes" | "no";
   balance: number;
   probability?: number;
-  /** Mapped via DFlow Metadata (filter_outcome_mints + markets/batch) */
-  dflowVerified?: boolean;
+  kalshiUrl?: string;
+  status: MarketWithVelocity["status"];
 }
 
-/** How the current Kalshi-implied probability relates to your YES/NO side (sentiment, not payout). */
-function marketStanceLabel(p: Pick<PredictionPosition, "side" | "probability">): string | null {
-  if (p.probability == null) return null;
-  const leanYes = p.probability > 50;
-  if (p.side === "yes") {
-    return leanYes ? "Market leaning YES — tailwind for your YES" : "Market leaning NO — headwind for YES";
+interface TradeMetrics {
+  trackedShares: number;
+  costBasisUsd: number;
+  avgEntryUsd: number | null;
+  currentPriceUsd: number | null;
+  currentValueUsd: number | null;
+  pnlUsd: number | null;
+  pnlPercent: number | null;
+  lastTradeTs: number | null;
+}
+
+function formatTradeMetricsPnl(metrics?: TradeMetrics | null): string {
+  if (!metrics) return "—";
+  if (metrics.pnlUsd == null) {
+    return metrics.costBasisUsd > 0 ? "Awaiting live price" : "—";
   }
-  return leanYes ? "Market leaning YES — headwind for NO" : "Market leaning NO — tailwind for your NO";
+
+  const percent = metrics.pnlPercent != null ? ` (${metrics.pnlPercent.toFixed(1)}%)` : "";
+  return `${metrics.pnlUsd >= 0 ? "+" : "-"}$${Math.abs(metrics.pnlUsd).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}${percent}`;
 }
 
 async function fetchMarkets(): Promise<MarketWithVelocity[]> {
@@ -231,7 +359,6 @@ function TransactionHistoryList({ address }: { address: string }) {
 function FeeEarningsSection({
   publicKey,
   signTransaction,
-  walletSessionStatus,
   connection,
   solPriceUsd,
   tokenInfoByMint,
@@ -239,10 +366,9 @@ function FeeEarningsSection({
 }: {
   publicKey: { toBase58: () => string } | null;
   signTransaction: ((tx: Transaction | VersionedTransaction) => Promise<Transaction | VersionedTransaction>) | undefined;
-  walletSessionStatus: WalletSessionGate;
   connection: Connection;
   solPriceUsd: number;
-  tokenInfoByMint: Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>;
+  tokenInfoByMint: Map<string, TokenInfoSnapshot | null>;
   queryClient: ReturnType<typeof import("@tanstack/react-query").useQueryClient>;
 }) {
   const [claimingMint, setClaimingMint] = useState<string | null>(null);
@@ -260,7 +386,7 @@ function FeeEarningsSection({
   });
   const claimable = positions.filter((p: { totalClaimableLamportsUserShare: number }) => (p.totalClaimableLamportsUserShare ?? 0) > 0);
   const handleClaim = async (tokenMint: string) => {
-    if (!publicKey || !signTransaction || walletSessionStatus !== "ready") return;
+    if (!publicKey || !signTransaction) return;
     hapticLight();
     setClaimingMint(tokenMint);
     setClaimResult(null);
@@ -295,7 +421,6 @@ function FeeEarningsSection({
       queryClient.invalidateQueries({ queryKey: ["wallet-balance", publicKey.toBase58()] });
       refetch();
     } catch (e) {
-      console.error("[Siren] fee claim failed", e);
       setClaimResult({ type: "error", message: e instanceof Error ? e.message : "Claim failed" });
     } finally {
       setClaimingMint(null);
@@ -344,7 +469,8 @@ function FeeEarningsSection({
             {claimable.map((p: { baseMint: string; totalClaimableLamportsUserShare: number }) => {
               const sol = p.totalClaimableLamportsUserShare / LAMPORTS_PER_SOL;
               const info = tokenInfoByMint.get(p.baseMint);
-              const sym = info?.symbol ?? p.baseMint.slice(0, 6);
+              const sym = getDisplaySymbol(info?.symbol, info?.name, p.baseMint);
+              const name = getDisplayName(info?.name, info?.symbol, p.baseMint);
               const isClaiming = claimingMint === p.baseMint;
               return (
                 <li
@@ -353,7 +479,8 @@ function FeeEarningsSection({
                   style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
                 >
                   <div className="min-w-0">
-                    <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{sym}</p>
+                    <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{name}</p>
+                    <p className="font-body text-[11px] truncate mt-0.5" style={{ color: "var(--text-3)" }}>{sym}</p>
                     <p className="font-mono text-xs tabular-nums mt-0.5" style={{ color: "var(--accent)" }}>
                       {sol.toFixed(6)} SOL
                       {solPriceUsd > 0 && (
@@ -364,7 +491,7 @@ function FeeEarningsSection({
                   <button
                     type="button"
                     onClick={() => handleClaim(p.baseMint)}
-                    disabled={isClaiming || !signTransaction || walletSessionStatus !== "ready"}
+                    disabled={isClaiming || !signTransaction}
                     className="font-heading font-semibold text-xs px-4 py-2 rounded-lg transition-all disabled:opacity-50 shrink-0"
                     style={{ background: "var(--bags)", color: "var(--accent-text)" }}
                   >
@@ -395,19 +522,57 @@ function AddressCopyButton({ address }: { address: string }) {
   );
 }
 
-function SendSolModal({
-  balanceMainnet,
-  balanceDevnet,
+function DepositAddressCard({
+  label,
+  tone,
+  address,
+  description,
+}: {
+  label: string;
+  tone: string;
+  address?: string;
+  description: string;
+}) {
+  return (
+    <div
+      className="rounded-xl border p-3"
+      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: tone }}>
+            {label}
+          </p>
+          <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+            {description}
+          </p>
+        </div>
+        {address ? <AddressCopyButton address={address} /> : null}
+      </div>
+      <code className="mt-3 block break-all font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+        {address ?? "Address unavailable"}
+      </code>
+    </div>
+  );
+}
+
+function WithdrawModal({
+  solBalance,
+  baseBalanceEth,
   solPriceUsd,
+  ethPriceUsd,
+  evmAddress,
   onClose,
 }: {
-  balanceMainnet: number;
-  balanceDevnet: number;
+  solBalance: number;
+  baseBalanceEth: number;
   solPriceUsd: number;
+  ethPriceUsd: number;
+  evmAddress: string | null;
   onClose: () => void;
 }) {
-  const { publicKey, signTransaction, walletSessionStatus } = useSirenWallet();
-  const [network, setNetwork] = useState<"mainnet" | "devnet">("mainnet");
+  const { publicKey, signTransaction, getEvmProvider, switchEvmChain } = useSirenWallet();
+  const [rail, setRail] = useState<"solana" | "base">(evmAddress ? "solana" : "solana");
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -416,88 +581,170 @@ function SendSolModal({
   const [resultModal, setResultModal] = useState<{ type: "success" | "error"; title: string; message: string; txSignature?: string } | null>(null);
   const queryClient = useQueryClient();
 
-  const balanceSol = network === "mainnet" ? balanceMainnet : balanceDevnet;
-  const conn = new Connection(
-    network === "mainnet" ? (process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta")) : clusterApiUrl("devnet"),
-    "confirmed"
-  );
+  const conn = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta"), "confirmed");
   const amt = parseFloat(amount) || 0;
-  const usdEst = network === "mainnet" && amt > 0 ? amt * solPriceUsd : undefined;
+  const usdEst = amt > 0 ? amt * (rail === "solana" ? solPriceUsd : ethPriceUsd) : undefined;
 
   const handleSend = async () => {
-    if (!signTransaction || !publicKey) return;
-    if (walletSessionStatus !== "ready") {
-      setError(
-        walletSessionStatus === "needs-privy-login"
-          ? "Sign in first."
-          : "Wallet is still initializing. Please wait and try again."
-      );
-      return;
-    }
-    if (!toAddress.trim() || amt <= 0 || amt > balanceSol) {
-      setError("Enter valid address and amount");
-      return;
-    }
-    let to: PublicKey;
-    try {
-      to = new PublicKey(toAddress.trim());
-    } catch {
-      setError("Invalid address");
-      return;
-    }
     setError(null);
+    setSuccess(null);
     setLoading(true);
     try {
-      const lamports = BigInt(Math.floor(amt * LAMPORTS_PER_SOL));
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(publicKey.toBase58()),
-          toPubkey: to,
-          lamports,
-        })
-      );
-      const { blockhash } = await conn.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(publicKey.toBase58());
-      const signed = await signTransaction(tx);
-      const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-      await conn.confirmTransaction(sig, "confirmed");
-      setSuccess(`Sent ${amt} SOL on ${network}. Tx: ${sig.slice(0, 8)}...`);
+      if (!toAddress.trim() || amt <= 0 || !Number.isFinite(amt)) {
+        throw new Error("Enter a valid recipient and amount.");
+      }
+
+      if (rail === "solana") {
+        if (!signTransaction || !publicKey) {
+          throw new Error("Solana wallet is not ready yet.");
+        }
+        if (amt > solBalance) {
+          throw new Error(`Insufficient SOL. Available: ${solBalance.toFixed(4)} SOL.`);
+        }
+        let to: PublicKey;
+        try {
+          to = new PublicKey(toAddress.trim());
+        } catch {
+          throw new Error("Invalid Solana recipient address.");
+        }
+
+        const lamports = BigInt(Math.floor(amt * LAMPORTS_PER_SOL));
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: new PublicKey(publicKey.toBase58()),
+            toPubkey: to,
+            lamports,
+          })
+        );
+        const { blockhash } = await conn.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = new PublicKey(publicKey.toBase58());
+        const signed = await signTransaction(tx);
+        const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+        await conn.confirmTransaction(sig, "confirmed");
+        setSuccess(`Sent ${amt} SOL. Tx: ${sig.slice(0, 8)}...`);
+        setResultModal({ type: "success", title: "Withdraw complete", message: `Sent ${amt} SOL on Solana.`, txSignature: sig });
+        queryClient.invalidateQueries({ queryKey: ["wallet-balance", publicKey.toBase58()] });
+        queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
+      } else {
+        if (!evmAddress) {
+          throw new Error("Embedded EVM wallet is not ready yet.");
+        }
+        if (amt > baseBalanceEth) {
+          throw new Error(`Insufficient Base ETH. Available: ${baseBalanceEth.toFixed(4)} ETH.`);
+        }
+        if (!isValidEvmAddress(toAddress)) {
+          throw new Error("Invalid Base recipient address.");
+        }
+        if (!switchEvmChain || !getEvmProvider) {
+          throw new Error("Base wallet is not ready yet.");
+        }
+
+        await switchEvmChain(BASE_CHAIN_ID);
+        const provider = (await getEvmProvider()) as {
+          request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+        };
+        const valueWei = parseUnitsToBigInt(amount, 18);
+        if (valueWei <= BigInt(0)) {
+          throw new Error("Enter a valid ETH amount.");
+        }
+        const valueHex = `0x${valueWei.toString(16)}`;
+        const txHash = await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: evmAddress,
+              to: toAddress.trim(),
+              value: valueHex,
+            },
+          ],
+        });
+        if (typeof txHash !== "string") {
+          throw new Error("Base withdrawal signature failed.");
+        }
+        setSuccess(`Sent ${amt} ETH on Base. Tx: ${txHash.slice(0, 10)}...`);
+        setResultModal({ type: "success", title: "Withdraw submitted", message: `Sent ${amt} ETH on Base.`, txSignature: txHash });
+        queryClient.invalidateQueries({ queryKey: ["base-balance", evmAddress] });
+      }
+
       setAmount("");
       setToAddress("");
-      if (publicKey) queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
-      setResultModal({ type: "success", title: "Send complete", message: `Sent ${amt} SOL on ${network}.`, txSignature: sig });
     } catch (e) {
-      console.error("[Siren] SendSolModal send failed", e);
       const errMsg = e instanceof Error ? e.message : "Send failed";
       setError(errMsg);
-      setResultModal({ type: "error", title: "Send failed", message: errMsg });
+      setResultModal({ type: "error", title: "Withdraw failed", message: errMsg });
     } finally {
       setLoading(false);
     }
   };
 
-  const sendDisabled = loading || walletSessionStatus !== "ready";
-
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
       <div className="w-full max-w-sm rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Send SOL</p>
-          <div className="flex gap-1">
-            {(["mainnet", "devnet"] as const).map((n) => (
-              <button key={n} type="button" onClick={() => { setNetwork(n); setError(null); }} className="px-2.5 py-1 rounded text-[11px] font-medium" style={{ background: network === n ? "var(--accent-dim)" : "transparent", color: network === n ? "var(--accent)" : "var(--text-3)" }}>{n === "mainnet" ? "Mainnet" : "Devnet"}</button>
-            ))}
-          </div>
+          <p className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>Withdraw</p>
+          <span className="rounded-full border px-2.5 py-1 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+            Signed by Privy
+          </span>
         </div>
-        <input type="text" placeholder="Recipient" value={toAddress} onChange={(e) => setToAddress(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-2 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
-        <input type="number" step="0.001" min="0" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-1 border" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }} />
-        <p className={`font-body text-[11px] ${amt > 0 ? "mb-1" : "mb-3"}`} style={{ color: "var(--text-3)" }}>Balance: {balanceSol.toFixed(4)} SOL</p>
-        {amt > 0 && (usdEst != null ? <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-2)" }}>≈ ${usdEst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</p> : <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-3)" }}>Devnet</p>)}
+        <div className="mb-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRail("solana")}
+            className="rounded-lg px-3 py-1.5 font-body text-[11px]"
+            style={{
+              background: rail === "solana" ? "var(--accent-dim)" : "transparent",
+              color: rail === "solana" ? "var(--accent)" : "var(--text-3)",
+              border: rail === "solana" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+            }}
+          >
+            Solana
+          </button>
+          <button
+            type="button"
+            disabled={!evmAddress}
+            onClick={() => setRail("base")}
+            className="rounded-lg px-3 py-1.5 font-body text-[11px] disabled:opacity-50"
+            style={{
+              background: rail === "base" ? "color-mix(in srgb, var(--polymarket) 14%, transparent)" : "transparent",
+              color: rail === "base" ? "var(--polymarket)" : "var(--text-3)",
+              border: rail === "base" ? "1px solid var(--polymarket)" : "1px solid var(--border-subtle)",
+            }}
+          >
+            Base
+          </button>
+        </div>
+        <p className="mb-3 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+          {rail === "solana"
+            ? "Send SOL out of your Solana wallet. Trading still uses USDC."
+            : "Send ETH out of your embedded Base wallet using Privy signing."}
+        </p>
+        <input
+          type="text"
+          placeholder={rail === "solana" ? "Solana recipient" : "Base recipient (0x...)"}
+          value={toAddress}
+          onChange={(e) => setToAddress(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-2 border"
+          style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+        />
+        <input
+          type="number"
+          step={rail === "solana" ? "0.001" : "0.0001"}
+          min="0"
+          placeholder={rail === "solana" ? "Amount (SOL)" : "Amount (ETH)"}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg font-mono text-sm mb-1 border"
+          style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+        />
+        <p className={`font-body text-[11px] ${amt > 0 ? "mb-1" : "mb-3"}`} style={{ color: "var(--text-3)" }}>
+          Balance: {rail === "solana" ? `${solBalance.toFixed(4)} SOL` : `${baseBalanceEth.toFixed(4)} ETH`}
+        </p>
+        {amt > 0 && usdEst != null && <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-2)" }}>≈ ${usdEst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</p>}
         {!resultModal && error && <p className="text-xs mb-2" style={{ color: "var(--down)" }}>{error}</p>}
         {!resultModal && success && <p className="text-xs mb-2" style={{ color: "var(--bags)" }}>{success}</p>}
         <div className="flex gap-2">
-          <button type="button" onClick={handleSend} disabled={sendDisabled} className="flex-1 py-2 rounded-lg font-heading font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: "var(--bags)", color: "var(--accent-text)" }}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Send</button>
+          <button type="button" onClick={handleSend} disabled={loading} className="flex-1 py-2 rounded-lg font-heading font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: rail === "solana" ? "var(--bags)" : "var(--polymarket)", color: rail === "solana" ? "var(--accent-text)" : "#fff" }}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Withdraw</button>
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Close</button>
         </div>
         {resultModal && (
@@ -510,50 +757,51 @@ function SendSolModal({
 
 function buildMintToMarket(
   markets: MarketWithVelocity[]
-): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number }> {
-  const map = new Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number }>();
+): Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string; status: MarketWithVelocity["status"] }> {
+  const map = new Map<string, { ticker: string; title: string; side: "yes" | "no"; probability?: number; kalshiUrl?: string; status: MarketWithVelocity["status"] }>();
   for (const m of markets) {
-    if (m.yes_mint) map.set(m.yes_mint, { ticker: m.ticker, title: m.title, side: "yes", probability: m.probability });
-    if (m.no_mint) map.set(m.no_mint, { ticker: m.ticker, title: m.title, side: "no", probability: m.probability });
+    if (m.yes_mint) map.set(m.yes_mint, { ticker: m.ticker, title: m.title, side: "yes", probability: m.probability, kalshiUrl: m.kalshi_url, status: m.status });
+    if (m.no_mint) map.set(m.no_mint, { ticker: m.ticker, title: m.title, side: "no", probability: m.probability, kalshiUrl: m.kalshi_url, status: m.status });
   }
   return map;
 }
 
+function buildPredictionTokenInfo(
+  market: { ticker: string; title: string; side: "yes" | "no"; probability?: number }
+): TokenInfoSnapshot {
+  const yesProbability = Math.min(100, Math.max(0, market.probability ?? 50));
+  const priceUsd = market.side === "yes" ? yesProbability / 100 : (100 - yesProbability) / 100;
+  return {
+    name: `${market.title} · ${market.side.toUpperCase()}`,
+    symbol: `${market.side.toUpperCase()} ${market.ticker}`,
+    priceUsd,
+  };
+}
+
 export default function PortfolioPage() {
-  const { connected, publicKey, signTransaction, walletSessionStatus } = useSirenWallet();
+  const { connected, publicKey, signTransaction, signMessage, evmAddress, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
   const { connection } = useConnection();
   const queryClient = useQueryClient();
   const { setSelectedToken, setBuyPanelOpen } = useSirenStore();
-  const [balanceView, setBalanceView] = useState<"mainnet" | "devnet">("mainnet");
+  const addToast = useToastStore((state) => state.addToast);
+  const { fundWallet: fundEvmWallet } = useEvmFundWallet();
+  const { fundWallet: fundSolanaWallet } = useSolanaFundWallet();
+  const [fundingOpen, setFundingOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
-  const [swapOpen, setSwapOpen] = useState(false);
+  const [receiveRail, setReceiveRail] = useState<"solana" | "base">("solana");
   const [sendOpen, setSendOpen] = useState(false);
+  const [fundingAction, setFundingAction] = useState<"solana" | "base" | "polymarket" | null>(null);
+  const [fundingMessage, setFundingMessage] = useState<string | null>(null);
+  const [fundingError, setFundingError] = useState<string | null>(null);
+  const [privateKeyValue, setPrivateKeyValue] = useState<string | null>(null);
+  const [privateKeyError, setPrivateKeyError] = useState<string | null>(null);
+  const [exportingKey, setExportingKey] = useState(false);
   const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
-  const [pnlByMint, setPnlByMint] = useState<Record<string, { pnlUsd: number; pnlPercent: number }>>({});
-  const [pnlTrendByMint, setPnlTrendByMint] = useState<Record<string, "up" | "down" | "flat">>({});
-  const prevPnlRef = useRef<Record<string, number>>({});
-
-  useEffect(() => {
-    prevPnlRef.current = {};
-    setPnlTrendByMint({});
-  }, [publicKey?.toBase58()]);
-
-  useEffect(() => {
-    const trends: Record<string, "up" | "down" | "flat"> = {};
-    for (const [mint, v] of Object.entries(pnlByMint)) {
-      const prev = prevPnlRef.current[mint];
-      if (typeof prev === "number" && Number.isFinite(prev)) {
-        const d = v.pnlUsd - prev;
-        if (d > 0.05) trends[mint] = "up";
-        else if (d < -0.05) trends[mint] = "down";
-        else trends[mint] = "flat";
-      }
-      prevPnlRef.current[mint] = v.pnlUsd;
-    }
-    setPnlTrendByMint(trends);
-  }, [pnlByMint]);
+  const [tradeMetricsByMint, setTradeMetricsByMint] = useState<Record<string, TradeMetrics>>({});
+  const [profileNameDraft, setProfileNameDraft] = useState("");
+  const [proofFlowLoading, setProofFlowLoading] = useState(false);
 
   const loadBagsLaunches = () => {
     if (!publicKey) return;
@@ -607,6 +855,59 @@ export default function PortfolioPage() {
     staleTime: 30_000,
   });
 
+  const { data: ethPriceUsd = 0 } = useQuery({
+    queryKey: ["eth-price"],
+    queryFn: fetchEthPrice,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const {
+    data: baseBalanceEth = 0,
+    isLoading: baseBalanceLoading,
+    isError: baseBalanceError,
+    refetch: refetchBaseBalance,
+  } = useQuery({
+    queryKey: ["base-balance", evmAddress],
+    queryFn: () => fetchBaseBalance(evmAddress!),
+    enabled: !!evmAddress,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  const {
+    data: polymarketDepositAddresses,
+    isLoading: polymarketDepositLoading,
+    isError: polymarketDepositError,
+    refetch: refetchPolymarketDepositAddresses,
+  } = useQuery({
+    queryKey: ["polymarket-deposit-addresses", evmAddress],
+    queryFn: () => fetchPolymarketDepositAddresses(evmAddress!),
+    enabled: fundingOpen && !!evmAddress,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const {
+    data: dflowProofStatus,
+    isLoading: dflowProofLoading,
+    refetch: refetchDflowProofStatus,
+    isFetching: dflowProofFetching,
+  } = useQuery({
+    queryKey: ["dflow-proof-status", publicKey?.toBase58()],
+    queryFn: async () => {
+      if (!publicKey) return { verified: false };
+      const res = await fetch(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`, {
+        credentials: "omit",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || "Unable to check identity status.");
+      return (payload?.data ?? { verified: false }) as { verified: boolean };
+    },
+    enabled: !!publicKey,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
   const { data: tokenHoldings = [], isLoading: tokensLoading, refetch: refetchTokens } = useQuery({
     queryKey: ["wallet-tokens", publicKey?.toBase58()],
     queryFn: () => fetchTokenHoldings(connection, publicKey!.toBase58()),
@@ -616,6 +917,15 @@ export default function PortfolioPage() {
     refetchOnMount: "always",
   });
 
+  const { data: markets = [], isLoading: marketsLoading, isError: marketsError } = useQuery({
+    queryKey: ["markets"],
+    queryFn: fetchMarkets,
+    enabled: !!connected,
+    staleTime: 60_000,
+  });
+
+  const mintToMarket = buildMintToMarket(markets);
+
   const tokenMints = tokenHoldings.map((t) => t.mint);
   const { data: tokenInfosList } = useQuery({
     queryKey: ["portfolio-token-infos", tokenMints],
@@ -623,9 +933,27 @@ export default function PortfolioPage() {
     enabled: tokenMints.length > 0,
     staleTime: 60_000,
   });
-  const tokenInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
+  const syntheticTokenInfoByMint = new Map<string, TokenInfoSnapshot>();
+  tokenMints.forEach((mint) => {
+    const market = mintToMarket.get(mint);
+    if (market) syntheticTokenInfoByMint.set(mint, buildPredictionTokenInfo(market));
+  });
+  const tokenInfoByMint = new Map<string, TokenInfoSnapshot | null>();
   tokenMints.forEach((mint, i) => {
-    tokenInfoByMint.set(mint, tokenInfosList?.[i] ?? null);
+    const fetched = tokenInfosList?.[i] ?? null;
+    const synthetic = syntheticTokenInfoByMint.get(mint);
+    if (synthetic) {
+      tokenInfoByMint.set(mint, {
+        ...synthetic,
+        ...(fetched ?? {}),
+        name: hasUsableLabel(fetched?.name) ? fetched!.name : synthetic.name,
+        symbol: hasUsableLabel(fetched?.symbol) ? fetched!.symbol : synthetic.symbol,
+        imageUrl: fetched?.imageUrl ?? synthetic.imageUrl,
+        priceUsd: fetched?.priceUsd ?? synthetic.priceUsd,
+      });
+      return;
+    }
+    tokenInfoByMint.set(mint, fetched);
   });
 
   useEffect(() => {
@@ -637,7 +965,7 @@ export default function PortfolioPage() {
 
       if (!publicKey) {
         setWalletVolumeSol(0);
-        setPnlByMint({});
+        setTradeMetricsByMint({});
         return;
       }
 
@@ -662,8 +990,8 @@ export default function PortfolioPage() {
       // PnL (approximate, cost basis from buys/sells)
       const tradesKey = `siren-trades-${publicKey.toBase58()}`;
       const rawTrades = window.localStorage.getItem(tradesKey);
-      const nextPnl: Record<string, { pnlUsd: number; pnlPercent: number }> = {};
-      if (rawTrades && tokenInfosList && tokenMints.length > 0) {
+      const nextMetrics: Record<string, TradeMetrics> = {};
+      if (rawTrades && tokenMints.length > 0) {
         try {
           const trades: Array<{
             ts?: number;
@@ -674,12 +1002,12 @@ export default function PortfolioPage() {
           }> = JSON.parse(rawTrades);
           if (Array.isArray(trades)) {
             const sorted = [...trades].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
-            const agg = new Map<string, { tokens: number; costUsd: number }>();
+            const agg = new Map<string, { tokens: number; costUsd: number; lastTradeTs: number | null }>();
             for (const t of sorted) {
               if (!t?.mint || typeof t.tokenAmount !== "number" || typeof t.priceUsd !== "number") continue;
               if (!Number.isFinite(t.tokenAmount) || t.tokenAmount <= 0 || !Number.isFinite(t.priceUsd) || t.priceUsd <= 0)
                 continue;
-              const cur = agg.get(t.mint) || { tokens: 0, costUsd: 0 };
+              const cur = agg.get(t.mint) || { tokens: 0, costUsd: 0, lastTradeTs: null };
               if (t.side === "buy") {
                 cur.tokens += t.tokenAmount;
                 cur.costUsd += t.tokenAmount * t.priceUsd;
@@ -690,6 +1018,7 @@ export default function PortfolioPage() {
                   cur.tokens -= sell;
                 }
               }
+              cur.lastTradeTs = typeof t.ts === "number" && Number.isFinite(t.ts) ? t.ts : cur.lastTradeTs;
               agg.set(t.mint, cur);
             }
             for (const mint of tokenMints) {
@@ -697,25 +1026,38 @@ export default function PortfolioPage() {
               const info = tokenInfoByMint.get(mint);
               const priceUsd = info?.priceUsd;
               const lot = agg.get(mint);
-              if (!holding || !priceUsd || !lot || lot.tokens <= 0) continue;
-              const balance = holding.balance;
-              const costBasis = (lot.costUsd / lot.tokens) * Math.min(balance, lot.tokens);
-              const pnlUsd = balance * priceUsd - costBasis;
-              const pnlPercent = costBasis > 0 ? ((balance * priceUsd) / costBasis - 1) * 100 : 0;
-              if (!Number.isFinite(pnlUsd) || !Number.isFinite(pnlPercent)) continue;
-              nextPnl[mint] = { pnlUsd, pnlPercent };
+              if (!holding || !lot || lot.tokens <= 0) continue;
+              const trackedShares = Math.min(holding.balance, lot.tokens);
+              if (!Number.isFinite(trackedShares) || trackedShares <= 0) continue;
+              const avgEntryUsd = lot.tokens > 0 ? lot.costUsd / lot.tokens : null;
+              const costBasisUsd = avgEntryUsd != null ? avgEntryUsd * trackedShares : 0;
+              const hasLivePrice = isFiniteNumber(priceUsd) && priceUsd >= 0;
+              const currentValueUsd = hasLivePrice ? trackedShares * priceUsd : null;
+              const pnlUsd = currentValueUsd != null ? currentValueUsd - costBasisUsd : null;
+              const pnlPercent = pnlUsd != null && costBasisUsd > 0 ? (pnlUsd / costBasisUsd) * 100 : null;
+
+              nextMetrics[mint] = {
+                trackedShares,
+                costBasisUsd,
+                avgEntryUsd,
+                currentPriceUsd: hasLivePrice ? priceUsd : null,
+                currentValueUsd,
+                pnlUsd,
+                pnlPercent,
+                lastTradeTs: lot.lastTradeTs ?? null,
+              };
             }
           }
         } catch {
           // ignore
         }
       }
-      setPnlByMint(nextPnl);
+      setTradeMetricsByMint(nextMetrics);
     } catch {
       setWalletVolumeSol(0);
-      setPnlByMint({});
+      setTradeMetricsByMint({});
     }
-  }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings]);
+  }, [publicKey?.toBase58(), solPriceUsd, tokenInfosList, tokenMints.join(","), tokenHoldings, markets]);
 
   const { data: bagsLaunchInfos } = useQuery({
     queryKey: ["bags-launch-infos", bagsLaunches],
@@ -723,7 +1065,7 @@ export default function PortfolioPage() {
     enabled: bagsLaunches.length > 0,
     staleTime: 60_000,
   });
-  const bagsLaunchInfoByMint = new Map<string, { name: string; symbol: string; imageUrl?: string; priceUsd?: number } | null>();
+  const bagsLaunchInfoByMint = new Map<string, TokenInfoSnapshot | null>();
   bagsLaunches.forEach((mint, i) => {
     bagsLaunchInfoByMint.set(mint, bagsLaunchInfos?.[i] ?? null);
   });
@@ -752,136 +1094,279 @@ export default function PortfolioPage() {
     });
   }
 
+  const profileIdentity = publicKey?.toBase58() ?? evmAddress ?? null;
+  const profileName = formatProfileName(profileNameDraft);
+  const proofVerified = !!dflowProofStatus?.verified;
+
+  useEffect(() => {
+    setProfileNameDraft(readProfileName(profileIdentity));
+  }, [profileIdentity]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !publicKey) return;
+    const handleFocus = () => {
+      void refetchDflowProofStatus();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [publicKey?.toBase58(), refetchDflowProofStatus]);
+
   const totalUsd =
     (balances?.mainnet ?? 0) * solPriceUsd +
+    baseBalanceEth * ethPriceUsd +
     tokenHoldings.reduce(
       (sum, t) => sum + t.balance * (tokenInfoByMint.get(t.mint)?.priceUsd ?? 0),
       0
     );
+  const solBalanceUsd = (balances?.mainnet ?? 0) * solPriceUsd;
+  const baseBalanceUsd = baseBalanceEth * ethPriceUsd;
+  const solanaUsdcHolding = tokenHoldings.find((token) => token.mint === SOLANA_USDC_MINT);
+  const solanaUsdcBalance = solanaUsdcHolding?.balance ?? 0;
+  const pendingTaskCount = Number(!proofVerified && !!publicKey);
 
-  const { data: markets = [], isLoading: marketsLoading, isError: marketsError } = useQuery({
-    queryKey: ["markets"],
-    queryFn: fetchMarkets,
-    enabled: !!connected,
-    staleTime: 60_000,
-  });
-
-  const { data: dflowPositionRows } = useQuery({
-    queryKey: ["dflow-positions", publicKey?.toBase58()],
-    queryFn: async (): Promise<DflowPositionRow[]> => {
-      const res = await fetch(
-        `${API_URL}/api/dflow/positions?wallet=${encodeURIComponent(publicKey!.toBase58())}`,
-        { credentials: "omit" }
-      );
-      const j = (await res.json()) as { data?: DflowPositionRow[]; warning?: string };
-      if (!res.ok) throw new Error((j as { error?: string }).error || "DFlow positions failed");
-      return Array.isArray(j.data) ? j.data : [];
-    },
-    enabled: !!connected && !!publicKey,
-    staleTime: 45_000,
-    retry: 1,
-  });
-
-  const mintToMarket = buildMintToMarket(markets);
-
-  const heuristicPredictionPositions: PredictionPosition[] = useMemo(
-    () =>
-      tokenHoldings
-        .filter((t) => mintToMarket.has(t.mint))
-        .map((t) => {
-          const info = mintToMarket.get(t.mint)!;
-          return {
-            mint: t.mint,
-            ticker: info.ticker,
-            title: info.title,
-            side: info.side,
-            balance: t.balance,
-            probability: info.probability,
-            dflowVerified: false,
-          };
-        }),
-    [tokenHoldings, mintToMarket]
-  );
-
-  const predictionPositions: PredictionPosition[] = useMemo(() => {
-    const dflow = dflowPositionRows ?? [];
-    if (dflow.length === 0) return heuristicPredictionPositions;
-    const fromDflow = new Set(dflow.map((p) => p.mint));
-    const merged: PredictionPosition[] = dflow.map((p) => ({
-      mint: p.mint,
-      ticker: p.ticker,
-      title: p.title,
-      side: p.side,
-      balance: p.balance,
-      probability: p.probability,
-      dflowVerified: true,
-    }));
-    for (const h of heuristicPredictionPositions) {
-      if (!fromDflow.has(h.mint)) merged.push(h);
+  const handleExportPrivateKey = async () => {
+    hapticLight();
+    setPrivateKeyError(null);
+    setExportingKey(true);
+    try {
+      const key = await exportPrivateKey();
+      setPrivateKeyValue(key);
+    } catch (error) {
+      setPrivateKeyError(error instanceof Error ? error.message : "Private key export is unavailable.");
+    } finally {
+      setExportingKey(false);
     }
-    return merged;
-  }, [dflowPositionRows, heuristicPredictionPositions]);
-
-  const openSellPanel = (mint: string, symbol: string, name: string) => {
-    const price = tokenInfoByMint.get(mint)?.priceUsd;
-    setSelectedToken({ mint, symbol, name, price: price ?? undefined }, { openForSell: true });
-    setBuyPanelOpen(true);
   };
 
-  const pnlPositionsForCard: PnlPosition[] = useMemo(() => {
-    const rows: PnlPosition[] = [];
-    for (const p of predictionPositions) {
-      const info = tokenInfoByMint.get(p.mint);
-      const priceUsd = info?.priceUsd ?? 0;
-      const pn = pnlByMint[p.mint];
-      rows.push({
-        ticker: p.ticker,
-        title: p.title,
-        side: p.side,
-        kalshiMarket: p.title,
-        valueUsd: p.balance * priceUsd,
-        pnlUsd: pn?.pnlUsd ?? null,
-        pnlPercent: pn?.pnlPercent ?? null,
-        mint: p.mint,
-      });
-    }
-    for (const t of tokenHoldings) {
-      if (predictionPositions.some((pp) => pp.mint === t.mint)) continue;
-      const pn = pnlByMint[t.mint];
-      if (!pn) continue;
-      const info = tokenInfoByMint.get(t.mint);
-      const priceUsd = info?.priceUsd ?? 0;
-      rows.push({
-        ticker: t.symbol,
-        title: t.name,
-        valueUsd: t.balance * priceUsd,
-        pnlUsd: pn.pnlUsd,
-        pnlPercent: pn.pnlPercent,
-        mint: t.mint,
-      });
-    }
-    return rows;
-  }, [predictionPositions, tokenHoldings, tokenInfoByMint, pnlByMint]);
+  const handleSaveProfileName = () => {
+    hapticLight();
+    const saved = writeProfileName(profileIdentity, profileNameDraft);
+    setProfileNameDraft(saved);
+    addToast(saved ? `Cards will show ${formatProfileName(saved)}.` : "Card name cleared.", "success");
+  };
 
-  const totalPnlAggregate = useMemo(() => {
-    let sumUsd = 0;
-    let n = 0;
-    let costBasis = 0;
-    for (const [mint, row] of Object.entries(pnlByMint)) {
-      if (!Number.isFinite(row.pnlUsd)) continue;
-      sumUsd += row.pnlUsd;
-      n += 1;
-      const h = tokenHoldings.find((t) => t.mint === mint);
-      const price = tokenInfoByMint.get(mint)?.priceUsd;
-      if (h && price && price > 0) {
-        const val = h.balance * price;
-        const impliedCost = val - row.pnlUsd;
-        if (impliedCost > 0) costBasis += impliedCost;
-      }
+  const openDflowProofFlow = async () => {
+    hapticLight();
+    if (!publicKey || !signMessage) {
+      addToast("Connect your Solana wallet to verify identity.", "error");
+      return;
     }
-    const pct = costBasis > 0 && n > 0 ? (sumUsd / costBasis) * 100 : null;
-    return { usd: n > 0 ? sumUsd : null, percent: pct };
-  }, [pnlByMint, tokenHoldings, tokenInfoByMint]);
+    try {
+      setProofFlowLoading(true);
+      const timestamp = Date.now();
+      const message = buildProofMessage(timestamp);
+      const signatureBytes = await signMessage(new TextEncoder().encode(message));
+      const signature = encodeProofSignature(signatureBytes);
+      const redirectUri = buildProofRedirectUri(`${window.location.origin}/portfolio`, publicKey.toBase58());
+      const deepLink = buildProofDeepLink({
+        wallet: publicKey.toBase58(),
+        signature,
+        timestamp,
+        redirectUri,
+      });
+      window.open(deepLink, "_blank", "noopener,noreferrer");
+      addToast("Identity check opened in a new tab. Finish there, then come back here.", "success");
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : "Unable to open identity verification right now.", "error");
+    } finally {
+      setProofFlowLoading(false);
+    }
+  };
+
+  const predictionPositions: PredictionPosition[] = tokenHoldings
+    .filter((t) => mintToMarket.has(t.mint))
+    .map((t) => {
+      const info = mintToMarket.get(t.mint)!;
+      return {
+        mint: t.mint,
+        ticker: info.ticker,
+        title: info.title,
+        side: info.side,
+        balance: t.balance,
+        probability: info.probability,
+        kalshiUrl: info.kalshiUrl,
+        status: info.status,
+      };
+    });
+  const spotTokenHoldings = tokenHoldings.filter((t) => !mintToMarket.has(t.mint));
+  const predictionPnlPositions: PnlPosition[] = predictionPositions.map((position) => {
+    const info = tokenInfoByMint.get(position.mint);
+    const displayName = getDisplayName(info?.name, position.title, position.mint);
+    const displaySymbol = getDisplaySymbol(info?.symbol, position.ticker, position.mint);
+    const metrics = tradeMetricsByMint[position.mint];
+    return {
+      mint: position.mint,
+      ticker: displaySymbol,
+      title: displayName,
+      side: position.side,
+      kalshiMarket: position.ticker,
+      valueUsd: metrics?.currentValueUsd ?? position.balance * (info?.priceUsd ?? 0),
+      pnlUsd: metrics?.pnlUsd ?? null,
+      pnlPercent: metrics?.pnlPercent ?? null,
+    };
+  });
+  const predictionTrackedPositions = predictionPnlPositions.filter((position) => position.pnlUsd != null);
+  const predictionTotalPnlUsd = predictionTrackedPositions.length
+    ? predictionTrackedPositions.reduce((sum, position) => sum + (position.pnlUsd ?? 0), 0)
+    : null;
+  const predictionCostBasisUsd = predictionTrackedPositions.reduce(
+    (sum, position) => sum + Math.max(0, position.valueUsd - (position.pnlUsd ?? 0)),
+    0
+  );
+  const predictionTotalPnlPercent =
+    predictionTotalPnlUsd != null && predictionCostBasisUsd > 0
+      ? (predictionTotalPnlUsd / predictionCostBasisUsd) * 100
+      : null;
+
+  const predictionLifecyclePositions = predictionPositions.map((position) => {
+    const info = tokenInfoByMint.get(position.mint);
+    const metrics = tradeMetricsByMint[position.mint];
+    const displayName = getDisplayName(info?.name, position.title, position.mint);
+    const displaySymbol = getDisplaySymbol(info?.symbol, position.ticker, position.mint);
+    const shares = metrics?.trackedShares && metrics.trackedShares > 0 ? metrics.trackedShares : position.balance;
+    const currentPriceUsd = metrics?.currentPriceUsd ?? info?.priceUsd ?? null;
+    const currentValueUsd = currentPriceUsd != null ? shares * currentPriceUsd : null;
+    const settlementPayoutUsd = shares > 0 ? shares : null;
+    const costBasisUsd = metrics?.costBasisUsd ?? null;
+    const settlementNetIfCorrectUsd =
+      settlementPayoutUsd != null && costBasisUsd != null ? settlementPayoutUsd - costBasisUsd : null;
+    const settlementNetIfWrongUsd = costBasisUsd != null ? -costBasisUsd : null;
+
+    return {
+      ...position,
+      displayName,
+      displaySymbol,
+      shares,
+      avgEntryUsd: metrics?.avgEntryUsd ?? null,
+      costBasisUsd,
+      currentPriceUsd,
+      currentValueUsd,
+      pnlUsd: metrics?.pnlUsd ?? null,
+      pnlPercent: metrics?.pnlPercent ?? null,
+      lastTradeTs: metrics?.lastTradeTs ?? null,
+      settlementPayoutUsd,
+      settlementNetIfCorrectUsd,
+      settlementNetIfWrongUsd,
+    };
+  });
+
+  const openSellPanel = ({
+    mint,
+    symbol,
+    name,
+    assetType = "spot",
+    marketTicker,
+    marketTitle,
+    marketSide,
+    marketProbability,
+    kalshiUrl,
+  }: {
+    mint: string;
+    symbol: string;
+    name: string;
+    assetType?: "spot" | "prediction";
+    marketTicker?: string;
+    marketTitle?: string;
+    marketSide?: "yes" | "no";
+    marketProbability?: number;
+    kalshiUrl?: string;
+  }) => {
+    const info = tokenInfoByMint.get(mint);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[Portfolio] opening sell panel", {
+        mint,
+        priceUsd: info?.priceUsd,
+      });
+    }
+    setSelectedToken(
+      {
+        mint,
+        symbol,
+        name,
+        assetType,
+        price: info?.priceUsd ?? undefined,
+        volume24h: info?.volume24h,
+        liquidityUsd: info?.liquidityUsd,
+        fdvUsd: info?.fdvUsd,
+        holders: info?.holders,
+        bondingCurveStatus: info?.bondingCurveStatus,
+        rugcheckScore: info?.rugcheckScore,
+        safe: info?.safe,
+        marketTicker,
+        marketTitle,
+        marketSide,
+        marketProbability,
+        kalshiUrl,
+      },
+      { openForSell: true }
+    );
+    setBuyPanelOpen(true, "token");
+  };
+
+  const refreshWalletPanels = () => {
+    if (publicKey) {
+      queryClient.invalidateQueries({ queryKey: ["wallet-balance", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
+    }
+    if (evmAddress) {
+      queryClient.invalidateQueries({ queryKey: ["base-balance", evmAddress] });
+    }
+  };
+
+  const openFundingModal = () => {
+    hapticLight();
+    setFundingMessage(null);
+    setFundingError(null);
+    setFundingOpen(true);
+  };
+
+  const handleFundingAction = async (target: "solana" | "base" | "polymarket") => {
+    hapticLight();
+    setFundingAction(target);
+    setFundingMessage(null);
+    setFundingError(null);
+
+    try {
+      if (target === "solana") {
+        if (!publicKey) throw new Error("Your Solana wallet is still being created.");
+        await fundSolanaWallet({
+          address: publicKey.toBase58(),
+          options: buildSolanaFundingConfig(),
+        });
+        setFundingMessage("Solana USDC funding is open. Card and Apple Pay options appear inside Privy when they are available on your device and in your region.");
+      } else {
+        if (!evmAddress) throw new Error("Your embedded EVM wallet is still being created.");
+        const result = await fundEvmWallet({
+          address: evmAddress,
+          options: target === "base" ? buildBaseFundingConfig() : buildPolymarketFundingConfig(),
+        });
+        setFundingMessage(
+          result?.status === "cancelled"
+            ? "Funding flow closed."
+            : target === "polymarket"
+              ? "Polymarket funding started. The venue trades from Polygon USDC, so that is the balance Siren is topping up."
+              : "Base funding started. Funds can take a few minutes to settle."
+        );
+      }
+      refreshWalletPanels();
+      window.setTimeout(() => refreshWalletPanels(), 20_000);
+    } catch (error) {
+      setFundingError(error instanceof Error ? error.message : "Unable to start the funding flow right now.");
+    } finally {
+      setFundingAction(null);
+    }
+  };
+
+  const receiveAddress =
+    receiveRail === "base"
+      ? evmAddress ?? ""
+      : publicKey?.toBase58() ?? "";
+  const receiveTitle = receiveRail === "base" ? "Receive on Base" : "Receive on Solana";
+  const receiveDescription =
+    receiveRail === "base"
+      ? "Use this embedded EVM address for Base deposits and balance top-ups."
+      : "Scan this code or share the Solana execution address to receive funds.";
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
@@ -892,7 +1377,21 @@ export default function PortfolioPage() {
             Portfolio
           </h1>
           <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-            PnL, balances, prediction positions, token holdings & fee earnings in one place.
+            Your balances, positions, token holdings, and fee earnings in one place.
+          </p>
+        </div>
+        <div
+          className="mb-6 rounded-2xl border px-4 py-4 md:px-5"
+          style={{
+            borderColor: "color-mix(in srgb, var(--bags) 28%, var(--border-subtle))",
+            background: "linear-gradient(145deg, color-mix(in srgb, var(--bags) 8%, var(--bg-surface)) 0%, var(--bg-surface) 100%)",
+          }}
+        >
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--bags)" }}>
+            Kalshi trading note
+          </p>
+          <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+            You can view Siren positions and track portfolio exposure without extra steps, but placing Kalshi market trades requires passing Kalshi KYC and compliance checks before the venue will let those orders through.
           </p>
         </div>
         {!connected ? (
@@ -923,134 +1422,460 @@ export default function PortfolioPage() {
         ) : (
           <>
             <div
-              className="rounded-2xl border p-6 md:p-8 mb-6"
+              className="mb-6 overflow-hidden rounded-[24px] border p-4 md:p-5"
               style={{
-                borderColor: "var(--border-subtle)",
-                background: "linear-gradient(145deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
-                boxShadow: "0 1px 0 0 var(--border-subtle), 0 4px 24px rgba(0,0,0,0.06)",
+                borderColor: "color-mix(in srgb, var(--bags) 18%, var(--border-subtle))",
+                background:
+                  "radial-gradient(circle at top right, color-mix(in srgb, var(--polymarket) 16%, transparent), transparent 38%), radial-gradient(circle at top left, color-mix(in srgb, var(--bags) 12%, transparent), transparent 34%), linear-gradient(145deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+                boxShadow: "0 1px 0 0 var(--border-subtle), 0 24px 60px rgba(0,0,0,0.22)",
               }}
             >
-              <p className="font-body text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-3)" }}>
-                Total portfolio value
-              </p>
-              {isLoading ? (
-                <div className="h-10 w-32 rounded bg-[var(--border-subtle)] animate-pulse" />
-              ) : solPriceUsd > 0 ? (
-                <p className="font-heading font-bold text-3xl md:text-4xl tabular-nums" style={{ color: "var(--accent)" }}>
-                  ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              ) : (
-                <p className="font-heading font-bold text-2xl md:text-3xl tabular-nums" style={{ color: "var(--text-2)" }}>
-                  <span className="font-mono">{(balances?.mainnet ?? 0).toFixed(4)} SOL</span>
-                  <span className="font-body text-base ml-2 font-normal" style={{ color: "var(--text-3)" }}>+ tokens (USD loading…)</span>
-                </p>
-              )}
-              <p className="font-body text-xs mt-1" style={{ color: "var(--text-3)" }}>
-                Mainnet SOL + token holdings (USD)
-              </p>
-              {walletVolumeSol > 0 && (
-                <p className="font-body text-xs mt-2" style={{ color: "var(--text-2)" }}>
-                  Your 7d volume:{" "}
-                  <span className="font-mono">
-                    {walletVolumeSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                    Portfolio overview
+                  </p>
+                  <h2 className="mt-2 font-heading text-[clamp(1.15rem,2vw,1.7rem)] font-bold leading-[0.98]" style={{ color: "var(--text-1)" }}>
+                    Solana.
+                    <span style={{ color: "var(--text-3)" }}> Base.</span>
+                    <span style={{ color: "var(--polymarket)" }}> Polymarket.</span>
+                  </h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                    {predictionPositions.length} active positions
                   </span>
-                  {solPriceUsd > 0 && (
-                    <>
-                      {" "}
-                      (≈$
-                      {(walletVolumeSol * solPriceUsd).toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}
-                      )
-                    </>
-                  )}
-                </p>
-              )}
-              {/* Platform volume is admin/competition metric; keep it off user-facing portfolio. */}
-              <div className="flex flex-wrap gap-2 mt-4">
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setReceiveOpen(true); }}
-                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  <QrCode className="w-3.5 h-3.5" />
-                  Receive
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setSwapOpen(true); }}
-                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  <ArrowLeftRight className="w-3.5 h-3.5" />
-                  Swap
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { hapticLight(); setSendOpen(true); }}
-                  className="inline-flex items-center gap-2 font-body text-xs font-medium px-4 py-2.5 rounded-xl border"
-                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  Send
-                </button>
+                  <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                    {pendingTaskCount} pending
+                  </span>
+                  <span className="rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                    History live
+                  </span>
+                </div>
               </div>
-              {swapOpen && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={() => { hapticLight(); setSwapOpen(false); }}>
-                  <div className="w-full max-w-md rounded-2xl border overflow-hidden shadow-2xl" style={{ background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)", borderColor: "var(--border-subtle)", boxShadow: "0 0 0 1px var(--border-subtle), 0 24px 48px -12px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
-                    <div className="px-5 py-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                      <h3 className="font-heading font-semibold text-base" style={{ color: "var(--text-1)" }}>Sell token</h3>
-                      <p className="font-body text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>Select a token to sell</p>
-                    </div>
-                    <div className="p-4">
-                      {tokenHoldings.length === 0 ? (
-                        <p className="font-body text-sm py-6 text-center" style={{ color: "var(--text-3)" }}>No tokens. Buy from Terminal first.</p>
-                      ) : (
-                        <ul className="space-y-2 max-h-64 overflow-y-auto overflow-x-hidden">
-                          {tokenHoldings.map((t) => {
-                            const info = tokenInfoByMint.get(t.mint);
-                            const sym = info?.symbol ?? (t.symbol !== "—" ? t.symbol : t.mint.slice(0, 6));
-                            const name = info?.name ?? t.name;
-                            return (
-                              <li key={t.mint} className="flex items-center gap-3 rounded-xl border p-3 min-w-0" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-heading font-semibold text-sm truncate" style={{ color: "var(--text-1)" }}>{sym}</p>
-                                  <p className="font-mono text-xs tabular-nums truncate" style={{ color: "var(--text-3)" }}>{t.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    hapticLight();
-                                    setSelectedToken(
-                                      { mint: t.mint, name, symbol: sym, price: info?.priceUsd ?? undefined },
-                                      { openForSell: true }
-                                    );
-                                    setBuyPanelOpen(true, "token");
-                                    setSwapOpen(false);
-                                  }}
-                                  className="shrink-0 px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110"
-                                  style={{ background: "var(--bags)", color: "var(--accent-text)" }}
-                                >
-                                  Sell
-                                </button>
-                              </li>
-                            );
+
+              <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(280px,340px)]">
+                <div>
+                  <p className="font-body text-xs uppercase tracking-wider" style={{ color: "var(--text-3)" }}>
+                    Total portfolio value
+                  </p>
+                  {isLoading ? (
+                    <div className="mt-3 h-12 w-40 rounded bg-[var(--border-subtle)] animate-pulse" />
+                  ) : solPriceUsd > 0 || ethPriceUsd > 0 ? (
+                    <p className="mt-3 font-heading font-bold text-[clamp(1.65rem,3.5vw,2.6rem)] tabular-nums" style={{ color: "var(--accent)" }}>
+                      ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  ) : (
+                    <p className="mt-3 font-heading font-bold text-2xl md:text-3xl tabular-nums" style={{ color: "var(--text-2)" }}>
+                      <span className="font-mono">{(balances?.mainnet ?? 0).toFixed(4)} SOL</span>
+                      <span className="font-body text-base ml-2 font-normal" style={{ color: "var(--text-3)" }}>+ tokens (USD loading…)</span>
+                    </p>
+                  )}
+                  <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    Keep a little SOL or ETH for gas, but fund USDC here when you want to trade inside Siren.
+                  </p>
+                  {walletVolumeSol > 0 && (
+                    <p className="mt-3 font-body text-xs" style={{ color: "var(--text-2)" }}>
+                      Your 7d volume:{" "}
+                      <span className="font-mono">
+                        {walletVolumeSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                      </span>
+                      {solPriceUsd > 0 && (
+                        <>
+                          {" "}
+                          (≈$
+                          {(walletVolumeSol * solPriceUsd).toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
                           })}
-                        </ul>
+                          )
+                        </>
                       )}
+                    </p>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={openFundingModal}
+                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                      style={{ borderColor: "color-mix(in srgb, var(--accent) 32%, var(--border-subtle))", background: "var(--accent-dim)", color: "var(--accent)" }}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      Deposit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { hapticLight(); setSendOpen(true); }}
+                      className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Withdraw
+                    </button>
+                    {canExportPrivateKey && (
+                      <button
+                        type="button"
+                        onClick={handleExportPrivateKey}
+                        disabled={exportingKey}
+                        className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium disabled:opacity-60"
+                        style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                      >
+                        {exportingKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
+                        Export key
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="rounded-[22px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                          Solana wallet
+                        </p>
+                        <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {(balances?.mainnet ?? 0).toFixed(4)} SOL
+                        </p>
+                        <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                          {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Ready to trade on Solana"}
+                        </p>
+                      </div>
+                      {publicKey && <AddressCopyButton address={publicKey.toBase58()} />}
                     </div>
-                    <div className="px-4 pb-4">
-                      <button type="button" onClick={() => { hapticLight(); setSwapOpen(false); }} className="w-full py-2.5 rounded-xl font-body text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>Cancel</button>
+                    {publicKey && (
+                      <p className="mt-3 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+                        {shortenAddress(publicKey.toBase58())}
+                      </p>
+                    )}
+                    <p className="mt-3 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      Trading balance: <span className="font-mono" style={{ color: "var(--text-2)" }}>{solanaUsdcBalance.toFixed(2)} USDC</span>
+                    </p>
+                  </div>
+
+                  <div className="rounded-[22px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--polymarket)" }}>
+                          Base wallet
+                        </p>
+                        {baseBalanceLoading ? (
+                          <div className="mt-2 h-8 w-24 rounded bg-[var(--border-subtle)] animate-pulse" />
+                        ) : (
+                          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                            {evmAddress ? `${baseBalanceEth.toFixed(4)} ETH` : "Not ready"}
+                          </p>
+                        )}
+                        <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                          {evmAddress
+                            ? ethPriceUsd > 0
+                              ? `≈ $${baseBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : "Base deposit address ready"
+                            : "Provisioned through Privy on login"}
+                        </p>
+                      </div>
+                      {evmAddress && <AddressCopyButton address={evmAddress} />}
+                    </div>
+                    <p className="mt-3 font-mono text-[11px]" style={{ color: baseBalanceError ? "var(--down)" : "var(--text-2)" }}>
+                      {evmAddress ? shortenAddress(evmAddress) : "Embedded EVM wallet"}
+                    </p>
+                    {evmAddress && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { hapticLight(); setReceiveRail("base"); setReceiveOpen(true); }}
+                          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px]"
+                          style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                          Receive on Base
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("base")}
+                          disabled={fundingAction === "base"}
+                          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px] disabled:opacity-60"
+                          style={{
+                            borderColor: "color-mix(in srgb, var(--polymarket) 38%, var(--border-subtle))",
+                            background: "color-mix(in srgb, var(--polymarket) 10%, transparent)",
+                            color: "var(--polymarket)",
+                          }}
+                        >
+                          {fundingAction === "base" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+                          Card / Apple Pay
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-[22px] border p-4 sm:col-span-2 xl:col-span-1" style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)" }}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: proofVerified ? "var(--up)" : "var(--bags)" }}>
+                          Identity
+                        </p>
+                        <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                          {proofVerified
+                            ? "Your wallet is verified for the Kalshi flow."
+                            : "Verify identity once to unlock Kalshi trades from inside Siren."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={proofVerified ? () => void refetchDflowProofStatus() : openDflowProofFlow}
+                        disabled={proofFlowLoading || dflowProofFetching || dflowProofLoading || !publicKey}
+                        className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-body text-[11px] disabled:opacity-60"
+                        style={{
+                          borderColor: proofVerified ? "color-mix(in srgb, var(--up) 36%, var(--border-subtle))" : "color-mix(in srgb, var(--bags) 32%, var(--border-subtle))",
+                          background: proofVerified ? "color-mix(in srgb, var(--up) 8%, transparent)" : "color-mix(in srgb, var(--bags) 10%, transparent)",
+                          color: proofVerified ? "var(--up)" : "var(--bags)",
+                        }}
+                      >
+                        {proofFlowLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        {proofVerified ? "Refresh status" : "Verify identity"}
+                      </button>
+                    </div>
+                    <div className="mt-4 rounded-xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--polymarket)" }}>
+                        Name on cards
+                      </p>
+                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        Shows up on your shared PnL and market cards.
+                      </p>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <input
+                          type="text"
+                          value={profileNameDraft}
+                          onChange={(event) => setProfileNameDraft(sanitizeProfileName(event.target.value))}
+                          placeholder="yourname"
+                          className="flex-1 rounded-xl border px-3 py-2 font-body text-sm"
+                          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveProfileName}
+                          className="rounded-xl border px-4 py-2 font-body text-xs font-medium"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                        >
+                          Save name
+                        </button>
+                      </div>
+                      <p className="mt-2 font-body text-[11px]" style={{ color: "var(--text-2)" }}>
+                        Preview: <span className="font-mono">{profileName}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {fundingOpen && (
+                <div
+                  className="fixed inset-0 z-40 flex items-center justify-center p-4"
+                  style={{ background: "rgba(0,0,0,0.68)" }}
+                  onClick={() => { hapticLight(); setFundingOpen(false); }}
+                >
+                  <div
+                    className="w-full max-w-2xl rounded-[24px] border overflow-hidden"
+                    style={{
+                      background: "linear-gradient(165deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+                      borderColor: "var(--border-subtle)",
+                      boxShadow: "0 0 0 1px var(--border-subtle), 0 24px 48px -12px rgba(0,0,0,0.42)",
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="border-b px-5 py-4" style={{ borderColor: "var(--border-subtle)" }}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                            Deposit
+                          </p>
+                          <h3 className="mt-1 font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
+                            Choose a deposit option.
+                          </h3>
+                          <p className="mt-2 max-w-xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            Use card when it is available, top up from another wallet, or copy your receive address. Trades use USDC.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { hapticLight(); setFundingOpen(false); }}
+                          className="rounded-xl border px-3 py-2 font-body text-xs"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-5">
+                      {(fundingMessage || fundingError) && (
+                        <div
+                          className="mb-4 rounded-xl border px-4 py-3"
+                          style={{
+                            borderColor: fundingError ? "color-mix(in srgb, var(--down) 28%, var(--border-subtle))" : "color-mix(in srgb, var(--accent) 26%, var(--border-subtle))",
+                            background: fundingError ? "color-mix(in srgb, var(--down) 8%, transparent)" : "color-mix(in srgb, var(--accent) 8%, transparent)",
+                          }}
+                        >
+                          <p className="font-body text-xs leading-relaxed" style={{ color: fundingError ? "var(--down)" : "var(--text-2)" }}>
+                            {fundingError ?? fundingMessage}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("solana")}
+                          disabled={!publicKey || fundingAction !== null}
+                          className="rounded-2xl border p-4 text-left transition-all disabled:opacity-60"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: "var(--accent-dim)" }}>
+                              <BadgeDollarSign className="h-4 w-4" style={{ color: "var(--accent)" }} />
+                            </div>
+                            {fundingAction === "solana" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} /> : null}
+                          </div>
+                          <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                            Add Solana USDC
+                          </p>
+                          <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Top up Solana USDC for spot and Kalshi trades.
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("base")}
+                          disabled={!evmAddress || fundingAction !== null}
+                          className="rounded-2xl border p-4 text-left transition-all disabled:opacity-60"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--polymarket) 12%, transparent)" }}>
+                              <CreditCard className="h-4 w-4" style={{ color: "var(--polymarket)" }} />
+                            </div>
+                            {fundingAction === "base" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--polymarket)" }} /> : null}
+                          </div>
+                          <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                            Add Base funds
+                          </p>
+                          <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Top up your embedded EVM wallet for Base activity and transfers.
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleFundingAction("polymarket")}
+                          disabled={!evmAddress || fundingAction !== null}
+                          className="rounded-2xl border p-4 text-left transition-all disabled:opacity-60"
+                          style={{
+                            borderColor: "color-mix(in srgb, var(--polymarket) 28%, var(--border-subtle))",
+                            background: "linear-gradient(180deg, color-mix(in srgb, var(--polymarket) 10%, transparent), var(--bg-surface))",
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--polymarket) 18%, transparent)" }}>
+                              <WalletCards className="h-4 w-4" style={{ color: "var(--polymarket)" }} />
+                            </div>
+                            {fundingAction === "polymarket" ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--polymarket)" }} /> : null}
+                          </div>
+                          <p className="mt-4 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                            Fund Polymarket
+                          </p>
+                          <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Buy Polygon USDC for in-app Polymarket trades from the same embedded wallet.
+                          </p>
+                        </button>
+                      </div>
+
+                      <div className="mt-5 rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--polymarket)" }}>
+                              Polymarket deposit options
+                            </p>
+                            <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              Polymarket can take supported deposits from Solana and other chains, then convert them into Polygon USDC for trading.
+                            </p>
+                          </div>
+                          {evmAddress && (
+                            <button
+                              type="button"
+                              onClick={() => { hapticLight(); void refetchPolymarketDepositAddresses(); }}
+                              className="rounded-xl border px-3 py-2 font-body text-xs"
+                              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                            >
+                              Refresh
+                            </button>
+                          )}
+                        </div>
+
+                        {!evmAddress ? (
+                          <p className="mt-4 font-body text-xs" style={{ color: "var(--text-3)" }}>
+                            Your embedded EVM wallet is still being created. Once it is ready, Siren will show deposit addresses for Polymarket here.
+                          </p>
+                        ) : polymarketDepositLoading ? (
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            {[0, 1].map((index) => (
+                              <div key={index} className="h-28 animate-pulse rounded-xl bg-[var(--bg-elevated)]" />
+                            ))}
+                          </div>
+                        ) : polymarketDepositError ? (
+                          <p className="mt-4 font-body text-xs" style={{ color: "var(--down)" }}>
+                            Unable to load Polymarket deposit addresses right now.
+                          </p>
+                        ) : (
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            <DepositAddressCard
+                              label="EVM deposit"
+                              tone="var(--polymarket)"
+                              address={polymarketDepositAddresses?.address?.evm ?? evmAddress}
+                              description="Use this when sending from Base, Ethereum, Arbitrum, Optimism, or another supported EVM path."
+                            />
+                            <DepositAddressCard
+                              label="Solana deposit"
+                              tone="var(--accent)"
+                              address={polymarketDepositAddresses?.address?.svm}
+                              description="Use this when you want to fund Polymarket from Solana. The venue converts supported assets into Polygon USDC."
+                            />
+                          </div>
+                        )}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { hapticLight(); setReceiveRail("solana"); setReceiveOpen(true); setFundingOpen(false); }}
+                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 font-body text-xs"
+                            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                          >
+                            <QrCode className="h-3.5 w-3.5" />
+                            My Solana address
+                          </button>
+                          {evmAddress && (
+                            <button
+                              type="button"
+                              onClick={() => { hapticLight(); setReceiveRail("base"); setReceiveOpen(true); setFundingOpen(false); }}
+                              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 font-body text-xs"
+                              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                            >
+                              <QrCode className="h-3.5 w-3.5" />
+                              My Base address
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
               {sendOpen && (
-                <SendSolModal
-                  balanceMainnet={balances?.mainnet ?? 0}
-                  balanceDevnet={balances?.devnet ?? 0}
+                <WithdrawModal
+                  solBalance={balances?.mainnet ?? 0}
+                  baseBalanceEth={baseBalanceEth}
                   solPriceUsd={solPriceUsd}
+                  ethPriceUsd={ethPriceUsd}
+                  evmAddress={evmAddress ?? null}
                   onClose={() => { hapticLight(); setSendOpen(false); }}
                 />
               )}
@@ -1065,15 +1890,43 @@ export default function PortfolioPage() {
                     style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <div className="mb-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setReceiveRail("solana")}
+                        className="rounded-lg px-3 py-1.5 font-body text-[11px]"
+                        style={{
+                          background: receiveRail === "solana" ? "var(--accent-dim)" : "transparent",
+                          color: receiveRail === "solana" ? "var(--accent)" : "var(--text-3)",
+                          border: receiveRail === "solana" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        Solana
+                      </button>
+                      {evmAddress && (
+                        <button
+                          type="button"
+                          onClick={() => setReceiveRail("base")}
+                          className="rounded-lg px-3 py-1.5 font-body text-[11px]"
+                          style={{
+                            background: receiveRail === "base" ? "color-mix(in srgb, var(--polymarket) 14%, transparent)" : "transparent",
+                            color: receiveRail === "base" ? "var(--polymarket)" : "var(--text-3)",
+                            border: receiveRail === "base" ? "1px solid var(--polymarket)" : "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          Base
+                        </button>
+                      )}
+                    </div>
                     <p className="font-heading text-sm mb-1" style={{ color: "var(--text-1)" }}>
-                      Receive SOL & tokens
+                      {receiveTitle}
                     </p>
                     <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-3)" }}>
-                      Scan this code or share your address to receive funds.
+                      {receiveDescription}
                     </p>
                     <div className="flex justify-center mb-3">
                       <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=192x192&data=${encodeURIComponent(publicKey.toBase58())}`}
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=192x192&data=${encodeURIComponent(receiveAddress)}`}
                         alt="Wallet QR code"
                         className="rounded-lg border"
                         style={{ borderColor: "var(--border-subtle)" }}
@@ -1081,11 +1934,11 @@ export default function PortfolioPage() {
                     </div>
                     <div className="flex items-center gap-2 mb-3">
                       <code className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-2)" }}>
-                        {publicKey.toBase58()}
+                        {receiveAddress}
                       </code>
                       <button
                         type="button"
-                        onClick={() => { hapticLight(); navigator.clipboard.writeText(publicKey.toBase58()); }}
+                        onClick={() => { hapticLight(); navigator.clipboard.writeText(receiveAddress); }}
                         className="font-body text-xs font-medium px-3 py-1.5 rounded-lg shrink-0"
                         style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                       >
@@ -1103,38 +1956,51 @@ export default function PortfolioPage() {
                   </div>
                 </div>
               )}
+              {(privateKeyValue || privateKeyError) && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => { setPrivateKeyValue(null); setPrivateKeyError(null); }}>
+                  <div className="w-full max-w-md rounded-2xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
+                    <p className="font-heading text-sm mb-1" style={{ color: "var(--text-1)" }}>
+                      Export embedded private key
+                    </p>
+                    {privateKeyError ? (
+                      <p className="font-body text-xs mt-2" style={{ color: "var(--down)" }}>
+                        {privateKeyError}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="font-body text-[11px] mb-3" style={{ color: "var(--down)" }}>
+                          Keep this key private. Anyone with it controls the embedded execution wallet.
+                        </p>
+                        <textarea
+                          readOnly
+                          value={privateKeyValue ?? ""}
+                          className="h-28 w-full rounded-xl border p-3 font-mono text-xs"
+                          style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { if (privateKeyValue) navigator.clipboard.writeText(privateKeyValue); }}
+                          className="mt-3 inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          Copy private key
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setPrivateKeyValue(null); setPrivateKeyError(null); }}
+                      className="mt-4 w-full rounded-xl border py-2.5 font-body text-xs"
+                      style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <div
-              className="rounded-2xl border p-6 md:p-8 mb-6"
-              style={{
-                borderColor: "var(--border-subtle)",
-                background: "linear-gradient(155deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
-                boxShadow: "0 1px 0 0 var(--border-subtle)",
-              }}
-            >
-              <div className="mb-5 max-w-lg">
-                <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                  Share PnL
-                </h2>
-                <p className="font-body text-[11px] mt-1 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Clash Display + Cabinet + Departure Mono on export. Unrealized P&amp;L uses your Siren trade log and live token prices—same as the tables below.
-                </p>
-              </div>
-              {publicKey ? (
-                <PnlCard
-                  totalPnlUsd={totalPnlAggregate.usd}
-                  totalPnlPercent={totalPnlAggregate.percent}
-                  positions={pnlPositionsForCard}
-                  walletAddress={publicKey.toBase58()}
-                  isLoading={tokensLoading}
-                  onSell={(pos) => {
-                    if (!pos.mint) return;
-                    const info = tokenInfoByMint.get(pos.mint);
-                    openSellPanel(pos.mint, info?.symbol ?? pos.ticker, info?.name ?? pos.title);
-                  }}
-                />
-              ) : null}
-            </div>
+            {/* PnL card temporarily removed while we fix trade logging + SVG integration. */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0">
             <div
               className="rounded-2xl border overflow-hidden"
@@ -1145,7 +2011,7 @@ export default function PortfolioPage() {
               }}
             >
               <div
-                className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 border-b"
+                className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -1154,104 +2020,89 @@ export default function PortfolioPage() {
                   </div>
                   <div className="min-w-0">
                     <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                      Wallet balance
+                      Your wallets
                     </h2>
                     <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      Native SOL
+                      Solana and Base addresses in one place
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                {baseBalanceError ? (
                   <button
                     type="button"
-                    onClick={() => { hapticLight(); setBalanceView("mainnet"); }}
-                    className="font-body text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-colors"
-                    style={{
-                      background: balanceView === "mainnet" ? "var(--accent-dim)" : "transparent",
-                      color: balanceView === "mainnet" ? "var(--accent)" : "var(--text-3)",
-                      border: balanceView === "mainnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
-                    }}
+                    onClick={() => { hapticLight(); refetchBaseBalance(); }}
+                    className="rounded-lg border px-3 py-1.5 font-body text-[11px]"
+                    style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
                   >
-                    Mainnet
+                    Retry Base
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { hapticLight(); setBalanceView("devnet"); }}
-                    className="font-body text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-colors"
-                    style={{
-                      background: balanceView === "devnet" ? "var(--accent-dim)" : "transparent",
-                      color: balanceView === "devnet" ? "var(--accent)" : "var(--text-3)",
-                      border: balanceView === "devnet" ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
-                    }}
-                  >
-                    Devnet
-                  </button>
-                </div>
-              </div>
-              {publicKey && (
-                <div className="px-5 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                  <code className="font-mono text-[11px] truncate flex-1" style={{ color: "var(--text-2)" }}>
-                    {publicKey.toBase58()}
-                  </code>
-                  <AddressCopyButton address={publicKey.toBase58()} />
-                </div>
-              )}
-              <div className="p-5 grid grid-cols-2 gap-4">
-                {isLoading ? (
-                  <div className="col-span-2 font-body text-sm py-4" style={{ color: "var(--text-2)" }}>
-                    Loading…
-                  </div>
-                ) : isError ? (
-                  <div className="col-span-2 space-y-3 py-4">
-                    <p className="font-body text-sm" style={{ color: "var(--down)" }}>
-                      Failed to fetch balance.
-                    </p>
-                    <button
-                      onClick={() => refetch()}
-                      className="font-body text-sm px-4 py-2 rounded-xl transition-colors hover:opacity-90"
-                      style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : balances ? (
-                  <>
-                    <div
-                      className="rounded-xl border p-4"
-                      style={{
-                        borderColor: balanceView === "mainnet" ? "var(--border-active)" : "var(--border-subtle)",
-                        background: "var(--bg-elevated)",
-                      }}
-                    >
-                      <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Mainnet</p>
-                      <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
-                        {balances.mainnet.toFixed(4)} SOL
-                      </p>
-                      <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
-                        {solPriceUsd > 0
-                          ? `≈ $${(balances.mainnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
-                          : "— USD"}
-                      </p>
-                    </div>
-                    <div
-                      className="rounded-xl border p-4"
-                      style={{
-                        borderColor: balanceView === "devnet" ? "var(--border-active)" : "var(--border-subtle)",
-                        background: "var(--bg-elevated)",
-                      }}
-                    >
-                      <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Devnet</p>
-                      <p className="font-mono text-lg tabular-nums font-medium" style={{ color: "var(--text-1)" }}>
-                        {balances.devnet.toFixed(4)} SOL
-                      </p>
-                      <p className="font-mono text-xs mt-1 tabular-nums" style={{ color: "var(--text-2)" }}>
-                        {solPriceUsd > 0
-                          ? `≈ $${(balances.devnet * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
-                          : "— USD"}
-                      </p>
-                    </div>
-                  </>
                 ) : null}
+              </div>
+              <div className="grid gap-4 p-5 sm:grid-cols-2">
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                      Solana
+                    </p>
+                    {publicKey && <AddressCopyButton address={publicKey.toBase58()} />}
+                  </div>
+                  {isLoading ? (
+                    <div className="mt-3 h-8 w-24 rounded bg-[var(--border-subtle)] animate-pulse" />
+                  ) : isError ? (
+                    <div className="mt-3 space-y-2">
+                      <p className="font-body text-sm" style={{ color: "var(--down)" }}>Balance unavailable</p>
+                      <button
+                        onClick={() => refetch()}
+                        className="rounded-lg px-3 py-2 font-body text-xs"
+                        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mt-3 font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {(balances?.mainnet ?? 0).toFixed(4)} SOL
+                      </p>
+                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                        {solPriceUsd > 0 ? `≈ $${solBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Ready to trade on Solana"}
+                      </p>
+                    </>
+                  )}
+                  {publicKey && (
+                    <p className="mt-3 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+                      {shortenAddress(publicKey.toBase58())}
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--polymarket)" }}>
+                      Base
+                    </p>
+                    {evmAddress && <AddressCopyButton address={evmAddress} />}
+                  </div>
+                  {baseBalanceLoading ? (
+                    <div className="mt-3 h-8 w-24 rounded bg-[var(--border-subtle)] animate-pulse" />
+                  ) : (
+                    <>
+                      <p className="mt-3 font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {evmAddress ? `${baseBalanceEth.toFixed(4)} ETH` : "Base wallet not ready"}
+                      </p>
+                      <p className="mt-1 font-body text-[11px]" style={{ color: baseBalanceError ? "var(--down)" : "var(--text-3)" }}>
+                        {evmAddress
+                          ? ethPriceUsd > 0
+                            ? `≈ $${baseBalanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "Base balance live"
+                          : "Provisioned by Privy when available"}
+                      </p>
+                    </>
+                  )}
+                  <p className="mt-3 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>
+                    {evmAddress ? shortenAddress(evmAddress) : "Use Receive to fund this Base address"}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1272,14 +2123,58 @@ export default function PortfolioPage() {
                 </div>
                 <div>
                   <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                    Prediction positions
+                    Active positions
                   </h2>
                   <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    YES/NO outcome tokens: rows labeled DFlow are confirmed via DFlow Metadata API; others use the markets list mapping. PnL is approximate (Siren trades + live prices).
+                    Kalshi YES/NO shares you already hold
                   </p>
                 </div>
               </div>
               <div className="p-5">
+              {predictionPositions.length > 0 && (
+                <div
+                  className="mb-5 rounded-2xl border p-4 md:p-5"
+                  style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-surface) 100%)" }}
+                >
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="max-w-md">
+                      <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                        Position PnL
+                      </p>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        Positions are marked from live YES probability, with YES and NO shares repriced to their current market odds.
+                      </p>
+                      <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        Sells route back through DFlow, while the card below gives you a clean shareable snapshot without mixing these positions into generic token PnL.
+                      </p>
+                    </div>
+                    <PnlCard
+                      totalPnlUsd={predictionTotalPnlUsd}
+                      totalPnlPercent={predictionTotalPnlPercent}
+                      positions={predictionPnlPositions}
+                      walletAddress={publicKey?.toBase58() ?? null}
+                      displayName={profileName}
+                      isLoading={marketsLoading || tokensLoading}
+                      onSell={(position) => {
+                        const info = tokenInfoByMint.get(position.mint ?? "");
+                        const marketMeta = position.mint ? mintToMarket.get(position.mint) : undefined;
+                        if (!position.mint || !marketMeta) return;
+                        openSellPanel({
+                          mint: position.mint,
+                          symbol: getDisplaySymbol(info?.symbol, marketMeta.ticker, position.mint),
+                          name: getDisplayName(info?.name, marketMeta.title, position.mint),
+                          assetType: "prediction",
+                          marketTicker: marketMeta.ticker,
+                          marketTitle: marketMeta.title,
+                          marketSide: marketMeta.side,
+                          marketProbability: marketMeta.probability,
+                          kalshiUrl: marketMeta.kalshiUrl,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
               {marketsError ? (
                 <div className="py-8 text-center">
                   <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
@@ -1302,7 +2197,7 @@ export default function PortfolioPage() {
                   <div className="py-8 text-center">
                     <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-40" style={{ color: "var(--text-3)" }} />
                     <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
-                      No prediction positions yet
+                      No active positions yet
                     </p>
                     <p className="font-body text-xs mb-4" style={{ color: "var(--text-3)" }}>
                       Buy YES/NO shares from the Terminal to add positions here.
@@ -1318,144 +2213,214 @@ export default function PortfolioPage() {
                     </Link>
                   </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {predictionPositions.map((p) => {
-                      const info = tokenInfoByMint.get(p.mint);
-                      const displayName = info?.name ?? p.title;
-                      const displaySymbol = info?.symbol ?? p.ticker;
-                      const mintPnl = pnlByMint[p.mint];
-                      const stance = marketStanceLabel(p);
-                      const trend = pnlTrendByMint[p.mint];
+                  <ul className="space-y-4">
+                    {predictionLifecyclePositions.map((position) => {
+                      const info = tokenInfoByMint.get(position.mint);
+                      const marketNoProbability = position.probability != null ? 100 - position.probability : null;
+                      const liveColor =
+                        position.pnlUsd == null ? "var(--text-2)" : position.pnlUsd >= 0 ? "var(--up)" : "var(--down)";
                       return (
-                      <li
-                        key={`${p.ticker}-${p.side}`}
-                        className="rounded-xl border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
-                        style={{
-                          borderColor: "var(--border-subtle)",
-                          background: "var(--bg-elevated)",
-                        }}
-                      >
-                        <div className="flex items-center gap-3 min-w-0 mb-3">
-                          {info?.imageUrl ? (
-                            <img src={info.imageUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
-                          ) : (
-                            <div
-                              className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center font-mono text-sm font-semibold"
-                              style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
-                            >
-                              {displaySymbol.slice(0, 2)}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <div className="flex items-start gap-2 flex-wrap">
-                              <p className="font-heading font-medium text-sm line-clamp-2 flex-1 min-w-0" style={{ color: "var(--text-1)" }}>
-                                {displayName}
-                              </p>
-                              {p.dflowVerified ? (
-                                <span
-                                  className="shrink-0 text-[9px] font-heading font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                                  style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                                  title="Outcome mint confirmed by DFlow filter_outcome_mints + markets/batch"
+                        <li
+                          key={`${position.ticker}-${position.side}`}
+                          className="rounded-2xl border p-4 md:p-5"
+                          style={{
+                            borderColor: "var(--border-subtle)",
+                            background: "linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-surface) 100%)",
+                          }}
+                        >
+                          <div className="flex flex-col gap-4 border-b pb-4 md:flex-row md:items-start md:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              {info?.imageUrl ? (
+                                <img src={info.imageUrl} alt="" className="h-12 w-12 rounded-2xl object-cover shrink-0" />
+                              ) : (
+                                <div
+                                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-mono text-sm font-semibold"
+                                  style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
                                 >
-                                  DFlow
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="font-mono text-[11px] mt-0.5 truncate" style={{ color: "var(--text-3)" }} title={p.mint}>
-                              {displaySymbol}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span
-                            className="text-[11px] font-body font-semibold px-2.5 py-1 rounded-lg"
-                            style={{
-                              background: p.side === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
-                              color: p.side === "yes" ? "var(--bags)" : "var(--down)",
-                            }}
-                          >
-                            {p.side.toUpperCase()}
-                          </span>
-                          <div className="text-right">
-                            <p className="font-mono text-sm tabular-nums font-medium" style={{ color: "var(--kalshi)" }}>
-                              {p.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                            </p>
-                            {p.probability != null && (
-                              <p className="font-mono text-[11px] tabular-nums mt-0.5" style={{ color: "var(--text-3)" }}>
-                                Market {p.probability.toFixed(0)}% YES
-                              </p>
-                            )}
-                            {stance ? (
-                              <p className="font-body text-[10px] leading-snug mt-1 max-w-[220px] ml-auto text-right" style={{ color: "var(--text-3)" }}>
-                                {stance}
-                              </p>
-                            ) : null}
-                            {mintPnl ? (
-                              <div className="mt-1.5 flex flex-col items-end gap-1">
-                                <span
-                                  className="text-[10px] font-heading font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md"
-                                  style={{
-                                    background: mintPnl.pnlUsd >= 0 ? "var(--accent-dim)" : "var(--down-dim)",
-                                    color: mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)",
-                                  }}
-                                >
-                                  {mintPnl.pnlUsd >= 0 ? "In profit" : "At a loss"}
-                                </span>
-                                <p
-                                  className="font-mono text-[11px] tabular-nums flex items-center gap-1 justify-end"
-                                  style={{ color: mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)" }}
-                                  title="Approximate unrealized PnL from Siren-logged trades vs current price"
-                                >
-                                  {trend === "up" ? (
-                                    <TrendingUp className="w-3 h-3 shrink-0" aria-hidden />
-                                  ) : trend === "down" ? (
-                                    <TrendingDown className="w-3 h-3 shrink-0" aria-hidden />
-                                  ) : trend === "flat" ? (
-                                    <Minus className="w-3 h-3 shrink-0 opacity-60" aria-hidden />
-                                  ) : null}
-                                  PnL:{" "}
-                                  {mintPnl.pnlUsd >= 0 ? "+" : "-"}$
-                                  {Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}{" "}
-                                  ({mintPnl.pnlPercent.toFixed(1)}%)
-                                  {trend === "up" ? (
-                                    <span className="sr-only"> Profit vs last quote, rising</span>
-                                  ) : null}
+                                  {position.displaySymbol.slice(0, 2)}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span
+                                    className="rounded-lg px-2.5 py-1 text-[11px] font-body font-semibold"
+                                    style={{
+                                      background: position.side === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
+                                      color: position.side === "yes" ? "var(--bags)" : "var(--down)",
+                                    }}
+                                  >
+                                    {position.side.toUpperCase()}
+                                  </span>
+                                  <span className="rounded-lg border px-2.5 py-1 text-[11px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+                                    {position.status === "open" ? "Live market" : position.status}
+                                  </span>
+                                </div>
+                                <p className="mt-2 font-heading text-base font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
+                                  {position.displayName}
                                 </p>
-                                {trend === "up" ? (
-                                  <p className="font-body text-[10px]" style={{ color: "var(--up)" }}>
-                                    Up vs last price check
-                                  </p>
-                                ) : trend === "down" ? (
-                                  <p className="font-body text-[10px]" style={{ color: "var(--down)" }}>
-                                    Down vs last price check
-                                  </p>
-                                ) : null}
+                                <p className="mt-1 font-mono text-[11px] truncate" style={{ color: "var(--text-3)" }} title={position.mint}>
+                                  {position.displaySymbol} · {position.ticker}
+                                </p>
                               </div>
-                            ) : (
-                              <p className="font-body text-[10px] mt-1 text-right max-w-[14rem] ml-auto" style={{ color: "var(--text-3)" }}>
-                                Trade this position in Siren to track cost basis and PnL.
+                            </div>
+
+                            <div className="text-left md:text-right">
+                              <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                Shares
                               </p>
-                            )}
+                              <p className="mt-1 font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--kalshi)" }}>
+                                {position.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                              </p>
+                              {position.probability != null && (
+                                <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                                  YES {position.probability.toFixed(1)}% · NO {marketNoProbability?.toFixed(1)}%
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              hapticLight();
-                              openSellPanel(p.mint, displaySymbol, displayName);
-                            }}
-                            className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
-                            style={{ background: "var(--bags)", color: "var(--accent-text)" }}
-                          >
-                            Sell
-                          </button>
-                        </div>
-                      </li>
+
+                          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                            <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                                Entry
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Average entry</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.avgEntryUsd != null
+                                      ? `$${position.avgEntryUsd.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Tracked cost basis</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.costBasisUsd != null
+                                      ? `$${position.costBasisUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: liveColor }}>
+                                Live mark
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Current mark</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.currentPriceUsd != null
+                                      ? `$${position.currentPriceUsd.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Current value</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.currentValueUsd != null
+                                      ? `$${position.currentValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Unrealized PnL</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: liveColor }}>
+                                    {position.pnlUsd != null
+                                      ? `${position.pnlUsd >= 0 ? "+" : "-"}$${Math.abs(position.pnlUsd).toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}${position.pnlPercent != null ? ` (${position.pnlPercent.toFixed(1)}%)` : ""}`
+                                      : "—"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--kalshi)" }}>
+                                Settlement
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>If you are right</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {position.settlementPayoutUsd != null
+                                      ? `$${position.settlementPayoutUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} payout`
+                                      : "—"}
+                                  </p>
+                                  <p className="font-mono text-[11px] tabular-nums" style={{ color: position.settlementNetIfCorrectUsd != null && position.settlementNetIfCorrectUsd >= 0 ? "var(--up)" : "var(--text-3)" }}>
+                                    {position.settlementNetIfCorrectUsd != null
+                                      ? `Net ${position.settlementNetIfCorrectUsd >= 0 ? "+" : "-"}$${Math.abs(position.settlementNetIfCorrectUsd).toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}`
+                                      : "Net —"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>If you are wrong</p>
+                                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    $0.00 payout
+                                  </p>
+                                  <p className="font-mono text-[11px] tabular-nums" style={{ color: "var(--down)" }}>
+                                    {position.settlementNetIfWrongUsd != null
+                                      ? `Net -$${Math.abs(position.settlementNetIfWrongUsd).toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}`
+                                      : "Net —"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                            <p className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                              Standard event-contract math: each winning share pays $1.00 at settlement and each losing share pays $0.00.
+                            </p>
+                            <div className="flex gap-2">
+                              {position.kalshiUrl && (
+                                <a
+                                  href={position.kalshiUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => hapticLight()}
+                                  className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-body"
+                                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}
+                                >
+                                  Open market
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  hapticLight();
+                                  openSellPanel({
+                                    mint: position.mint,
+                                    symbol: position.displaySymbol,
+                                    name: position.displayName,
+                                    assetType: "prediction",
+                                    marketTicker: position.ticker,
+                                    marketTitle: position.title,
+                                    marketSide: position.side,
+                                    marketProbability: position.probability,
+                                    kalshiUrl: position.kalshiUrl,
+                                  });
+                                }}
+                                className="rounded-lg px-4 py-2 font-heading text-xs font-semibold uppercase tracking-wide transition-all hover:brightness-110"
+                                style={{ background: "var(--bags)", color: "var(--accent-text)" }}
+                              >
+                                Sell
+                              </button>
+                            </div>
+                          </div>
+                        </li>
                       );
                     })}
                   </ul>
@@ -1505,14 +2470,14 @@ export default function PortfolioPage() {
                       <div key={i} className="h-16 rounded-xl bg-[var(--border-subtle)] animate-pulse" />
                     ))}
                   </div>
-                ) : tokenHoldings.length === 0 ? (
+                ) : spotTokenHoldings.length === 0 ? (
                   <div className="py-8 text-center">
                     <Coins className="w-10 h-10 mx-auto mb-3 opacity-40" style={{ color: "var(--text-3)" }} />
                     <p className="font-body text-sm mb-2" style={{ color: "var(--text-2)" }}>
-                      No tokens yet
+                      No spot tokens yet
                     </p>
                     <p className="font-body text-xs mb-4" style={{ color: "var(--text-3)" }}>
-                      Buy from the Terminal or Trending to see holdings here.
+                      Meme tokens and other SPL assets will show up here separately from prediction positions.
                     </p>
                     <Link
                       href="/"
@@ -1526,18 +2491,18 @@ export default function PortfolioPage() {
                   </div>
                 ) : (
                   <ul className="space-y-3">
-                    {tokenHoldings.map((t) => {
+                    {spotTokenHoldings.map((t) => {
                       const info = tokenInfoByMint.get(t.mint);
-                      const displayName = info?.name ?? t.name;
-                      const rawSymbol = info?.symbol ?? t.symbol;
-                      const displaySymbol =
-                        rawSymbol && rawSymbol !== "-" && rawSymbol !== "—"
-                          ? rawSymbol
-                          : displayName && displayName !== "Unknown"
-                            ? displayName
-                            : "Token";
+                      const displaySymbol = getDisplaySymbol(info?.symbol, t.symbol, t.mint);
+                      const displayName = getDisplayName(info?.name, t.name, t.mint);
                       const valueUsd = info?.priceUsd != null ? t.balance * info.priceUsd : undefined;
-                      const mintPnl = pnlByMint[t.mint];
+                      const mintPnl = tradeMetricsByMint[t.mint];
+                      const mintPnlColor = getPnlTone(mintPnl?.pnlUsd);
+                      const mintPnlLabel = formatTradeMetricsPnl(mintPnl);
+                      const mintPnlTitle =
+                        mintPnl?.pnlUsd == null && mintPnl?.costBasisUsd
+                          ? "Tracked entry found, but a live token quote is unavailable right now."
+                          : "Approximate PnL from Siren trades";
                       return (
                         <li
                           key={t.mint}
@@ -1549,7 +2514,14 @@ export default function PortfolioPage() {
                         >
                           <div
                             className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                            onClick={() => { hapticLight(); openSellPanel(t.mint, displaySymbol, displayName); }}
+                            onClick={() => {
+                              hapticLight();
+                              openSellPanel({
+                                mint: t.mint,
+                                symbol: displaySymbol,
+                                name: displayName,
+                              });
+                            }}
                             title={t.mint}
                           >
                             {info?.imageUrl ? (
@@ -1581,19 +2553,21 @@ export default function PortfolioPage() {
                                   ≈ ${valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                                 </p>
                               )}
-                              <p className="font-mono text-[11px] mt-1" style={{ color: mintPnl ? (mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)") : "var(--text-3)" }} title="Approximate PnL from Siren trades">
-                                PnL:{" "}
-                                {mintPnl
-                                  ? `${mintPnl.pnlUsd >= 0 ? "+" : "-"}$${Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })} (${mintPnl.pnlPercent.toFixed(1)}%)`
-                                  : "—"}
+                              <p className="font-mono text-[11px] mt-1" style={{ color: mintPnlColor }} title={mintPnlTitle}>
+                                PnL: {mintPnlLabel}
                               </p>
                             </div>
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); hapticLight(); openSellPanel(t.mint, displaySymbol, displayName); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                hapticLight();
+                                openSellPanel({
+                                  mint: t.mint,
+                                  symbol: displaySymbol,
+                                  name: displayName,
+                                });
+                              }}
                               className="px-4 py-2 rounded-lg font-heading font-semibold text-xs uppercase tracking-wide transition-all hover:brightness-110 shrink-0"
                               style={{ background: "var(--bags)", color: "var(--accent-text)" }}
                             >
@@ -1611,7 +2585,6 @@ export default function PortfolioPage() {
             <FeeEarningsSection
               publicKey={publicKey}
               signTransaction={signTransaction}
-              walletSessionStatus={walletSessionStatus}
               connection={connection}
               solPriceUsd={solPriceUsd}
               tokenInfoByMint={tokenInfoByMint}
@@ -1637,11 +2610,11 @@ export default function PortfolioPage() {
               </div>
               <div className="min-w-0">
                 <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
-                  Transaction history
+                  History
                 </h2>
-                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                  For {publicKey ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}` : "your wallet"} — Helius
-                </p>
+                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                    For {publicKey ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}` : "your wallet"} — Helius
+                  </p>
               </div>
             </div>
             <div className="p-5">
@@ -1715,6 +2688,8 @@ export default function PortfolioPage() {
                 <ul className="space-y-3">
                   {bagsLaunches.map((mint) => {
                     const info = bagsLaunchInfoByMint.get(mint);
+                    const displaySymbol = getDisplaySymbol(info?.symbol, info?.name, mint);
+                    const displayName = getDisplayName(info?.name, info?.symbol, mint);
                     const claimedRaw = myClaimedByMint.get(mint);
                     const claimedLamports = claimedRaw ? Number(claimedRaw) : 0;
                     const claimedSol = claimedLamports / LAMPORTS_PER_SOL;
@@ -1733,15 +2708,15 @@ export default function PortfolioPage() {
                               className="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center font-mono text-xs font-semibold"
                               style={{ background: "var(--border-subtle)", color: "var(--text-3)" }}
                             >
-                              {(info?.symbol ?? mint).slice(0, 2)}
+                              {displaySymbol.slice(0, 2)}
                             </div>
                           )}
                           <div className="min-w-0">
                             <p className="font-heading font-semibold truncate" style={{ color: "var(--text-1)" }}>
-                              {info?.symbol ?? mint.slice(0, 4)}
+                              {displayName}
                             </p>
                             <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
-                              Launched on Bags
+                              {displaySymbol} · Launched on Bags
                             </p>
                           </div>
                         </div>

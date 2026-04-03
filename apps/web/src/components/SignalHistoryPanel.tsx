@@ -17,17 +17,32 @@ function formatTime(ts: number) {
   }
 }
 
-export function SignalHistoryPanel() {
+export function SignalHistoryPanel({ variant = "card" }: { variant?: "card" | "panel" } = {}) {
   const signals = useSignalHistoryStore((s) => s.signals);
 
   const recent = useMemo(() => signals.slice(0, 12), [signals]);
-  if (recent.length === 0) return null;
+  if (recent.length === 0) {
+    if (variant === "panel") {
+      return (
+        <div
+          className="rounded-2xl border border-dashed p-4"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+        >
+          <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+            No recent signals
+          </p>
+          <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+            Once a market or token alert fires, it will appear here with the time and move that triggered it.
+          </p>
+        </div>
+      );
+    }
 
-  return (
-    <div
-      className="flex-shrink-0 rounded-[10px] border p-5 mb-6"
-      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
-    >
+    return null;
+  }
+
+  const content = (
+    <>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h3
@@ -91,7 +106,19 @@ export function SignalHistoryPanel() {
           );
         })}
       </div>
+    </>
+  );
+
+  if (variant === "panel") {
+    return content;
+  }
+
+  return (
+    <div
+      className="flex-shrink-0 rounded-[10px] border p-5 mb-6"
+      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+    >
+      {content}
     </div>
   );
 }
-

@@ -18,9 +18,9 @@ type SirenWalletState = {
   connected: boolean;
   publicKey: PublicKey | null;
   signTransaction: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>;
+  signMessage?: (message: Uint8Array) => Promise<Uint8Array>;
   disconnect: () => void | Promise<void>;
   isReady: boolean;
-  /** When not `ready`, signing and sends must not be offered as primary path (Privy modal / embedded wallet not ready). */
   walletSessionStatus: WalletSessionGate;
   canExportPrivateKey: boolean;
   exportPrivateKey: () => Promise<string>;
@@ -29,6 +29,9 @@ type SirenWalletState = {
   wallets: WalletItem[];
   select: (name: string) => void;
   connect: () => Promise<void>;
+  evmAddress?: string | null;
+  getEvmProvider?: () => Promise<unknown>;
+  switchEvmChain?: (chainId: number) => Promise<void>;
 };
 
 const PrivyWalletContext = createContext<SirenWalletState | undefined>(undefined);
@@ -55,6 +58,7 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
       connected: false,
       publicKey: null,
       signTransaction: rejectSignNotReady,
+      signMessage: undefined,
       disconnect: async () => {},
       isReady: false,
       walletSessionStatus: "privy-loading",
@@ -67,13 +71,25 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
       wallets: [],
       select: () => {},
       connect: async () => {},
+      evmAddress: null,
+      getEvmProvider: undefined,
+      switchEvmChain: undefined,
     };
   } else if (authenticated && solanaWallet) {
     const address = solanaWallet.address;
     const publicKey = new PublicKey(address);
+
+    const walletSignMessage = typeof (solanaWallet as unknown as { signMessage?: unknown }).signMessage === "function"
+      ? async (msg: Uint8Array): Promise<Uint8Array> => {
+          const result = await ((solanaWallet as unknown as { signMessage: (args: { message: Uint8Array }) => Promise<{ signature: Uint8Array }> }).signMessage({ message: msg }));
+          return result.signature;
+        }
+      : undefined;
+
     value = {
       connected: true,
       publicKey,
+      signMessage: walletSignMessage,
       signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
         const isVersioned = "version" in tx;
         const serialized = isVersioned
@@ -115,12 +131,16 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
       wallets: [],
       select: () => {},
       connect: async () => {},
+      evmAddress: null,
+      getEvmProvider: undefined,
+      switchEvmChain: undefined,
     };
   } else if (authenticated && !solanaWallet) {
     value = {
       connected: false,
       publicKey: null,
       signTransaction: rejectSignNotReady,
+      signMessage: undefined,
       disconnect: logout,
       isReady: true,
       walletSessionStatus: "embedded-provisioning",
@@ -133,12 +153,16 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
       wallets: [],
       select: () => {},
       connect: async () => {},
+      evmAddress: null,
+      getEvmProvider: undefined,
+      switchEvmChain: undefined,
     };
   } else {
     value = {
       connected: false,
       publicKey: null,
       signTransaction: rejectSignNeedsLogin,
+      signMessage: undefined,
       disconnect: async () => {},
       isReady: true,
       walletSessionStatus: "needs-privy-login",
@@ -151,6 +175,9 @@ export function PrivyWalletBridge({ children }: { children: React.ReactNode }) {
       wallets: [],
       select: () => {},
       connect: async () => {},
+      evmAddress: null,
+      getEvmProvider: undefined,
+      switchEvmChain: undefined,
     };
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { toPng, getFontEmbedCSS } from "html-to-image";
+import { toPng } from "html-to-image";
 import { ArrowUpRight, Share2, Download, ChevronLeft, ChevronRight, LogOut, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { hapticLight } from "@/lib/haptics";
@@ -23,6 +23,7 @@ interface PnlCardProps {
   totalPnlPercent: number | null;
   positions: PnlPosition[];
   walletAddress?: string | null;
+  displayName?: string | null;
   isLoading?: boolean;
   /** Called when user clicks sell for a position. Opens buy panel in sell mode. */
   onSell?: (position: PnlPosition) => void;
@@ -58,6 +59,7 @@ export function PnlCard({
   totalPnlPercent,
   positions,
   walletAddress,
+  displayName,
   isLoading,
   onSell,
 }: PnlCardProps) {
@@ -68,24 +70,22 @@ export function PnlCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const displayPositions = positions;
-  const selected = displayPositions[selectedIndex] ?? displayPositions[0];
+  const positionCount = displayPositions.length;
+  const activeIndex = positionCount > 0 ? selectedIndex % positionCount : 0;
+  const selected = displayPositions[activeIndex] ?? displayPositions[0];
 
   const pnlUsd = selected?.pnlUsd ?? totalPnlUsd;
   const pnlPercent = selected?.pnlPercent ?? totalPnlPercent;
   const hasPnl = pnlUsd !== null && pnlUsd !== 0;
-  const isPositive = pnlUsd != null && pnlUsd > 0;
   const isLoss = pnlUsd != null && pnlUsd < 0;
-  const hasShareableContent = positions.some(
-    (p) =>
-      (p.valueUsd ?? 0) > 0 ||
-      (p.pnlUsd != null && Number.isFinite(p.pnlUsd)) ||
-      (p.pnlPercent != null && Number.isFinite(p.pnlPercent))
-  );
+  const hasShareableContent =
+    positions.some((p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null);
 
   const accent = isLoss ? "var(--down)" : "var(--up)";
   const glowRgb = isLoss ? "255, 69, 96" : "0, 255, 133";
 
   const tokenLabel = selected?.title ?? "—";
+  const isPredictionCard = selected?.side != null;
   const signalLine =
     selected == null
       ? ""
@@ -106,21 +106,14 @@ export function PnlCard({
     hapticLight();
     setExporting(true);
     try {
-      const node = cardRef.current;
       await document.fonts.ready;
-      await Promise.all([
-        document.fonts.load('600 10px "Clash Display"'),
-        document.fonts.load('700 36px "Clash Display"'),
-        document.fonts.load('400 13px "Cabinet Grotesk"'),
-        document.fonts.load('500 12px "Departure Mono"'),
-      ]).catch(() => undefined);
-      const fontEmbedCSS = await getFontEmbedCSS(node).catch(() => "");
+      await new Promise((r) => setTimeout(r, 120));
+      const node = cardRef.current;
       const dataUrl = await toPng(node, {
         pixelRatio: 2,
         cacheBust: true,
-        backgroundColor: "#050508",
+        backgroundColor: "#000000",
         skipFonts: false,
-        ...(fontEmbedCSS ? { fontEmbedCSS } : {}),
       });
       const blob = await fetch(dataUrl).then((r) => r.blob());
       const file = new File([blob], "siren-pnl.png", { type: "image/png" });
@@ -188,7 +181,6 @@ export function PnlCard({
             ref={cardRef}
             className="relative w-full aspect-square overflow-hidden rounded-2xl border font-body"
             style={{
-              fontFamily: '"Cabinet Grotesk", Inter, ui-sans-serif, system-ui, sans-serif',
               borderColor: "color-mix(in srgb, var(--border-subtle) 80%, transparent)",
               boxShadow: `0 0 0 1px rgba(${glowRgb}, 0.12), 0 24px 48px -16px rgba(0,0,0,0.5)`,
             }}
@@ -229,17 +221,11 @@ export function PnlCard({
 
           <div className="relative z-[2] flex h-full flex-col p-5 pr-14 md:p-6 md:pr-16">
             <div className="min-w-0">
-              <p
-                className="font-heading text-[10px] font-semibold uppercase tracking-[0.2em]"
-                style={{ color: accent, fontFamily: '"Clash Display", sans-serif' }}
-              >
-                P&amp;L snapshot
+              <p className="font-heading text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: accent }}>
+                {isPredictionCard ? "Prediction P&L" : "P&L snapshot"}
               </p>
               {walletAddress && (
-                <p
-                  className="mt-1 font-mono text-[10px] tabular-nums"
-                  style={{ color: "var(--text-3)", fontFamily: '"Departure Mono", ui-monospace, monospace' }}
-                >
+                <p className="mt-1 font-mono text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
                   {privacy ? "••••••••••••" : truncateAddress(walletAddress)}
                 </p>
               )}
@@ -248,27 +234,21 @@ export function PnlCard({
             <div className="mt-6 min-w-0 flex-1">
               <p
                 className="font-heading text-[clamp(1.75rem,7vw,2.75rem)] font-bold leading-tight tabular-nums tracking-tight"
-                style={{
-                  color: hasPnl ? accent : "var(--text-3)",
-                  fontFamily: '"Clash Display", sans-serif',
-                }}
+                style={{ color: hasPnl ? accent : "var(--text-3)" }}
               >
                 {privacy ? maskPnl() : formatPnl(pnlUsd)}
               </p>
               {(pnlPercent != null || privacy) && (
                 <p
                   className="font-mono text-xl font-semibold tabular-nums md:text-2xl"
-                  style={{
-                    color: hasPnl ? accent : "var(--text-3)",
-                    fontFamily: '"Departure Mono", ui-monospace, monospace',
-                  }}
+                  style={{ color: hasPnl ? accent : "var(--text-3)" }}
                 >
                   {privacy ? maskPercent() : formatPercent(pnlPercent)}
                 </p>
               )}
               <p
                 className="mt-4 line-clamp-2 font-heading text-base font-semibold leading-snug md:text-lg"
-                style={{ color: "var(--text-1)", fontFamily: '"Clash Display", sans-serif' }}
+                style={{ color: "var(--text-1)" }}
               >
                 {privacy ? "••••••••••" : tokenLabel}
               </p>
@@ -277,10 +257,29 @@ export function PnlCard({
                   {privacy ? "•• • •••••• ••••" : signalLine}
                 </p>
               )}
+              {isPredictionCard && (
+                <div
+                  className="mt-3 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-heading font-semibold uppercase tracking-[0.14em]"
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    color: accent,
+                    border: `1px solid rgba(${glowRgb}, 0.28)`,
+                  }}
+                >
+                  Marked to live market
+                </div>
+              )}
             </div>
 
             <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-              <img src="/brand/mark.svg" alt="Siren" className="h-6 w-auto opacity-95 md:h-7" />
+              <div className="min-w-0">
+                <img src="/brand/mark.svg" alt="Siren" className="h-6 w-auto opacity-95 md:h-7" />
+                {displayName && (
+                  <p className="mt-1 font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                    {displayName}
+                  </p>
+                )}
+              </div>
               <span className="font-mono text-xs font-medium md:text-sm" style={{ color: accent }}>
                 onsiren.xyz
               </span>
@@ -307,7 +306,7 @@ export function PnlCard({
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <span className="font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
-                  {selectedIndex + 1} / {displayPositions.length}
+                  {activeIndex + 1} / {displayPositions.length}
                 </span>
                 <button
                   type="button"
@@ -383,9 +382,7 @@ export function PnlCard({
       {!hasShareableContent && (
         <div className="flex max-w-[360px] flex-wrap items-center gap-2">
           <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-            {walletAddress
-              ? "No shareable P&amp;L yet — trade in Siren so we can log cost basis and live prices."
-              : "Connect and trade to see P&amp;L."}
+            Connect and trade to see P&amp;L.
           </p>
           <Link
             href="/"

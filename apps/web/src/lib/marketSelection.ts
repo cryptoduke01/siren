@@ -1,4 +1,4 @@
-import type { MarketWithVelocity } from "@siren/shared";
+import type { MarketWithVelocity, SignalSource } from "@siren/shared";
 import type { SelectedMarket } from "@/store/useSirenStore";
 
 const MARKET_KEYWORDS = [
@@ -97,7 +97,7 @@ export function extractMarketKeywords(title: string): string[] {
 
 export function toSelectedMarket(market: MarketWithVelocity): SelectedMarket {
   return {
-    source: market.source,
+    source: (market.source as SignalSource) ?? "kalshi",
     ticker: market.ticker,
     platform_id: market.platform_id,
     market_url: market.market_url ?? market.kalshi_url,
