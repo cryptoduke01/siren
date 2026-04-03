@@ -6,7 +6,7 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import Link from "next/link";
-import { Shield, Loader2, ExternalLink, ArrowLeft } from "lucide-react";
+import { Shield, Loader2, ExternalLink, ArrowLeft, Copy, Check } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
@@ -219,6 +219,8 @@ export default function PortfolioPage() {
   const addToast = useToastStore((s) => s.addToast);
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [addressCopied, setAddressCopied] = useState(false);
   const [proofLoading, setProofLoading] = useState(false);
 
   const walletKey = publicKey?.toBase58() ?? null;
@@ -371,8 +373,8 @@ export default function PortfolioPage() {
             </p>
           )}
 
-          {/* Deposit + Withdraw */}
-          <div className="mt-5 flex gap-3">
+          {/* Deposit + Receive + Withdraw */}
+          <div className="mt-5 flex gap-2">
             <button
               type="button"
               onClick={handleDeposit}
@@ -380,7 +382,19 @@ export default function PortfolioPage() {
               className="flex-1 rounded-lg py-2.5 font-heading text-sm font-semibold disabled:opacity-40"
               style={{ background: "var(--accent)", color: "var(--bg-base)" }}
             >
-              Deposit
+              Buy
+            </button>
+            <button
+              type="button"
+              onClick={() => { hapticLight(); setReceiveOpen(!receiveOpen); }}
+              disabled={!connected}
+              className="flex-1 rounded-lg border py-2.5 font-heading text-sm font-semibold disabled:opacity-40"
+              style={{
+                borderColor: receiveOpen ? "var(--accent)" : "var(--border-subtle)",
+                color: receiveOpen ? "var(--accent)" : "var(--text-1)",
+              }}
+            >
+              Receive
             </button>
             <button
               type="button"
@@ -389,9 +403,42 @@ export default function PortfolioPage() {
               className="flex-1 rounded-lg border py-2.5 font-heading text-sm font-semibold disabled:opacity-40"
               style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
             >
-              Withdraw
+              Send
             </button>
           </div>
+
+          {/* Receive address */}
+          {receiveOpen && walletKey && (
+            <div
+              className="mt-3 rounded-lg border p-3"
+              style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+            >
+              <p className="font-body text-[11px] mb-1.5" style={{ color: "var(--text-3)" }}>
+                Send SOL or USDC to this address
+              </p>
+              <div className="flex items-center gap-2">
+                <code
+                  className="flex-1 font-mono text-[11px] break-all select-all"
+                  style={{ color: "var(--text-1)" }}
+                >
+                  {walletKey}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(walletKey);
+                    setAddressCopied(true);
+                    addToast("Address copied", "success");
+                    setTimeout(() => setAddressCopied(false), 2000);
+                  }}
+                  className="shrink-0 p-1.5 rounded-md hover:bg-[var(--bg-elevated)]"
+                  style={{ color: "var(--text-2)" }}
+                >
+                  {addressCopied ? <Check className="h-3.5 w-3.5" style={{ color: "var(--up)" }} /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Token Rows */}
           <div className="mt-5 flex flex-col gap-2">
