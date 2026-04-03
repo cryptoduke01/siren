@@ -39,3 +39,6 @@ apps/api/prisma/*.db-journal
 # Docs (separate repo: cryptoduke01/docs)
 siren-docs/
 .env*.local
+
+# Media/design assets (store in Figma, Drive, etc.)
+sirenmedia/
