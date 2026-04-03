@@ -371,3 +371,104 @@ export async function sendLaunchThreadEmail(params: {
     text,
   });
 }
+
+/** Product announcement: trading, deposits & withdrawals live — replaces legacy launch-thread blast for new campaigns. */
+export async function sendTradingLiveAnnouncementEmail(params: {
+  to: string;
+  name?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!resend) return { ok: false, error: "Email not configured" };
+
+  const greeting = params.name ? `Hi ${params.name}` : "Hi there";
+  const logoUrl = `${APP_URL}/brand/mark.svg`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Siren is live — trade, fund, withdraw</title>
+</head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0f;color:#e8e8ec;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0a0a0f;">
+    <tr>
+      <td align="center" style="padding:40px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;border:1px solid #1f2420;border-radius:16px;background:#111318;overflow:hidden;">
+          <tr>
+            <td style="padding:0;border-top:3px solid #00ff85;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:linear-gradient(180deg,#12151a 0%,#0e1014 100%);">
+                <tr>
+                  <td style="padding:36px 32px 28px;">
+                    <img src="${logoUrl}" alt="Siren" width="112" height="30" style="display:block;height:30px;width:auto;" />
+                    <p style="margin:28px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#00ff85;font-weight:700;">
+                      Now live
+                    </p>
+                    <h1 style="margin:12px 0 0;font-size:26px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#f4f4f6;">
+                      Prediction markets, deposits & withdrawals — all in one terminal.
+                    </h1>
+                    <p style="margin:18px 0 0;font-size:16px;line-height:1.65;color:#a1a1aa;">
+                      ${greeting}, Siren is open for real: trade Kalshi and Polymarket-style events, surface meme tokens off the signal, and move money in and out without leaving the app.
+                    </p>
+                    <p style="margin:18px 0 0;font-size:16px;line-height:1.65;color:#a1a1aa;">
+                      This is the moment to stress-test everything with us — push volume, try deposits and withdrawals, and put your opinions on-chain before the crowd catches up. Early movers help shape what we ship next.
+                    </p>
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:28px 0 0;">
+                      <tr>
+                        <td style="background:#0c0f12;border:1px solid #252a32;border-radius:12px;padding:20px 22px;">
+                          <p style="margin:0 0 10px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#71717a;">What to try first</p>
+                          <ul style="margin:0;padding-left:20px;font-size:15px;line-height:1.7;color:#d4d4d8;">
+                            <li>Open a position on a live prediction market</li>
+                            <li>Fund your wallet (card or crypto) and withdraw when you are done</li>
+                            <li>Share your PnL card — bragging rights encouraged</li>
+                          </ul>
+                        </td>
+                      </tr>
+                    </table>
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:28px 0 0;">
+                      <tr>
+                        <td align="center">
+                          <a href="${APP_URL}" style="display:inline-block;background:#00ff85;color:#050508;font-size:16px;font-weight:800;text-decoration:none;padding:16px 36px;border-radius:12px;letter-spacing:0.02em;">
+                            Open Siren
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#71717a;">
+                      Questions? Reply to this email or find us on <a href="${X_URL}" style="color:#00ff85;text-decoration:none;">X</a>. Docs live at <a href="${DOCS_URL}" style="color:#00ff85;text-decoration:none;">docs.onsiren.xyz</a>.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px 28px;border-top:1px solid #1f2420;">
+              <p style="margin:0;font-size:12px;color:#52525b;">
+                You are receiving this because you joined the Siren waitlist or shared your email with us.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`.trim();
+
+  const text = [
+    `${greeting},`,
+    "Siren is live: prediction market trading, deposits, and withdrawals are available in one terminal.",
+    "Trade events, fund your wallet, withdraw when you are done — and help us break volume while rewards for sharp takes are on the roadmap.",
+    `Open the app: ${APP_URL}`,
+    `Docs: ${DOCS_URL}`,
+  ].join("\n\n");
+
+  return sendEmailWithRetry({
+    to: params.to,
+    subject: "Siren: prediction trading, deposits & withdrawals are live",
+    html,
+    text,
+  });
+}

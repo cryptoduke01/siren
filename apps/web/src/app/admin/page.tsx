@@ -60,11 +60,7 @@ type AppUserRow = {
 
 const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
 const STORAGE_KEY = "siren-admin-pass-ok";
-const LAUNCH_THREAD_URL = "https://x.com/cryptoduke01/status/2037410069109768374";
-const LAUNCH_THREAD_IMAGE = "/emails/launch-thread-cover.jpg";
-const LAUNCH_THREAD_TITLE = "Prediction Markets, Memes, and The Madness";
-const LAUNCH_THREAD_PREVIEW =
-  "There is a particular kind of suffering that belongs only to the man who sees what is coming and cannot make anyone believe him.";
+const APP_PUBLIC_URL = "https://onsiren.xyz";
 const TABLE_PAGE_SIZE = 25;
 const PANEL_BG =
   "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, white 6%) 0%, color-mix(in srgb, var(--bg-elevated) 96%, transparent) 100%)";
@@ -77,9 +73,6 @@ const BADGE_BG = "color-mix(in srgb, var(--accent-dim) 70%, var(--bg-elevated) 3
 const TOOLTIP_BG = "color-mix(in srgb, var(--bg-base) 94%, var(--bg-surface) 6%)";
 const GRID_STROKE = "color-mix(in srgb, var(--border-subtle) 52%, transparent)";
 const TAB_ACTIVE_BG = "color-mix(in srgb, var(--bg-elevated) 82%, white 18%)";
-const IMAGE_OVERLAY_BG =
-  "linear-gradient(90deg, color-mix(in srgb, var(--bg-base) 8%, transparent) 0%, color-mix(in srgb, var(--bg-base) 74%, transparent) 100%)";
-
 type Tab = "waitlist" | "app-users" | "volume";
 
 type VolumeData = {
@@ -331,12 +324,12 @@ export default function AdminPage() {
   const [sendAllLoading, setSendAllLoading] = useState(false);
   const [codeEmailResult, setCodeEmailResult] = useState<DispatchResult | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [launchEmailLoading, setLaunchEmailLoading] = useState(false);
+  const [productEmailLoading, setProductEmailLoading] = useState(false);
   const [solPriceUsd, setSolPriceUsd] = useState(0);
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
   const [volumeLoading, setVolumeLoading] = useState(false);
-  const [launchEmailInput, setLaunchEmailInput] = useState("");
-  const [launchEmailResult, setLaunchEmailResult] = useState<DispatchResult | null>(null);
+  const [productEmailInput, setProductEmailInput] = useState("");
+  const [productEmailResult, setProductEmailResult] = useState<DispatchResult | null>(null);
   const [waitlistPage, setWaitlistPage] = useState(1);
   const [appUsersPage, setAppUsersPage] = useState(1);
   const [volumePage, setVolumePage] = useState(1);
@@ -647,15 +640,15 @@ export default function AdminPage() {
     }
   };
 
-  const handleSendLaunchEmail = async () => {
+  const handleSendProductEmail = async () => {
     hapticLight();
-    setLaunchEmailResult(null);
-    setLaunchEmailLoading(true);
+    setProductEmailResult(null);
+    setProductEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-launch-thread-email`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-trading-live-email`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send launch thread emails");
-      setLaunchEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send product announcement emails");
+      setProductEmailResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -664,15 +657,15 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send launch thread emails");
+      setError(e instanceof Error ? e.message : "Failed to send product announcement emails");
     } finally {
-      setLaunchEmailLoading(false);
+      setProductEmailLoading(false);
     }
   };
 
-  const handleSendLaunchEmailManual = async () => {
+  const handleSendProductEmailManual = async () => {
     hapticLight();
-    const raw = launchEmailInput
+    const raw = productEmailInput
       .split(/[\n,]+/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
@@ -680,17 +673,17 @@ export default function AdminPage() {
       setError("Paste one or more emails first.");
       return;
     }
-    setLaunchEmailResult(null);
-    setLaunchEmailLoading(true);
+    setProductEmailResult(null);
+    setProductEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-launch-thread-email-by-email`, {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-trading-live-email-by-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emails: raw }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send launch thread emails");
-      setLaunchEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send product announcement emails");
+      setProductEmailResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -699,9 +692,9 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send launch thread emails");
+      setError(e instanceof Error ? e.message : "Failed to send product announcement emails");
     } finally {
-      setLaunchEmailLoading(false);
+      setProductEmailLoading(false);
     }
   };
 
@@ -804,18 +797,18 @@ export default function AdminPage() {
             <div className="max-w-2xl">
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
                 <Sparkles className="h-3.5 w-3.5" />
-                Launch mode
+                Operations
               </div>
               <h1 className="font-heading text-[30px] leading-none tracking-[-0.04em] md:text-[42px]">Siren Admin</h1>
               <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                Campaign dispatch, waitlist operations, and premium readouts for audience momentum, app usage, and trading activity.
+                Waitlist, user metrics, platform volume, and product email dispatch in one place.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="rounded-2xl border px-4 py-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Launch thread</p>
-                <a href={LAUNCH_THREAD_URL} target="_blank" rel="noreferrer" className="font-heading text-sm hover:opacity-80 transition-opacity" style={{ color: "var(--text-1)" }}>
-                  View on X
+                <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Live app</p>
+                <a href={APP_PUBLIC_URL} target="_blank" rel="noreferrer" className="font-heading text-sm hover:opacity-80 transition-opacity" style={{ color: "var(--text-1)" }}>
+                  onsiren.xyz
                 </a>
               </div>
               <button
@@ -848,10 +841,10 @@ export default function AdminPage() {
                   Dashboard overview
                 </div>
                 <h2 className="font-heading text-2xl tracking-[-0.04em] md:text-[34px]" style={{ color: "var(--text-1)" }}>
-                  Premium pulse on usage, volume, and audience heat.
+                  Usage, volume, and waitlist at a glance.
                 </h2>
                 <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                  App usage, visitor momentum, and launch readiness in one view. Export-ready for quick team updates.
+                  Snapshot of signups, retention, and on-chain volume. Export the board as PNG for internal updates.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1110,10 +1103,10 @@ export default function AdminPage() {
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Waitlist + launch campaign
+                    Waitlist &amp; email
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Announce the official launch thread, keep failure capture tight, and move the queue forward.
+                    Search the queue, send access codes, and broadcast the current product announcement to opted-in emails.
                   </p>
                 </div>
                 <div className="relative">
@@ -1138,72 +1131,60 @@ export default function AdminPage() {
                     boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--text-1) 6%, transparent)",
                   }}
                 >
-                  <div className="grid grid-cols-1 lg:grid-cols-[0.95fr,1.05fr]">
-                    <div className="relative min-h-[280px]">
-                      <img src={LAUNCH_THREAD_IMAGE} alt={LAUNCH_THREAD_TITLE} className="h-full w-full object-cover" />
-                      <div className="absolute inset-0" style={{ background: IMAGE_OVERLAY_BG }} />
+                  <div className="p-5 md:p-6">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
+                      <Mail className="h-3.5 w-3.5" />
+                      Product announcement
                     </div>
-                    <div className="p-5 md:p-6">
-                      <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Current campaign
-                      </div>
-                      <h3 className="font-heading text-[28px] leading-[1.02] tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
-                        Official launch thread is live
-                      </h3>
-                      <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                        <span style={{ color: "var(--text-1)" }}>{LAUNCH_THREAD_TITLE}</span> is ready to push. The email tells the waitlist to read it, like it, retweet it, comment on it, and share it with friends.
-                      </p>
-                      <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-3)" }}>
-                        {LAUNCH_THREAD_PREVIEW}
-                      </p>
+                    <h3 className="font-heading text-2xl leading-tight tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+                      Trading live: prediction markets, deposits &amp; withdrawals
+                    </h3>
+                    <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
+                      Sends the HTML campaign that prediction trading is live on Siren, deposits and withdrawals work in-app, and early volume helps shape the product. Recipients must be on the waitlist with a valid email.
+                    </p>
+                    <ul className="mt-4 list-disc pl-5 font-body text-sm space-y-1" style={{ color: "var(--text-3)" }}>
+                      <li>Trade Kalshi-linked outcomes and memes in one terminal.</li>
+                      <li>Fund and cash out without leaving the app.</li>
+                      <li>Invite to stress-test flows and share feedback.</li>
+                    </ul>
 
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        {["Like it", "Retweet it", "Comment on it", "Share with friends"].map((item) => (
-                          <span key={item} className="rounded-full border px-3 py-2 text-[11px] font-body" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG, color: "var(--text-2)" }}>
-                            {item}
-                          </span>
-                        ))}
+                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Emails on file</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.contactable.toLocaleString()}</p>
                       </div>
-
-                      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                          <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Reach ready</p>
-                          <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.contactable.toLocaleString()}</p>
-                        </div>
-                        <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                          <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Codes used</p>
-                          <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.activated.toLocaleString()}</p>
-                        </div>
-                        <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                          <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Contest cue</p>
-                          <p className="mt-2 font-heading text-xl" style={{ color: "var(--accent)" }}>Soon</p>
-                        </div>
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Codes used</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.activated.toLocaleString()}</p>
                       </div>
-
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        <a
-                          href={LAUNCH_THREAD_URL}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em]"
-                          style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                        >
-                          Open thread
-                        </a>
-                        <button
-                          type="button"
-                          onClick={handleSendLaunchEmail}
-                          disabled={launchEmailLoading || waitlistRows.length === 0}
-                          className="flex items-center gap-2 rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                          style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
-                        >
-                          {launchEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
-                          {launchEmailLoading ? "Sending…" : "Send to all waitlist emails"}
-                        </button>
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Queue size</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistRows.length.toLocaleString()}</p>
                       </div>
-                      <InlineDispatchStatus result={launchEmailResult} label="Launch email result" />
                     </div>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <a
+                        href={APP_PUBLIC_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em]"
+                        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                      >
+                        Open terminal
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleSendProductEmail}
+                        disabled={productEmailLoading || waitlistRows.length === 0}
+                        className="flex items-center gap-2 rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
+                      >
+                        {productEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
+                        {productEmailLoading ? "Sending…" : "Send to all waitlist emails"}
+                      </button>
+                    </div>
+                    <InlineDispatchStatus result={productEmailResult} label="Announcement result" />
                   </div>
                 </div>
 
@@ -1213,31 +1194,31 @@ export default function AdminPage() {
                       Manual resend
                     </p>
                     <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Retry the missed launch emails
+                      Retry selected addresses
                     </h3>
                     <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Paste failed or skipped addresses here to rerun just the launch announcement.
+                      Paste emails that must be on the waitlist. Sends the same trading-live announcement to matches only.
                     </p>
                     <textarea
-                      value={launchEmailInput}
-                      onChange={(e) => setLaunchEmailInput(e.target.value)}
+                      value={productEmailInput}
+                      onChange={(e) => setProductEmailInput(e.target.value)}
                       className="mt-4 min-h-[132px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
                       style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
-                      placeholder="lawrencekelvin001@gmail.com&#10;odewumiprecious@gmail.com&#10;kloop058@gmail.com&#10;eokorie1911@gmail.com"
+                      placeholder={"one@example.com\ntwo@example.com"}
                     />
                     <button
                       type="button"
-                      onClick={handleSendLaunchEmailManual}
-                      disabled={launchEmailLoading}
+                      onClick={handleSendProductEmailManual}
+                      disabled={productEmailLoading}
                       className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
                       style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
                     >
-                      {launchEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <TrendingUp className="h-4 w-4" />}
+                      {productEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <TrendingUp className="h-4 w-4" />}
                       Send to pasted emails
                     </button>
                   </div>
 
-                  <DispatchSummary result={launchEmailResult} accentLabel="Launch thread email" />
+                  <DispatchSummary result={productEmailResult} accentLabel="Trading live email" />
 
                   <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
                     <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>

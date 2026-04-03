@@ -503,6 +503,15 @@ export function UnifiedBuyPanel() {
     predictionEligibility?.reason ?? "Prediction market trading is not available in your jurisdiction right now.";
   const selectedTokenPriceUsd =
     typeof selectedToken?.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
+  const predictionMarkUsd =
+    isPredictionToken && selectedToken
+      ? typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) && selectedToken.price > 0
+        ? selectedToken.price
+        : selectedToken.marketProbability != null
+          ? Math.min(1, Math.max(0, selectedToken.marketProbability / 100))
+          : null
+      : null;
+  const effectiveSellPriceUsd = isPredictionToken ? predictionMarkUsd ?? selectedTokenPriceUsd : selectedTokenPriceUsd;
   const tradeNotionalUsd = parsedBuySolAmount != null ? parsedBuySolAmount : null;
   const estimatedContracts =
     selectedMarketPriceUsd && tradeNotionalUsd != null && tradeNotionalUsd > 0
@@ -519,7 +528,9 @@ export function UnifiedBuyPanel() {
   const tokenBuyMinReceive =
     tokenBuyApproxReceive != null ? tokenBuyApproxReceive * (1 - slippageBps / 10_000) : null;
   const tokenSellApproxUsd =
-    sellMode && parsedSellTokenAmount != null && selectedTokenPriceUsd != null ? parsedSellTokenAmount * selectedTokenPriceUsd : null;
+    sellMode && parsedSellTokenAmount != null && effectiveSellPriceUsd != null
+      ? parsedSellTokenAmount * effectiveSellPriceUsd
+      : null;
   const tokenSellMinReceiveUsd =
     tokenSellApproxUsd != null ? tokenSellApproxUsd * (1 - slippageBps / 10_000) : null;
   const tokenRouteLabel = isPredictionToken ? "DFlow" : isBagsMint(selectedToken?.mint) ? "Bags" : "Jupiter";
@@ -547,6 +558,14 @@ export function UnifiedBuyPanel() {
     let cancelled = false;
     async function run() {
       if (!selectedToken) return;
+      if (selectedToken.assetType === "prediction") {
+        const ok =
+          (typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) && selectedToken.price > 0) ||
+          (selectedToken.marketProbability != null && selectedToken.marketProbability > 0);
+        setTokenPriceFetchState(ok ? "ready" : "error");
+        setTokenPriceFetchReason(ok ? null : "Add a mark price from your position.");
+        return;
+      }
       // Fetch price/name on-demand if we don't have a usable USD price yet.
       const needsPrice = selectedToken.price == null || !Number.isFinite(selectedToken.price);
       const needsNameOrSymbol =
@@ -1716,21 +1735,25 @@ export function UnifiedBuyPanel() {
                         )}
                       </div>
                     )}
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
-                        {isPredictionToken ? "DFlow async" : "MEV protected"}
-                      </span>
-                      <span className="text-[10px] text-[var(--text-3)]">Slippage:</span>
-                      {[100, 200, 500].map((bps) => (
-                        <button
-                          key={bps}
-                          type="button"
-                          onClick={() => { hapticLight(); setSlippageBps(bps); }}
-                          className={`text-[10px] font-body px-2 py-0.5 rounded transition-colors ${slippageBps === bps ? "bg-[var(--accent)] text-[var(--accent-text)]" : "bg-[var(--bg-surface)] text-[var(--text-2)] hover:text-[var(--text-1)]"}`}
-                        >
-                          {(bps / 100).toFixed(1)}%
-                        </button>
-                      ))}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {!isPredictionToken && (
+                        <>
+                          <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
+                            MEV protected
+                          </span>
+                          <span className="text-[10px] text-[var(--text-3)]">Slippage:</span>
+                          {[100, 200, 500].map((bps) => (
+                            <button
+                              key={bps}
+                              type="button"
+                              onClick={() => { hapticLight(); setSlippageBps(bps); }}
+                              className={`text-[10px] font-body px-2 py-0.5 rounded transition-colors ${slippageBps === bps ? "bg-[var(--accent)] text-[var(--accent-text)]" : "bg-[var(--bg-surface)] text-[var(--text-2)] hover:text-[var(--text-1)]"}`}
+                            >
+                              {(bps / 100).toFixed(1)}%
+                            </button>
+                          ))}
+                        </>
+                      )}
                     </div>
                     {!sellMode ? (
                       <>
@@ -1856,39 +1879,63 @@ export function UnifiedBuyPanel() {
                           />
                         </div>
                         <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>Sell preview</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Tokens in</p>
-                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                {parsedSellTokenAmount != null ? `${formatTokenAmount(parsedSellTokenAmount, 4)} ${tokenDisplaySymbol}` : "—"}
-                              </p>
-                            </div>
-                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated receive</p>
-                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                {tokenSellApproxUsd != null ? `${formatTokenAmount(tokenSellApproxUsd, 2)} USDC` : "—"}
-                              </p>
-                              <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
-                                {tokenSellApproxUsd != null ? formatUsd(tokenSellApproxUsd, 2) : "—"}
-                              </p>
-                            </div>
-                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Min receive @ slippage</p>
-                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                {tokenSellMinReceiveUsd != null ? `${formatTokenAmount(tokenSellMinReceiveUsd, 2)} USDC` : "—"}
-                              </p>
-                            </div>
-                            <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Route</p>
-                              <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--accent)" }}>
-                                {tokenRouteLabel}
-                              </p>
-                            </div>
-                          </div>
-                          <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                            Approximate preview from the latest token price. Final route quote is built at submit time.
+                          <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>
+                            {isPredictionToken ? "Payout preview" : "Sell preview"}
                           </p>
+                          {isPredictionToken ? (
+                            <div className="space-y-2">
+                              <div className="flex justify-between gap-3 font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                <span style={{ color: "var(--text-3)" }}>Selling</span>
+                                <span className="font-mono tabular-nums">
+                                  {parsedSellTokenAmount != null ? `${formatTokenAmount(parsedSellTokenAmount, 2)} contracts` : "—"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-3 font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                <span style={{ color: "var(--text-3)" }}>Est. USDC (at mark)</span>
+                                <span className="font-mono tabular-nums font-semibold" style={{ color: "var(--accent-bags)" }}>
+                                  {tokenSellApproxUsd != null ? formatUsd(tokenSellApproxUsd, 2) : "—"}
+                                </span>
+                              </div>
+                              <p className="text-[10px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                                Mark is the live YES price. Final fill may differ slightly when the transaction lands.
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Tokens in</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {parsedSellTokenAmount != null ? `${formatTokenAmount(parsedSellTokenAmount, 4)} ${tokenDisplaySymbol}` : "—"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated receive</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {tokenSellApproxUsd != null ? `${formatTokenAmount(tokenSellApproxUsd, 2)} USDC` : "—"}
+                                  </p>
+                                  <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
+                                    {tokenSellApproxUsd != null ? formatUsd(tokenSellApproxUsd, 2) : "—"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Min receive @ slippage</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {tokenSellMinReceiveUsd != null ? `${formatTokenAmount(tokenSellMinReceiveUsd, 2)} USDC` : "—"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Route</p>
+                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--accent)" }}>
+                                    {tokenRouteLabel}
+                                  </p>
+                                </div>
+                              </div>
+                              <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                                Approximate preview from the latest token price. Final route quote is built at submit time.
+                              </p>
+                            </>
+                          )}
                         </div>
                         <button
                           onClick={executeSwap}
@@ -1901,20 +1948,27 @@ export function UnifiedBuyPanel() {
                               <Loader2 className="w-4 h-4 animate-spin" /> Selling...
                             </>
                           ) : (
-                            `${isPredictionToken ? "Close" : "Sell"} ${tokenDisplayName} → USDC`
+                            isPredictionToken ? "Sell position for USDC" : `Sell ${tokenDisplayName} → USDC`
                           )}
                         </button>
                       </>
                     )}
                     <div className="mt-3 md:mt-4 pt-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-                      <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">{isPredictionToken ? "Marking guide" : "24h price sketch"}</p>
+                      <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">{isPredictionToken ? (sellMode ? "Note" : "Marking guide") : "24h price sketch"}</p>
                       {isPredictionToken ? (
+                        sellMode ? (
+                          <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            You are closing part or all of this position. USDC returns to your Solana wallet after confirmation.
+                          </p>
+                        ) : (
                         <div className="rounded-lg border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
                           <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Prediction positions are marked from the live YES probability. Closing routes the outcome token back to Solana USDC through DFlow.
+                            Add size from the market panel. Prices follow live YES probability; closes route back to USDC on Solana.
                           </p>
                         </div>
-                      ) : (
+                        )
+                      )
+                      : (
                         <div className="h-20 md:h-28 rounded-lg overflow-hidden" style={{ background: "var(--bg-surface)" }}>
                           <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={MOCK_CHART_DATA}>
@@ -1934,6 +1988,7 @@ export function UnifiedBuyPanel() {
                       <CopyCAButton mint={selectedToken.mint} />
                     </div>
                   </div>
+                  {!(isPredictionToken && sellMode) && (
                   <div className="rounded-xl border p-4 flex flex-col" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
                     <p className="text-[var(--text-secondary)] text-xs uppercase mb-3">{isPredictionToken ? "Position info" : "Token info"}</p>
                     <div className="space-y-2 text-sm">
@@ -2029,6 +2084,7 @@ export function UnifiedBuyPanel() {
                         : "Chart is illustrative. Execute swaps via Jupiter; confirm in your wallet."}
                     </p>
                   </div>
+                  )}
                   {!isPredictionToken && (
                     <>
                       <TokenSignalSection

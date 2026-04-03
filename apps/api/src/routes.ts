@@ -9,7 +9,12 @@ import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
-import { sendWelcomeWithAccessCode, sendLaunchThreadEmail, canSendEmail } from "./services/email.js";
+import {
+  sendWelcomeWithAccessCode,
+  sendLaunchThreadEmail,
+  sendTradingLiveAnnouncementEmail,
+  canSendEmail,
+} from "./services/email.js";
 import { getInMemorySignalFeedSnapshot, getSignalFeedSnapshot } from "./services/signalState.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
@@ -621,6 +626,109 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to send launch thread emails (manual)" });
+    }
+  });
+
+  /** Admin: send trading-live product announcement to all waitlist emails. */
+  app.post("/api/admin/waitlist/send-trading-live-email", async (_req, reply) => {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase
+        .from("waitlist_signups")
+        .select("email,name")
+        .not("email", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(1000);
+      if (listError) return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      const entries = rows ?? [];
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+      for (const row of entries) {
+        if (!row.email?.trim()) {
+          skipped++;
+          skippedEmails.push(row.email || "");
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped++;
+          skippedEmails.push(row.email);
+          continue;
+        }
+        const result = await sendTradingLiveAnnouncementEmail({ to: row.email, name: row.name });
+        if (result.ok) sent++;
+        else {
+          failed++;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send trading-live email");
+        }
+      }
+      return reply.send({ success: true, sent, failed, skipped, total: entries.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send trading-live emails" });
+    }
+  });
+
+  /** Admin: send trading-live announcement to pasted emails (must exist in waitlist). */
+  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-trading-live-email-by-email", async (req, reply) => {
+    try {
+      const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
+      const normalized = Array.from(
+        new Set(
+          raw
+            .map((e) => (typeof e === "string" ? e.trim().toLowerCase() : ""))
+            .filter((e) => e.length > 0)
+        )
+      );
+      if (normalized.length === 0) {
+        return reply.status(400).send({ success: false, error: "No valid emails provided" });
+      }
+
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase.from("waitlist_signups").select("email,name").in("email", normalized);
+      if (listError) {
+        return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      }
+
+      const byEmail = new Map<string, (typeof rows)[number]>();
+      for (const row of rows ?? []) {
+        if (row.email) byEmail.set(row.email.toLowerCase(), row as any);
+      }
+
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+
+      for (const email of normalized) {
+        const row = byEmail.get(email);
+        if (!row || !row.email?.trim()) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+        const result = await sendTradingLiveAnnouncementEmail({ to: row.email, name: row.name });
+        if (result.ok) sent++;
+        else {
+          failed++;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send trading-live email (manual)");
+        }
+      }
+
+      return reply.send({ success: true, sent, failed, skipped, total: normalized.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send trading-live emails (manual)" });
     }
   });
 

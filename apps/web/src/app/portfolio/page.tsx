@@ -8,7 +8,7 @@ import { PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@so
 import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
-  ChevronDown, ArrowUp, ArrowDown, CreditCard, Pencil, ArrowRightLeft, RefreshCw,
+  ChevronDown, ArrowUp, ArrowDown, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
@@ -22,6 +22,7 @@ import {
   buildProofRedirectUri, encodeProofSignature,
 } from "@/lib/dflowProof";
 import { API_URL } from "@/lib/apiUrl";
+import { TradePnLCard } from "@/components/TradePnLCard";
 
 const LAMPORTS_PER_SOL = 1e9;
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -343,12 +344,30 @@ function TokenRow({ symbol, balance, usdValue }: {
 
 function PositionRow({ position: p }: { position: Position }) {
   const [expanded, setExpanded] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const { setSelectedToken } = useSirenStore();
+  const { publicKey } = useSirenWallet();
+  const walletKey = publicKey?.toBase58() ?? null;
+
+  const { data: shareProfile } = useQuery({
+    queryKey: ["user-profile", walletKey],
+    queryFn: async () => {
+      if (!walletKey) return null;
+      const res = await fetch(`${API_URL}/api/users/profile?wallet=${encodeURIComponent(walletKey)}`, { credentials: "omit" });
+      if (!res.ok) return null;
+      const payload = await res.json().catch(() => ({}));
+      return (payload?.data ?? null) as { username?: string; display_name?: string } | null;
+    },
+    enabled: !!walletKey && shareOpen,
+    staleTime: 60_000,
+  });
+
   const settled = p.status === "settled";
   const pnl = p.pnlUsd ?? 0;
   const pnlPct = p.pnlPct ?? 0;
   const shares = p.quantity ?? p.balance ?? 0;
   const prob = p.probability ?? 0;
+  const probPct = prob > 1 ? prob : prob * 100;
   const entry = p.entryPrice ?? 0;
   const current = p.currentPrice ?? (prob > 1 ? prob / 100 : prob);
   const kalshiUrl = p.kalshi_url || `https://kalshi.com/markets/${p.ticker?.toLowerCase()}`;
@@ -357,6 +376,9 @@ function PositionRow({ position: p }: { position: Position }) {
     e.stopPropagation();
     hapticLight();
     if (!p.mint) return;
+    const sideLower = p.side?.toLowerCase();
+    const marketSide: "yes" | "no" | undefined =
+      sideLower === "yes" || sideLower === "no" ? sideLower : undefined;
     setSelectedToken(
       {
         mint: p.mint,
@@ -365,10 +387,24 @@ function PositionRow({ position: p }: { position: Position }) {
         price: current,
         assetType: "prediction",
         marketTicker: p.ticker,
+        marketTitle: p.title,
+        marketSide,
+        marketProbability: probPct,
       },
       { openForSell: true },
     );
   };
+
+  const handleSharePnL = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    hapticLight();
+    setShareOpen(true);
+  };
+
+  const shareHandle =
+    shareProfile?.username?.trim() ||
+    shareProfile?.display_name?.trim() ||
+    (walletKey ? `${walletKey.slice(0, 4)}…${walletKey.slice(-4)}` : null);
 
   return (
     <div
@@ -414,7 +450,7 @@ function PositionRow({ position: p }: { position: Position }) {
         style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
         {entry > 0 && <span>Entry ${fmtUsd(entry)}</span>}
         {current > 0 && <span>{settled ? "Final" : "Current"} ${fmtUsd(current)}</span>}
-        <span>Prob {prob > 1 ? prob.toFixed(0) : (prob * 100).toFixed(0)}%</span>
+        <span>Prob {probPct.toFixed(0)}%</span>
       </div>
 
       {expanded && (
@@ -429,6 +465,15 @@ function PositionRow({ position: p }: { position: Position }) {
           >
             View on Kalshi ↗
           </a>
+          <button
+            type="button"
+            onClick={handleSharePnL}
+            className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
+            style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+          >
+            <Share2 className="h-3 w-3" />
+            Share PnL
+          </button>
           {!settled && p.mint && (
             <button
               type="button"
@@ -436,12 +481,50 @@ function PositionRow({ position: p }: { position: Position }) {
               className="rounded-md px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
               style={{ background: "rgba(239,68,68,0.15)", color: "var(--down)" }}
             >
-              Sell Position
+              Sell
             </button>
           )}
           <span className="font-mono text-[10px] self-center" style={{ color: "var(--text-3)" }}>
             {p.ticker}
           </span>
+        </div>
+      )}
+
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)" }}
+          onClick={() => setShareOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="relative max-h-[90vh] overflow-y-auto rounded-2xl border p-5 max-w-md w-full"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-pnl-title"
+          >
+            <h3 id="share-pnl-title" className="font-heading text-base font-semibold mb-4" style={{ color: "var(--text-1)" }}>
+              Share position
+            </h3>
+            <TradePnLCard
+              token={{ name: p.title || p.ticker, symbol: p.ticker }}
+              profitUsd={pnl}
+              percent={pnlPct}
+              kalshiMarket={`${p.side.toUpperCase()} · ${p.title || p.ticker}`}
+              wallet={walletKey}
+              displayName={shareHandle}
+            />
+            <button
+              type="button"
+              onClick={() => setShareOpen(false)}
+              className="mt-4 w-full rounded-lg border py-2.5 font-heading text-sm"
+              style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>
