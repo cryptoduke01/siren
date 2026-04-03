@@ -41,15 +41,19 @@ function VelocityBadge({ v }: { v: number }) {
   );
 }
 
-function SourceDot({ source }: { source?: string }) {
-  const bg = source === "polymarket" ? "#6B3FDB" : "#00B2FF";
-  const label = source === "polymarket" ? "PM" : "K";
+function SourceBadge({ source }: { source?: string }) {
+  if (source === "polymarket") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(107,63,219,0.15)" }}>
+        <img src="https://polymarket.com/icons/favicon-32x32.png" alt="" className="h-3 w-3 rounded-sm" />
+        <span className="font-body text-[9px] font-bold" style={{ color: "#9B7FE6" }}>Poly</span>
+      </span>
+    );
+  }
   return (
-    <span
-      className="inline-flex items-center justify-center rounded-[4px] px-1.5 py-0.5 font-body text-[9px] font-bold uppercase tracking-wider"
-      style={{ background: bg, color: "#fff" }}
-    >
-      {label}
+    <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(0,178,255,0.12)" }}>
+      <img src="https://kalshi.com/favicon.ico" alt="" className="h-3 w-3 rounded-sm" />
+      <span className="font-body text-[9px] font-bold" style={{ color: "#00B2FF" }}>Kalshi</span>
     </span>
   );
 }
@@ -303,7 +307,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   }}
                 >
                   <div className="flex items-center gap-1.5">
-                    <SourceDot source={sig.source} />
+                    <SourceBadge source={sig.source} />
                     <span
                       className="font-mono text-[11px] font-bold tabular-nums"
                       style={{ color: sig.delta >= 0 ? "var(--up)" : "var(--down)" }}
@@ -368,7 +372,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <SourceDot source={m.source} />
+                        <SourceBadge source={m.source} />
                         {isHot && (
                           <span className="font-body text-[9px] font-bold uppercase" style={{ color: "var(--up)" }}>
                             MOVING

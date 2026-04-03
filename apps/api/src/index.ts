@@ -20,8 +20,12 @@ const fastify = Fastify({
 
 async function main() {
   await fastify.register(fastifyCors, {
-    origin: true, // Allow localhost:3000 and any dev origin
-    methods: ["GET", "POST", "OPTIONS"],
+    origin: isProd
+      ? ["https://onsiren.xyz", "https://www.onsiren.xyz"]
+      : true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
   });
   await fastify.register(fastifyWebsocket);
 

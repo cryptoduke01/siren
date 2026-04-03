@@ -1,13 +1,7 @@
 "use client";
 
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-  TorusWalletAdapter,
-  CoinbaseWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
-import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
+import { TorusWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { clusterApiUrl } from "@solana/web3.js";
 import { useMemo } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
@@ -28,13 +22,7 @@ const rpcWsUrl = rpcUrl
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
   const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new BackpackWalletAdapter(),
-      new SolflareWalletAdapter(),
-      new CoinbaseWalletAdapter(),
-      new TorusWalletAdapter(),
-    ],
+    () => [new TorusWalletAdapter()],
     []
   );
 
