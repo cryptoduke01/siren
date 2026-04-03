@@ -1,7 +1,8 @@
 import { Resend } from "resend";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-const FROM = process.env.SIREN_EMAIL_FROM || "Siren <onboarding@resend.dev>";
+/** Display name is the first part (e.g. Duke). Use a verified domain in production. */
+const FROM = process.env.SIREN_EMAIL_FROM || "Duke <onboarding@resend.dev>";
 const APP_URL = (process.env.SIREN_APP_URL || "https://onsiren.xyz").replace(/\/+$/, "");
 const DOCS_URL = "https://docs.onsiren.xyz";
 const X_URL = "https://x.com/sirentracker";
@@ -372,7 +373,7 @@ export async function sendLaunchThreadEmail(params: {
   });
 }
 
-/** Product announcement: trading, deposits & withdrawals live — replaces legacy launch-thread blast for new campaigns. */
+/** Product announcement: trading, deposits & withdrawals live (replaces legacy launch-thread blast for new campaigns). */
 export async function sendTradingLiveAnnouncementEmail(params: {
   to: string;
   name?: string | null;
@@ -381,61 +382,47 @@ export async function sendTradingLiveAnnouncementEmail(params: {
 
   const greeting = params.name ? `Hi ${params.name}` : "Hi there";
   const logoUrl = `${APP_URL}/brand/mark.svg`;
+  const subject = "Siren: Prediction Trading, Deposits & Withdrawals Are Live";
 
   const html = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Siren is live — trade, fund, withdraw</title>
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Siren Is Live. Trade, Fund, And Withdraw In One Place.</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 </head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0f;color:#e8e8ec;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0a0a0f;">
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Trade prediction markets, move USDC, and surface meme tokens. Thread contest coming soon. Open ${APP_URL.replace(/^https?:\/\//, "")} .
+  </div>
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#eef1ee" style="background-color:#eef1ee;">
     <tr>
-      <td align="center" style="padding:40px 20px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;border:1px solid #1f2420;border-radius:16px;background:#111318;overflow:hidden;">
+      <td align="center" style="padding:28px 14px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffff" style="max-width:600px;border-radius:24px;overflow:hidden;border:1px solid #d8e3dc;background-color:#ffffff;">
           <tr>
-            <td style="padding:0;border-top:3px solid #00ff85;">
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:linear-gradient(180deg,#12151a 0%,#0e1014 100%);">
+            <td style="padding:0;border-top:4px solid #00c76a;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f7fdf9" style="background-color:#f7fdf9;border-bottom:1px solid #d8e3dc;">
                 <tr>
-                  <td style="padding:36px 32px 28px;">
-                    <img src="${logoUrl}" alt="Siren" width="112" height="30" style="display:block;height:30px;width:auto;" />
-                    <p style="margin:28px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#00ff85;font-weight:700;">
+                  <td style="padding:32px 28px 26px;">
+                    <img src="${logoUrl}" alt="Siren" width="112" height="30" style="display:block;height:30px;width:auto;border:0;" />
+                    <p style="margin:22px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#087443;font-weight:800;">
                       Now live
                     </p>
-                    <h1 style="margin:12px 0 0;font-size:26px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#f4f4f6;">
-                      Prediction markets, deposits & withdrawals — all in one terminal.
+                    <h1 style="margin:10px 0 0;font-size:28px;line-height:1.15;font-weight:800;letter-spacing:-0.03em;color:#0f172a;">
+                      Prediction Markets, Deposits, And Withdrawals. All In One Terminal.
                     </h1>
-                    <p style="margin:18px 0 0;font-size:16px;line-height:1.65;color:#a1a1aa;">
-                      ${greeting}, Siren is open for real: trade Kalshi and Polymarket-style events, surface meme tokens off the signal, and move money in and out without leaving the app.
+                    <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#334155;">
+                      ${greeting}, this is the update you have been waiting for. <strong style="color:#0f172a;">Siren is open for real trading.</strong> You can trade Kalshi-linked prediction markets, follow signals into Solana meme tokens, and move funds in and out without bouncing between apps.
                     </p>
-                    <p style="margin:18px 0 0;font-size:16px;line-height:1.65;color:#a1a1aa;">
-                      This is the moment to stress-test everything with us — push volume, try deposits and withdrawals, and put your opinions on-chain before the crowd catches up. Early movers help shape what we ship next.
+                    <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#334155;">
+                      Fund with card or crypto, withdraw when you are done, and share a PnL card when you are proud of the call. We want this flow hammered on real volume, so we can harden routing, polish the terminal, and keep shipping what you actually use.
                     </p>
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:28px 0 0;">
-                      <tr>
-                        <td style="background:#0c0f12;border:1px solid #252a32;border-radius:12px;padding:20px 22px;">
-                          <p style="margin:0 0 10px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#71717a;">What to try first</p>
-                          <ul style="margin:0;padding-left:20px;font-size:15px;line-height:1.7;color:#d4d4d8;">
-                            <li>Open a position on a live prediction market</li>
-                            <li>Fund your wallet (card or crypto) and withdraw when you are done</li>
-                            <li>Share your PnL card — bragging rights encouraged</li>
-                          </ul>
-                        </td>
-                      </tr>
-                    </table>
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:28px 0 0;">
-                      <tr>
-                        <td align="center">
-                          <a href="${APP_URL}" style="display:inline-block;background:#00ff85;color:#050508;font-size:16px;font-weight:800;text-decoration:none;padding:16px 36px;border-radius:12px;letter-spacing:0.02em;">
-                            Open Siren
-                          </a>
-                        </td>
-                      </tr>
-                    </table>
-                    <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#71717a;">
-                      Questions? Reply to this email or find us on <a href="${X_URL}" style="color:#00ff85;text-decoration:none;">X</a>. Docs live at <a href="${DOCS_URL}" style="color:#00ff85;text-decoration:none;">docs.onsiren.xyz</a>.
+                    <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#334155;">
+                      If you care about being early, this is the window: help us break the charts, file rough edges, and tell us what feels broken. Your feedback goes straight into the next release.
                     </p>
                   </td>
                 </tr>
@@ -443,9 +430,70 @@ export async function sendTradingLiveAnnouncementEmail(params: {
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 32px 28px;border-top:1px solid #1f2420;">
-              <p style="margin:0;font-size:12px;color:#52525b;">
+            <td style="padding:24px 28px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f0fdf4" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:18px;">
+                <tr>
+                  <td style="padding:20px 22px;">
+                    <p style="margin:0 0 10px;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#047857;font-weight:800;">
+                      Thread contest (coming soon)
+                    </p>
+                    <p style="margin:0;font-size:16px;line-height:1.65;color:#14532d;">
+                      We are lining up a <strong>thread contest</strong> for the community: sharp takes, memes, and real trades on display. Full rules and prizes will drop on <a href="${X_URL}" style="color:#0f172a;font-weight:700;">X</a> soon. Follow <a href="${X_URL}" style="color:#0f172a;font-weight:700;">@sirentracker</a> so you do not miss the start signal.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 20px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f8fafc" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;">
+                <tr>
+                  <td style="padding:20px 22px;">
+                    <p style="margin:0 0 12px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#64748b;font-weight:800;">
+                      Try this first
+                    </p>
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#0f172a;">
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Open or add to a prediction position you believe in.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#0f172a;">
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">2.</span> Run a deposit, then a withdrawal, so you know the rails feel right.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-size:15px;line-height:1.7;color:#0f172a;">
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Hit a meme token off the signal and share your PnL card if it prints.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:4px 28px 28px;" align="center">
+              <a href="${APP_URL}" style="display:inline-block;background:#00c76a;color:#ffffff;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;">
+                Open Siren
+              </a>
+              <p style="margin:20px 0 0;font-size:14px;line-height:1.6;color:#64748b;">
+                Docs: <a href="${DOCS_URL}" style="color:#0f172a;font-weight:600;">docs.onsiren.xyz</a>
+                &nbsp;·&nbsp;
+                Questions? Reply to this email.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#fbfefc" style="padding:18px 28px 22px;border-top:1px solid #e6efe8;background-color:#fbfefc;">
+              <p style="margin:0 0 8px;font-size:12px;line-height:1.5;color:#64748b;">
                 You are receiving this because you joined the Siren waitlist or shared your email with us.
+              </p>
+              <p style="margin:0;font-size:12px;color:#94a3b8;">
+                (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
               </p>
             </td>
           </tr>
@@ -458,16 +506,20 @@ export async function sendTradingLiveAnnouncementEmail(params: {
 `.trim();
 
   const text = [
+    subject,
+    "",
     `${greeting},`,
-    "Siren is live: prediction market trading, deposits, and withdrawals are available in one terminal.",
-    "Trade events, fund your wallet, withdraw when you are done — and help us break volume while rewards for sharp takes are on the roadmap.",
-    `Open the app: ${APP_URL}`,
+    "Siren is live for real: prediction market trading, deposits, and withdrawals in one terminal. Trade Kalshi-linked markets, follow signals into Solana meme tokens, and move funds without leaving the app.",
+    "We want you to stress test deposits, withdrawals, and volume so we can harden the product. Early feedback shapes what ships next.",
+    "Thread contest: coming soon. Follow @sirentracker on X for rules and prizes.",
+    "",
+    `Open Siren: ${APP_URL}`,
     `Docs: ${DOCS_URL}`,
-  ].join("\n\n");
+  ].join("\n");
 
   return sendEmailWithRetry({
     to: params.to,
-    subject: "Siren: prediction trading, deposits & withdrawals are live",
+    subject,
     html,
     text,
   });
