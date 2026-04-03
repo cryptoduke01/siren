@@ -1,4 +1,5 @@
 import type { FastifyRequest } from "fastify";
+import type { SignalFeedSnapshot } from "@siren/shared";
 import { getMarketsWithVelocity } from "./services/markets.js";
 
 interface SocketLike {
@@ -32,5 +33,16 @@ export function broadcastMarkets(data: unknown) {
   const payload = JSON.stringify({ type: "markets", data });
   clients.forEach((client) => {
     if (client.readyState === 1) client.send(payload);
+  });
+}
+
+/** Push latest signal feed to all WS clients (matches `useSignals` message types). */
+export function broadcastSignalSnapshot(snapshot: SignalFeedSnapshot): void {
+  const signalsPayload = JSON.stringify({ type: "signals", data: snapshot.signals });
+  const statusPayload = JSON.stringify({ type: "signal-status", data: snapshot.status });
+  clients.forEach((client) => {
+    if (client.readyState !== 1) return;
+    client.send(signalsPayload);
+    client.send(statusPayload);
   });
 }
