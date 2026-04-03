@@ -301,11 +301,7 @@ function SwapPanel() {
         </p>
       </div>
 
-      {quoteData && parseFloat(quoteData.priceImpactPct) > 1 && (
-        <p className="text-center font-body text-[10px]" style={{ color: "var(--down)" }}>
-          Price impact: {parseFloat(quoteData.priceImpactPct).toFixed(2)}%
-        </p>
-      )}
+      
 
       <button
         type="button"
