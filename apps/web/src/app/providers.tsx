@@ -12,10 +12,18 @@ import { clusterApiUrl } from "@solana/web3.js";
 import { useMemo } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 import { PrivyWalletBridge } from "@/contexts/SirenWalletContext";
 
 const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl("mainnet-beta");
+const rpcUrl =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+  process.env.NEXT_PUBLIC_RPC_URL ||
+  clusterApiUrl("mainnet-beta");
+
+const rpcWsUrl = rpcUrl
+  .replace("https://", "wss://")
+  .replace("http://", "ws://");
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
@@ -27,6 +35,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new CoinbaseWalletAdapter(),
       new TorusWalletAdapter(),
     ],
+    []
+  );
+
+  const solanaRpcs = useMemo(
+    () => ({
+      "solana:mainnet": {
+        rpc: createSolanaRpc(rpcUrl),
+        rpcSubscriptions: createSolanaRpcSubscriptions(rpcWsUrl),
+      },
+    }),
     []
   );
 
@@ -47,6 +65,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           appearance: {
             walletChainType: "solana-only",
             showWalletLoginFirst: false,
+          },
+          solana: {
+            rpcs: solanaRpcs,
           },
           embeddedWallets: {
             solana: {
