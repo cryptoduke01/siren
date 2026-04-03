@@ -3,9 +3,8 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PredictionSignal, SignalSourceStatus } from "@siren/shared";
+import { API_URL, WS_URL } from "@/lib/apiUrl";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4000/ws";
 const QUERY_KEY = ["signals-feed"] as const;
 
 export interface SignalFeedResponse {

@@ -3,8 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Session, Provider } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 
 type AuthContextType = {
   session: Session | null;

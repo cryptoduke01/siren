@@ -8,8 +8,7 @@ import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { Footer } from "@/components/Footer";
 import { useThemeStore } from "@/store/useThemeStore";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 
 export default function WaitlistPage() {
   const [name, setName] = useState("");

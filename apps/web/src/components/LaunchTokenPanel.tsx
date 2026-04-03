@@ -8,7 +8,7 @@ import { VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { Loader2, ChevronDown, ChevronUp, Rocket } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 const LAMPORTS_PER_SOL = 1e9;
 
 type Step = "form" | "creating" | "config" | "launching" | "done" | "error";

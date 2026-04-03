@@ -16,6 +16,7 @@ import {
 import { hapticLight } from "@/lib/haptics";
 import { PasscodeDigits } from "@/components/PasscodeDigits";
 import { AdminNav } from "@/components/AdminNav";
+import { API_URL } from "@/lib/apiUrl";
 
 type WaitlistRow = {
   id: string;
@@ -38,7 +39,6 @@ type AppUserRow = {
   metadata: Record<string, unknown> | null;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
 const STORAGE_KEY = "siren-admin-pass-ok";
 

@@ -14,7 +14,7 @@ import { TradePnLCard, type TradePnLToken } from "./TradePnLCard";
 import { useToastStore } from "@/store/useToastStore";
 import { hapticLight } from "@/lib/haptics";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const LAMPORTS_PER_SOL = 1e9;
 
@@ -259,7 +259,7 @@ export function UnifiedBuyPanel() {
       setTokenPriceFetchState("loading");
       setTokenPriceFetchReason(null);
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+        const apiUrl = API_URL;
         const res = await fetch(`${apiUrl}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
         const j = await res.json();
         if (!res.ok || !j?.data) {
@@ -456,7 +456,7 @@ export function UnifiedBuyPanel() {
             window.localStorage.setItem(key, JSON.stringify(entries));
 
             // Also log to API for admin volume stats
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+            const apiUrl = API_URL;
             fetch(`${apiUrl}/api/volume/log`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -508,7 +508,7 @@ export function UnifiedBuyPanel() {
           // Note: requires a Supabase table to exist (see docs).
           try {
             const tokenAmountForLog = isSell ? amountNum : tokenAmountApprox ?? null;
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+            const apiUrl = API_URL;
             fetch(`${apiUrl}/api/trades/log`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -535,7 +535,7 @@ export function UnifiedBuyPanel() {
       // Show screenshot-matching Trade PnL card after successful BUY (for quick testing).
       if (!isSell && tokenAmountForPnL != null && boughtUsdForPnL != null && tokenAmountForPnL > 0 && boughtUsdForPnL > 0) {
         try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+          const apiUrl = API_URL;
           const res = await fetch(`${apiUrl}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
           const j = await res.json();
           const currentPriceUsd = typeof j?.data?.priceUsd === "number" && Number.isFinite(j.data.priceUsd) ? j.data.priceUsd : null;

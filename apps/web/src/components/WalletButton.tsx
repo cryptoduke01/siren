@@ -6,6 +6,7 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { hapticLight } from "@/lib/haptics";
 import { ChevronDown, Copy, LogOut, KeyRound, EyeOff } from "lucide-react";
+import { API_URL } from "@/lib/apiUrl";
 
 export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
   const { connected, publicKey, disconnect, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
@@ -23,7 +24,7 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
 
   useEffect(() => {
     if (!connected || !publicKey) return;
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    const apiUrl = API_URL;
     fetch(`${apiUrl}/api/users/track`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

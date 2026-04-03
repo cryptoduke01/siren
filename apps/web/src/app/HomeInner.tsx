@@ -14,7 +14,7 @@ import { MobileStickyMarket } from "@/components/MobileStickyMarket";
  import { useRouter } from "next/navigation";
  import type { MarketWithVelocity } from "@siren/shared";
 
- const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+ import { API_URL } from "@/lib/apiUrl";
 
  const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election", "world", "cup", "georgia", "purdue", "uae", "icc", "t20", "sol", "eth", "jpow", "pepe", "bonk"];
  const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);

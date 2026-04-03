@@ -6,7 +6,7 @@ import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { SignalHistoryPanel } from "./SignalHistoryPanel";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 
 function formatUsd(usd: number) {
   return usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });

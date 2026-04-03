@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { toPng } from "html-to-image";
+import { toPng, getFontEmbedCSS } from "html-to-image";
 import { ArrowUpRight, Share2, Download, ChevronLeft, ChevronRight, LogOut, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { hapticLight } from "@/lib/haptics";
@@ -75,8 +75,12 @@ export function PnlCard({
   const hasPnl = pnlUsd !== null && pnlUsd !== 0;
   const isPositive = pnlUsd != null && pnlUsd > 0;
   const isLoss = pnlUsd != null && pnlUsd < 0;
-  const hasShareableContent =
-    positions.some((p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null);
+  const hasShareableContent = positions.some(
+    (p) =>
+      (p.valueUsd ?? 0) > 0 ||
+      (p.pnlUsd != null && Number.isFinite(p.pnlUsd)) ||
+      (p.pnlPercent != null && Number.isFinite(p.pnlPercent))
+  );
 
   const accent = isLoss ? "var(--down)" : "var(--up)";
   const glowRgb = isLoss ? "255, 69, 96" : "0, 255, 133";
@@ -102,14 +106,21 @@ export function PnlCard({
     hapticLight();
     setExporting(true);
     try {
-      await document.fonts.ready;
-      await new Promise((r) => setTimeout(r, 120));
       const node = cardRef.current;
+      await document.fonts.ready;
+      await Promise.all([
+        document.fonts.load('600 10px "Clash Display"'),
+        document.fonts.load('700 36px "Clash Display"'),
+        document.fonts.load('400 13px "Cabinet Grotesk"'),
+        document.fonts.load('500 12px "Departure Mono"'),
+      ]).catch(() => undefined);
+      const fontEmbedCSS = await getFontEmbedCSS(node).catch(() => "");
       const dataUrl = await toPng(node, {
         pixelRatio: 2,
         cacheBust: true,
-        backgroundColor: "#000000",
+        backgroundColor: "#050508",
         skipFonts: false,
+        ...(fontEmbedCSS ? { fontEmbedCSS } : {}),
       });
       const blob = await fetch(dataUrl).then((r) => r.blob());
       const file = new File([blob], "siren-pnl.png", { type: "image/png" });
@@ -177,6 +188,7 @@ export function PnlCard({
             ref={cardRef}
             className="relative w-full aspect-square overflow-hidden rounded-2xl border font-body"
             style={{
+              fontFamily: '"Cabinet Grotesk", Inter, ui-sans-serif, system-ui, sans-serif',
               borderColor: "color-mix(in srgb, var(--border-subtle) 80%, transparent)",
               boxShadow: `0 0 0 1px rgba(${glowRgb}, 0.12), 0 24px 48px -16px rgba(0,0,0,0.5)`,
             }}
@@ -217,11 +229,17 @@ export function PnlCard({
 
           <div className="relative z-[2] flex h-full flex-col p-5 pr-14 md:p-6 md:pr-16">
             <div className="min-w-0">
-              <p className="font-heading text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: accent }}>
+              <p
+                className="font-heading text-[10px] font-semibold uppercase tracking-[0.2em]"
+                style={{ color: accent, fontFamily: '"Clash Display", sans-serif' }}
+              >
                 P&amp;L snapshot
               </p>
               {walletAddress && (
-                <p className="mt-1 font-mono text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                <p
+                  className="mt-1 font-mono text-[10px] tabular-nums"
+                  style={{ color: "var(--text-3)", fontFamily: '"Departure Mono", ui-monospace, monospace' }}
+                >
                   {privacy ? "••••••••••••" : truncateAddress(walletAddress)}
                 </p>
               )}
@@ -230,21 +248,27 @@ export function PnlCard({
             <div className="mt-6 min-w-0 flex-1">
               <p
                 className="font-heading text-[clamp(1.75rem,7vw,2.75rem)] font-bold leading-tight tabular-nums tracking-tight"
-                style={{ color: hasPnl ? accent : "var(--text-3)" }}
+                style={{
+                  color: hasPnl ? accent : "var(--text-3)",
+                  fontFamily: '"Clash Display", sans-serif',
+                }}
               >
                 {privacy ? maskPnl() : formatPnl(pnlUsd)}
               </p>
               {(pnlPercent != null || privacy) && (
                 <p
                   className="font-mono text-xl font-semibold tabular-nums md:text-2xl"
-                  style={{ color: hasPnl ? accent : "var(--text-3)" }}
+                  style={{
+                    color: hasPnl ? accent : "var(--text-3)",
+                    fontFamily: '"Departure Mono", ui-monospace, monospace',
+                  }}
                 >
                   {privacy ? maskPercent() : formatPercent(pnlPercent)}
                 </p>
               )}
               <p
                 className="mt-4 line-clamp-2 font-heading text-base font-semibold leading-snug md:text-lg"
-                style={{ color: "var(--text-1)" }}
+                style={{ color: "var(--text-1)", fontFamily: '"Clash Display", sans-serif' }}
               >
                 {privacy ? "••••••••••" : tokenLabel}
               </p>
@@ -359,7 +383,9 @@ export function PnlCard({
       {!hasShareableContent && (
         <div className="flex max-w-[360px] flex-wrap items-center gap-2">
           <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-            Connect and trade to see P&amp;L.
+            {walletAddress
+              ? "No shareable P&amp;L yet — trade in Siren so we can log cost basis and live prices."
+              : "Connect and trade to see P&amp;L."}
           </p>
           <Link
             href="/"

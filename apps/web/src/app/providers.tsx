@@ -11,6 +11,7 @@ import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
 import { clusterApiUrl } from "@solana/web3.js";
 import { useMemo } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { PrivyWalletBridge } from "@/contexts/SirenWalletContext";
 
 const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -50,6 +51,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
           embeddedWallets: {
             solana: {
               createOnLogin: "all-users",
+            },
+          },
+          // Wallet Standard + detected Solana wallets (Phantom, etc.). Embedded wallet remains primary after login.
+          externalWallets: {
+            solana: {
+              connectors: toSolanaWalletConnectors({ shouldAutoConnect: false }),
             },
           },
           legal: {

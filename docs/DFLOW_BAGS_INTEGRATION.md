@@ -8,10 +8,12 @@ Beyond the current usage (Kalshi markets via DFlow, token launch via Bags), here
 
 **Current:** Markets list from DFlow Metadata API, velocity/sorting, and buy YES/NO via `/api/dflow/order` (quote + transaction).
 
+**Positions (implemented):** `GET /api/dflow/positions?wallet=<pubkey>` loads SPL + Token-2022 balances, calls DFlow `filter_outcome_mints` and `markets/batch`, and returns official outcome rows (`DflowPositionRow` in `@siren/shared`). The Portfolio page merges these with heuristic market-list mapping and shows a **DFlow** badge on verified rows. Requires `SOLANA_RPC_URL` (or falls back to public mainnet) and `DFLOW_METADATA_API_URL` / `DFLOW_API_KEY` as for other DFlow calls.
+
 **Possible extensions:**
 
-1. **Order history / positions**
-   - DFlow may expose user positions or fill history. If an API exists, add a “My prediction positions” section that reflects on-chain or API-held positions and PnL.
+1. **Order history / cost basis**
+   - Pair DFlow positions with fill history or Siren trade logs for **realized** PnL and average entry (Kalshi/DFlow if exposed).
 
 2. **Limit orders**
    - If DFlow supports limit or conditional orders, add a “Place limit order” flow next to the current market order (e.g. “Buy YES when probability &lt; 50%”).

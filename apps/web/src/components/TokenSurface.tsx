@@ -15,7 +15,7 @@ import { LaunchpadBadge } from "./LaunchpadBadge";
 import { hapticLight } from "@/lib/haptics";
 import type { SurfacedToken } from "@siren/shared";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 
 function fetchTokens(marketId?: string, categoryId?: string, keywords?: string[]): Promise<SurfacedToken[]> {
   const params = new URLSearchParams();

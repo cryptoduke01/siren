@@ -4,6 +4,7 @@ import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
 import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats, getBagsPools, getBagsPoolByTokenMint, getTokenLifetimeFees, getClaimablePositions, getClaimTransactionsV3, getBagsTradeQuote, createBagsSwapTransaction } from "./services/bags.js";
 import { getDflowOrder } from "./services/dflow.js";
+import { getDflowPositionsForWallet } from "./services/dflowPositions.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
@@ -498,6 +499,28 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to delete" });
+    }
+  });
+
+  /**
+   * DFlow official prediction positions: RPC token balances + filter_outcome_mints + markets/batch.
+   * No geo-fence (read-only). Uses SOLANA_RPC_URL or public mainnet RPC.
+   */
+  app.get<{ Querystring: { wallet?: string } }>("/api/dflow/positions", async (req, reply) => {
+    const wallet = typeof req.query.wallet === "string" ? req.query.wallet.trim() : "";
+    if (!wallet) {
+      return reply.status(400).send({ success: false, error: "wallet required" });
+    }
+    try {
+      const { positions, error } = await getDflowPositionsForWallet(wallet);
+      if (error) {
+        app.log.warn({ wallet: wallet.slice(0, 8), err: error }, "dflow positions");
+        return reply.send({ success: true, data: positions, warning: error });
+      }
+      return reply.send({ success: true, data: positions });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "DFlow positions failed" });
     }
   });
 

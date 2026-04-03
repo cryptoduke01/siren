@@ -11,7 +11,6 @@ import {
   Zap,
   Shield,
   ArrowRight,
-  ChevronDown,
   CheckCircle2,
   Loader2,
 } from "lucide-react";
@@ -32,7 +31,7 @@ const FEATURES = [
     icon: BarChart3,
     title: "Prediction markets",
     description:
-      "Browse Kalshi markets with live probability, volume, and velocity. Politics, crypto, sports—organized by category.",
+      "Kalshi and Polymarket: live probability, volume, and velocity. Politics, crypto, sports—by category.",
   },
   {
     icon: Zap,
@@ -44,7 +43,7 @@ const FEATURES = [
     icon: TrendingUp,
     title: "Trade both",
     description:
-      "Buy YES or NO on markets via DFlow. Swap tokens via Jupiter with MEV protection. One terminal, prediction + meme.",
+      "Jupiter swaps with MEV-aware routing and explicit slippage. Pair Kalshi + Polymarket signals with on-chain execution from one terminal.",
   },
   {
     icon: Rocket,
@@ -139,7 +138,6 @@ function OnboardingPrivyMissing() {
 export default function OnboardingPage() {
   const { connected, walletSessionStatus } = useSirenWallet();
   const router = useRouter();
-  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     if (connected && walletSessionStatus === "ready") {
@@ -176,15 +174,6 @@ export default function OnboardingPage() {
               </li>
             ))}
           </ul>
-          <p
-            className="font-label text-[12px] uppercase tracking-[0.14em] text-center lg:text-left mb-2 lg:mb-0"
-            style={{ color: "var(--text-3)" }}
-          >
-            Social proof
-          </p>
-          <p className="font-body text-[16px] text-center lg:text-left" style={{ color: "var(--text-2)" }}>
-            55+ traders on the waitlist
-          </p>
         </section>
 
         {/* Right: connect card */}
@@ -242,7 +231,7 @@ export default function OnboardingPage() {
             What you can do
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
-            {FEATURES.slice(0, showMore ? undefined : 3).map((f, i) => (
+            {FEATURES.map((f, i) => (
               <motion.div
                 key={f.title}
                 initial={{ opacity: 0, y: 8 }}
@@ -272,74 +261,24 @@ export default function OnboardingPage() {
               </motion.div>
             ))}
           </div>
-          {!showMore && FEATURES.length > 3 && (
-            <button
-              type="button"
-              onClick={() => {
-                hapticLight();
-                setShowMore(true);
-              }}
-              className="mt-4 w-full max-w-md mx-auto block py-2.5 rounded-xl font-body text-xs font-medium flex items-center justify-center gap-1"
-              style={{
-                color: "var(--text-3)",
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
-              }}
+          <div className="mt-10 flex flex-col items-center gap-4">
+            <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+              <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+              <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                Solana · Kalshi · Polymarket · DFlow · Jupiter · Bags
+              </p>
+            </div>
+            <a
+              href="https://docs.onsiren.xyz"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => hapticLight()}
+              className="font-body text-xs underline"
+              style={{ color: "var(--text-3)" }}
             >
-              Show {FEATURES.length - 3} more
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.35 }}
-          className="order-5 px-5 pb-12 text-center max-w-3xl mx-auto lg:col-span-2 lg:px-14"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 text-left">
-            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>
-                Execution
-              </p>
-              <p className="font-body text-[15px]" style={{ color: "var(--text-2)" }}>
-                Token swaps route through Jupiter with MEV-aware paths and explicit slippage controls.
-              </p>
-            </div>
-            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>
-                Market intelligence
-              </p>
-              <p className="font-body text-[15px]" style={{ color: "var(--text-2)" }}>
-                Track Kalshi probabilities and velocity while seeing the token surface react in real time.
-              </p>
-            </div>
-            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-              <p className="font-heading text-xs mb-1" style={{ color: "var(--text-1)" }}>
-                Launch + portfolio
-              </p>
-              <p className="font-body text-[15px]" style={{ color: "var(--text-2)" }}>
-                Launch through Bags and monitor balances, positions, and fee earnings from one account view.
-              </p>
-            </div>
+              Read the docs
+            </a>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 border mb-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-            <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-            <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
-              Solana · DFlow · Jupiter · Bags
-            </p>
-          </div>
-          <a
-            href="https://docs.onsiren.xyz"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => hapticLight()}
-            className="font-body text-xs underline"
-            style={{ color: "var(--text-3)" }}
-          >
-            Read the docs
-          </a>
         </motion.section>
       </main>
     </div>

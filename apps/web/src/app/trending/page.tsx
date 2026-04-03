@@ -7,8 +7,7 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { StarButton } from "@/components/StarButton";
 import { LaunchpadBadge } from "@/components/LaunchpadBadge";
 import type { SurfacedToken } from "@siren/shared";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 
 function fetchTrendingTokens(): Promise<SurfacedToken[]> {
   return fetch(`${API_URL}/api/tokens`, { credentials: "omit" })

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MarketWithVelocity } from "@siren/shared";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 function fetchMarkets(): Promise<MarketWithVelocity[]> {
   return fetch(`${API_URL}/api/markets`, { credentials: "omit" })
     .then((r) => {

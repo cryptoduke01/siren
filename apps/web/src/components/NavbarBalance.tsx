@@ -5,7 +5,7 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 
 export function NavbarBalance() {
   const { connected, publicKey } = useSirenWallet();

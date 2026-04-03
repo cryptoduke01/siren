@@ -1,21 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSirenWallet, type WalletSessionGate } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import Link from "next/link";
-import { Wallet, TrendingUp, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, Minus, Coins, Receipt, ArrowUpRight, ExternalLink, Send, ArrowLeftRight, QrCode, Rocket, Loader2, Copy, Check, History } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { PnlCard, type PnlPosition } from "@/components/PnlCard";
 import { ResultModal } from "@/components/ResultModal";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
-import type { MarketWithVelocity } from "@siren/shared";
+import type { DflowPositionRow, MarketWithVelocity } from "@siren/shared";
 import bs58 from "bs58";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 const LAMPORTS_PER_SOL = 1e9;
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -95,6 +96,18 @@ interface PredictionPosition {
   side: "yes" | "no";
   balance: number;
   probability?: number;
+  /** Mapped via DFlow Metadata (filter_outcome_mints + markets/batch) */
+  dflowVerified?: boolean;
+}
+
+/** How the current Kalshi-implied probability relates to your YES/NO side (sentiment, not payout). */
+function marketStanceLabel(p: Pick<PredictionPosition, "side" | "probability">): string | null {
+  if (p.probability == null) return null;
+  const leanYes = p.probability > 50;
+  if (p.side === "yes") {
+    return leanYes ? "Market leaning YES — tailwind for your YES" : "Market leaning NO — headwind for YES";
+  }
+  return leanYes ? "Market leaning YES — headwind for NO" : "Market leaning NO — tailwind for your NO";
 }
 
 async function fetchMarkets(): Promise<MarketWithVelocity[]> {
@@ -519,6 +532,28 @@ export default function PortfolioPage() {
   const [bagsSyncLoading, setBagsSyncLoading] = useState(false);
   const [walletVolumeSol, setWalletVolumeSol] = useState(0);
   const [pnlByMint, setPnlByMint] = useState<Record<string, { pnlUsd: number; pnlPercent: number }>>({});
+  const [pnlTrendByMint, setPnlTrendByMint] = useState<Record<string, "up" | "down" | "flat">>({});
+  const prevPnlRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    prevPnlRef.current = {};
+    setPnlTrendByMint({});
+  }, [publicKey?.toBase58()]);
+
+  useEffect(() => {
+    const trends: Record<string, "up" | "down" | "flat"> = {};
+    for (const [mint, v] of Object.entries(pnlByMint)) {
+      const prev = prevPnlRef.current[mint];
+      if (typeof prev === "number" && Number.isFinite(prev)) {
+        const d = v.pnlUsd - prev;
+        if (d > 0.05) trends[mint] = "up";
+        else if (d < -0.05) trends[mint] = "down";
+        else trends[mint] = "flat";
+      }
+      prevPnlRef.current[mint] = v.pnlUsd;
+    }
+    setPnlTrendByMint(trends);
+  }, [pnlByMint]);
 
   const loadBagsLaunches = () => {
     if (!publicKey) return;
@@ -731,26 +766,122 @@ export default function PortfolioPage() {
     staleTime: 60_000,
   });
 
+  const { data: dflowPositionRows } = useQuery({
+    queryKey: ["dflow-positions", publicKey?.toBase58()],
+    queryFn: async (): Promise<DflowPositionRow[]> => {
+      const res = await fetch(
+        `${API_URL}/api/dflow/positions?wallet=${encodeURIComponent(publicKey!.toBase58())}`,
+        { credentials: "omit" }
+      );
+      const j = (await res.json()) as { data?: DflowPositionRow[]; warning?: string };
+      if (!res.ok) throw new Error((j as { error?: string }).error || "DFlow positions failed");
+      return Array.isArray(j.data) ? j.data : [];
+    },
+    enabled: !!connected && !!publicKey,
+    staleTime: 45_000,
+    retry: 1,
+  });
+
   const mintToMarket = buildMintToMarket(markets);
-  const predictionPositions: PredictionPosition[] = tokenHoldings
-    .filter((t) => mintToMarket.has(t.mint))
-    .map((t) => {
-      const info = mintToMarket.get(t.mint)!;
-      return {
-        mint: t.mint,
-        ticker: info.ticker,
-        title: info.title,
-        side: info.side,
-        balance: t.balance,
-        probability: info.probability,
-      };
-    });
+
+  const heuristicPredictionPositions: PredictionPosition[] = useMemo(
+    () =>
+      tokenHoldings
+        .filter((t) => mintToMarket.has(t.mint))
+        .map((t) => {
+          const info = mintToMarket.get(t.mint)!;
+          return {
+            mint: t.mint,
+            ticker: info.ticker,
+            title: info.title,
+            side: info.side,
+            balance: t.balance,
+            probability: info.probability,
+            dflowVerified: false,
+          };
+        }),
+    [tokenHoldings, mintToMarket]
+  );
+
+  const predictionPositions: PredictionPosition[] = useMemo(() => {
+    const dflow = dflowPositionRows ?? [];
+    if (dflow.length === 0) return heuristicPredictionPositions;
+    const fromDflow = new Set(dflow.map((p) => p.mint));
+    const merged: PredictionPosition[] = dflow.map((p) => ({
+      mint: p.mint,
+      ticker: p.ticker,
+      title: p.title,
+      side: p.side,
+      balance: p.balance,
+      probability: p.probability,
+      dflowVerified: true,
+    }));
+    for (const h of heuristicPredictionPositions) {
+      if (!fromDflow.has(h.mint)) merged.push(h);
+    }
+    return merged;
+  }, [dflowPositionRows, heuristicPredictionPositions]);
 
   const openSellPanel = (mint: string, symbol: string, name: string) => {
     const price = tokenInfoByMint.get(mint)?.priceUsd;
     setSelectedToken({ mint, symbol, name, price: price ?? undefined }, { openForSell: true });
     setBuyPanelOpen(true);
   };
+
+  const pnlPositionsForCard: PnlPosition[] = useMemo(() => {
+    const rows: PnlPosition[] = [];
+    for (const p of predictionPositions) {
+      const info = tokenInfoByMint.get(p.mint);
+      const priceUsd = info?.priceUsd ?? 0;
+      const pn = pnlByMint[p.mint];
+      rows.push({
+        ticker: p.ticker,
+        title: p.title,
+        side: p.side,
+        kalshiMarket: p.title,
+        valueUsd: p.balance * priceUsd,
+        pnlUsd: pn?.pnlUsd ?? null,
+        pnlPercent: pn?.pnlPercent ?? null,
+        mint: p.mint,
+      });
+    }
+    for (const t of tokenHoldings) {
+      if (predictionPositions.some((pp) => pp.mint === t.mint)) continue;
+      const pn = pnlByMint[t.mint];
+      if (!pn) continue;
+      const info = tokenInfoByMint.get(t.mint);
+      const priceUsd = info?.priceUsd ?? 0;
+      rows.push({
+        ticker: t.symbol,
+        title: t.name,
+        valueUsd: t.balance * priceUsd,
+        pnlUsd: pn.pnlUsd,
+        pnlPercent: pn.pnlPercent,
+        mint: t.mint,
+      });
+    }
+    return rows;
+  }, [predictionPositions, tokenHoldings, tokenInfoByMint, pnlByMint]);
+
+  const totalPnlAggregate = useMemo(() => {
+    let sumUsd = 0;
+    let n = 0;
+    let costBasis = 0;
+    for (const [mint, row] of Object.entries(pnlByMint)) {
+      if (!Number.isFinite(row.pnlUsd)) continue;
+      sumUsd += row.pnlUsd;
+      n += 1;
+      const h = tokenHoldings.find((t) => t.mint === mint);
+      const price = tokenInfoByMint.get(mint)?.priceUsd;
+      if (h && price && price > 0) {
+        const val = h.balance * price;
+        const impliedCost = val - row.pnlUsd;
+        if (impliedCost > 0) costBasis += impliedCost;
+      }
+    }
+    const pct = costBasis > 0 && n > 0 ? (sumUsd / costBasis) * 100 : null;
+    return { usd: n > 0 ? sumUsd : null, percent: pct };
+  }, [pnlByMint, tokenHoldings, tokenInfoByMint]);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
@@ -973,7 +1104,37 @@ export default function PortfolioPage() {
                 </div>
               )}
             </div>
-            {/* PnL card temporarily removed while we fix trade logging + SVG integration. */}
+            <div
+              className="rounded-2xl border p-6 md:p-8 mb-6"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "linear-gradient(155deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+                boxShadow: "0 1px 0 0 var(--border-subtle)",
+              }}
+            >
+              <div className="mb-5 max-w-lg">
+                <h2 className="font-heading font-semibold text-sm" style={{ color: "var(--text-1)" }}>
+                  Share PnL
+                </h2>
+                <p className="font-body text-[11px] mt-1 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Clash Display + Cabinet + Departure Mono on export. Unrealized P&amp;L uses your Siren trade log and live token prices—same as the tables below.
+                </p>
+              </div>
+              {publicKey ? (
+                <PnlCard
+                  totalPnlUsd={totalPnlAggregate.usd}
+                  totalPnlPercent={totalPnlAggregate.percent}
+                  positions={pnlPositionsForCard}
+                  walletAddress={publicKey.toBase58()}
+                  isLoading={tokensLoading}
+                  onSell={(pos) => {
+                    if (!pos.mint) return;
+                    const info = tokenInfoByMint.get(pos.mint);
+                    openSellPanel(pos.mint, info?.symbol ?? pos.ticker, info?.name ?? pos.title);
+                  }}
+                />
+              ) : null}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0">
             <div
               className="rounded-2xl border overflow-hidden"
@@ -1114,7 +1275,7 @@ export default function PortfolioPage() {
                     Prediction positions
                   </h2>
                   <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    YES/NO shares from Kalshi (DFlow)
+                    YES/NO outcome tokens: rows labeled DFlow are confirmed via DFlow Metadata API; others use the markets list mapping. PnL is approximate (Siren trades + live prices).
                   </p>
                 </div>
               </div>
@@ -1163,6 +1324,8 @@ export default function PortfolioPage() {
                       const displayName = info?.name ?? p.title;
                       const displaySymbol = info?.symbol ?? p.ticker;
                       const mintPnl = pnlByMint[p.mint];
+                      const stance = marketStanceLabel(p);
+                      const trend = pnlTrendByMint[p.mint];
                       return (
                       <li
                         key={`${p.ticker}-${p.side}`}
@@ -1184,9 +1347,20 @@ export default function PortfolioPage() {
                             </div>
                           )}
                           <div className="min-w-0">
-                            <p className="font-heading font-medium text-sm line-clamp-2" style={{ color: "var(--text-1)" }}>
-                              {displayName}
-                            </p>
+                            <div className="flex items-start gap-2 flex-wrap">
+                              <p className="font-heading font-medium text-sm line-clamp-2 flex-1 min-w-0" style={{ color: "var(--text-1)" }}>
+                                {displayName}
+                              </p>
+                              {p.dflowVerified ? (
+                                <span
+                                  className="shrink-0 text-[9px] font-heading font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                                  style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                                  title="Outcome mint confirmed by DFlow filter_outcome_mints + markets/batch"
+                                >
+                                  DFlow
+                                </span>
+                              ) : null}
+                            </div>
                             <p className="font-mono text-[11px] mt-0.5 truncate" style={{ color: "var(--text-3)" }} title={p.mint}>
                               {displaySymbol}
                             </p>
@@ -1211,19 +1385,58 @@ export default function PortfolioPage() {
                                 Market {p.probability.toFixed(0)}% YES
                               </p>
                             )}
-                            {mintPnl && (
-                              <p
-                                className="font-mono text-[11px] tabular-nums mt-1"
-                                style={{ color: mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)" }}
-                                title="Approximate PnL from Siren trades"
-                              >
-                                PnL:{" "}
-                                {mintPnl.pnlUsd >= 0 ? "+" : "-"}$
-                                {Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}{" "}
-                                ({mintPnl.pnlPercent.toFixed(1)}%)
+                            {stance ? (
+                              <p className="font-body text-[10px] leading-snug mt-1 max-w-[220px] ml-auto text-right" style={{ color: "var(--text-3)" }}>
+                                {stance}
+                              </p>
+                            ) : null}
+                            {mintPnl ? (
+                              <div className="mt-1.5 flex flex-col items-end gap-1">
+                                <span
+                                  className="text-[10px] font-heading font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md"
+                                  style={{
+                                    background: mintPnl.pnlUsd >= 0 ? "var(--accent-dim)" : "var(--down-dim)",
+                                    color: mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)",
+                                  }}
+                                >
+                                  {mintPnl.pnlUsd >= 0 ? "In profit" : "At a loss"}
+                                </span>
+                                <p
+                                  className="font-mono text-[11px] tabular-nums flex items-center gap-1 justify-end"
+                                  style={{ color: mintPnl.pnlUsd >= 0 ? "var(--up)" : "var(--down)" }}
+                                  title="Approximate unrealized PnL from Siren-logged trades vs current price"
+                                >
+                                  {trend === "up" ? (
+                                    <TrendingUp className="w-3 h-3 shrink-0" aria-hidden />
+                                  ) : trend === "down" ? (
+                                    <TrendingDown className="w-3 h-3 shrink-0" aria-hidden />
+                                  ) : trend === "flat" ? (
+                                    <Minus className="w-3 h-3 shrink-0 opacity-60" aria-hidden />
+                                  ) : null}
+                                  PnL:{" "}
+                                  {mintPnl.pnlUsd >= 0 ? "+" : "-"}$
+                                  {Math.abs(mintPnl.pnlUsd).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}{" "}
+                                  ({mintPnl.pnlPercent.toFixed(1)}%)
+                                  {trend === "up" ? (
+                                    <span className="sr-only"> Profit vs last quote, rising</span>
+                                  ) : null}
+                                </p>
+                                {trend === "up" ? (
+                                  <p className="font-body text-[10px]" style={{ color: "var(--up)" }}>
+                                    Up vs last price check
+                                  </p>
+                                ) : trend === "down" ? (
+                                  <p className="font-body text-[10px]" style={{ color: "var(--down)" }}>
+                                    Down vs last price check
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <p className="font-body text-[10px] mt-1 text-right max-w-[14rem] ml-auto" style={{ color: "var(--text-3)" }}>
+                                Trade this position in Siren to track cost basis and PnL.
                               </p>
                             )}
                           </div>

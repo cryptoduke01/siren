@@ -1,5 +1,6 @@
 import bs58 from "bs58";
 
+/** DFlow Proof (Kalshi compliance) — public portal; no secrets in this module. */
 export const DFLOW_PROOF_PORTAL_URL = "https://dflow.net/proof";
 
 export function buildProofMessage(timestamp: number): string {

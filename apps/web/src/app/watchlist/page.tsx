@@ -10,8 +10,7 @@ import { useMarkets } from "@/hooks/useMarkets";
 import { useSirenStore } from "@/store/useSirenStore";
 import { StarButton } from "@/components/StarButton";
 import { hapticLight } from "@/lib/haptics";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+import { API_URL } from "@/lib/apiUrl";
 
 async function fetchTokenInfo(
   mint: string

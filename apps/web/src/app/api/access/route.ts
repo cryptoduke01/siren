@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { API_URL } from "@/lib/apiUrl";
 
 const COOKIE_NAME = "siren_access";
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export async function POST(req: NextRequest) {
   try {
