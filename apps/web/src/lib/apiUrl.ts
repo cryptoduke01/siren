@@ -11,18 +11,33 @@ function normalizeApiUrl(raw: string): string {
   return trimmed.replace(/\/+$/, "");
 }
 
+function looksLikeSelfReference(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const selfHosts = ["onsiren.xyz", "www.onsiren.xyz", "vercel.app"];
+    return selfHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
 function resolveApiUrl(): string {
   const env = process.env.NEXT_PUBLIC_API_URL;
   if (typeof env !== "string" || env.trim().length === 0) {
     return process.env.NODE_ENV === "production" ? RENDER_API_URL : DEFAULT_API_URL;
   }
 
-  // If it looks relative (starts with "/"), treat it as misconfiguration.
-  if (env.trim().startsWith("/")) {
+  const trimmed = env.trim();
+
+  if (trimmed.startsWith("/")) {
     return process.env.NODE_ENV === "production" ? RENDER_API_URL : DEFAULT_API_URL;
   }
 
-  return normalizeApiUrl(env);
+  if (looksLikeSelfReference(trimmed)) {
+    return process.env.NODE_ENV === "production" ? RENDER_API_URL : DEFAULT_API_URL;
+  }
+
+  return normalizeApiUrl(trimmed);
 }
 
 /**
