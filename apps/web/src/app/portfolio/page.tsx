@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
+import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 import { useFundWallet as useSolanaFundWallet } from "@privy-io/react-auth/solana";
@@ -346,6 +347,7 @@ function TokenRow({ symbol, balance, usdValue }: {
 
 function PositionRow({ position: p }: { position: Position }) {
   const [expanded, setExpanded] = useState(false);
+  const { setSelectedToken } = useSirenStore();
   const settled = p.status === "settled";
   const pnl = p.pnlUsd ?? 0;
   const pnlPct = p.pnlPct ?? 0;
@@ -354,6 +356,23 @@ function PositionRow({ position: p }: { position: Position }) {
   const entry = p.entryPrice ?? 0;
   const current = p.currentPrice ?? (prob > 1 ? prob / 100 : prob);
   const kalshiUrl = p.kalshi_url || `https://kalshi.com/markets/${p.ticker?.toLowerCase()}`;
+
+  const handleSell = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    hapticLight();
+    if (!p.mint) return;
+    setSelectedToken(
+      {
+        mint: p.mint,
+        name: p.title || p.ticker,
+        symbol: p.ticker,
+        price: current,
+        assetType: "prediction",
+        marketTicker: p.ticker,
+      },
+      { openForSell: true },
+    );
+  };
 
   return (
     <div
@@ -414,12 +433,12 @@ function PositionRow({ position: p }: { position: Position }) {
           >
             View on Kalshi ↗
           </a>
-          {!settled && (
+          {!settled && p.mint && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); window.open(kalshiUrl, "_blank"); }}
-              className="rounded-md px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all"
-              style={{ background: "rgba(239,68,68,0.12)", color: "var(--down)" }}
+              onClick={handleSell}
+              className="rounded-md px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
+              style={{ background: "rgba(239,68,68,0.15)", color: "var(--down)" }}
             >
               Sell Position
             </button>
