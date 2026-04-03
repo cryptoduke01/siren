@@ -3,10 +3,11 @@ import { getKeywordsForCategory } from "@siren/shared";
 import { matchTokenToKeywords } from "@siren/shared";
 import { searchPairs, getTokenPairs, getLatestBoostedTokens } from "./dexscreener.js";
 import type { DexPair } from "./dexscreener.js";
-import { getBagsPools } from "./bags.js";
+import { getBagsPools, getBagsPoolByTokenMint } from "./bags.js";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 type RiskLabel = "low" | "moderate" | "high" | "critical";
+type BondingCurveStatus = "bonded" | "bonding" | "unknown";
 
 interface RiskAnalysis {
   score: number;
@@ -14,6 +15,34 @@ interface RiskAnalysis {
   reasons: string[];
   blocked: boolean;
 }
+
+interface RugcheckSummary {
+  holders?: number;
+  rugcheckScore?: number;
+  safe?: boolean;
+}
+
+interface TokenEnrichment {
+  imageUrl?: string;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: BondingCurveStatus;
+  rugcheckScore?: number;
+  safe?: boolean;
+  risk: RiskAnalysis;
+}
+
+const RUGCHECK_CACHE_MS = 10 * 60 * 1000;
+const RUGCHECK_TIMEOUT_MS = 6_000;
+const JUPITER_TIMEOUT_MS = 8_000;
+const TOKENS_CACHE_MS = 45 * 1000;
+const TOKEN_HYDRATION_BATCH_SIZE = 6;
+const DEFAULT_DISCOVERY_RESULT_LIMIT = 16;
+const TARGETED_RESULT_LIMIT = 12;
+const rugcheckCache = new Map<string, { expiry: number; value: RugcheckSummary | null }>();
+const surfacedTokensCache = new Map<string, { expiresAt: number; value: SurfacedToken[] }>();
+const surfacedTokensInFlight = new Map<string, Promise<SurfacedToken[]>>();
 
 /** Detect launchpad from mint suffix (Bags: BAGS, Pump.fun: pump, Bonk.fun: bonk, Moonshot: shot). */
 export function getLaunchpadFromMint(mint: string): LaunchpadId | undefined {
@@ -31,6 +60,75 @@ function tokenMintFromPair(p: DexPair): string {
   if (base === SOL_MINT) return quote;
   if (quote === SOL_MINT) return base;
   return base;
+}
+
+function normalizeDexImageUrl(imageUrl?: string): string | undefined {
+  if (!imageUrl) return undefined;
+  if (imageUrl.startsWith("http")) return imageUrl;
+  return `https://cdn.dexscreener.com/cms/images/${imageUrl}?width=800&height=800&quality=90`;
+}
+
+function parseUsd(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function deriveBondingCurveStatus(params: {
+  pair?: DexPair;
+  launchpad?: LaunchpadId;
+  bagsPool?: { dammV2PoolKey?: string | null } | null;
+}): BondingCurveStatus {
+  if (params.launchpad === "bags" && params.bagsPool) {
+    return params.bagsPool.dammV2PoolKey ? "bonded" : "bonding";
+  }
+  const dexId = params.pair?.dexId?.toLowerCase() ?? "";
+  if (!dexId) return "unknown";
+  if (dexId.includes("meteora") || dexId.includes("raydium") || dexId.includes("orca")) return "bonded";
+  if (dexId.includes("pump") || dexId.includes("moonshot") || dexId.includes("bags")) return "bonding";
+  return params.pair?.liquidity?.usd && params.pair.liquidity.usd > 0 ? "bonded" : "unknown";
+}
+
+async function getRugcheckSummary(mint: string): Promise<RugcheckSummary | null> {
+  const cached = rugcheckCache.get(mint);
+  if (cached && cached.expiry > Date.now()) return cached.value;
+  try {
+    const res = await fetch(`https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(mint)}/report`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(RUGCHECK_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value: null });
+      return null;
+    }
+    const json = (await res.json()) as {
+      totalHolders?: number;
+      score?: number;
+      score_normalised?: number;
+      rugged?: boolean;
+    };
+    const rugcheckScore =
+      typeof json.score_normalised === "number"
+        ? json.score_normalised
+        : typeof json.score === "number"
+          ? json.score
+          : undefined;
+    const value: RugcheckSummary = {
+      holders: typeof json.totalHolders === "number" ? json.totalHolders : undefined,
+      rugcheckScore,
+      safe:
+        typeof json.rugged === "boolean"
+          ? !json.rugged && (rugcheckScore == null || rugcheckScore < 60)
+          : rugcheckScore == null
+            ? undefined
+            : rugcheckScore < 60,
+    };
+    rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value });
+    return value;
+  } catch {
+    rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value: null });
+    return null;
+  }
 }
 
 function analyzeTokenRisk(params: {
@@ -91,33 +189,118 @@ function analyzeTokenRisk(params: {
   };
 }
 
-async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Promise<SurfacedToken[]> {
-  const byMint = new Map<string, DexPair>();
-  for (const p of pairs) {
-    const mint = tokenMintFromPair(p);
-    const existing = byMint.get(mint);
-    const vol = p.volume?.h24 ?? 0;
-    const existingVol = existing?.volume?.h24 ?? 0;
-    if (!existing || vol > existingVol) byMint.set(mint, p);
+async function enrichToken(params: {
+  mint: string;
+  pair?: DexPair;
+  name: string;
+  symbol: string;
+  priceUsd?: number;
+}): Promise<TokenEnrichment> {
+  const launchpad = getLaunchpadFromMint(params.mint);
+  const dexImageUrl = normalizeDexImageUrl(params.pair?.info?.imageUrl);
+  const jup = !dexImageUrl ? await getJupiterTokenByMint(params.mint) : null;
+  const imageUrl = dexImageUrl ?? jup?.imageUrl;
+  const rugcheck = await getRugcheckSummary(params.mint);
+  const bagsPool =
+    launchpad === "bags" && process.env.BAGS_API_KEY
+      ? await getBagsPoolByTokenMint(params.mint).catch(() => null)
+      : null;
+  const liquidityUsd = params.pair?.liquidity?.usd;
+  const fdvUsd = params.pair?.fdv ?? params.pair?.marketCap;
+  const risk = analyzeTokenRisk({
+    pair: params.pair,
+    mint: params.mint,
+    name: params.name,
+    symbol: params.symbol,
+    priceUsd: params.priceUsd,
+    volume24h: params.pair?.volume?.h24,
+    imageUrl,
+  });
+  return {
+    imageUrl,
+    liquidityUsd,
+    fdvUsd,
+    holders: rugcheck?.holders,
+    bondingCurveStatus: deriveBondingCurveStatus({ pair: params.pair, launchpad, bagsPool }),
+    rugcheckScore: rugcheck?.rugcheckScore,
+    safe: rugcheck?.safe ?? (risk.label === "low" || risk.label === "moderate"),
+    risk,
+  };
+}
+
+async function hydrateSurfacedTokens(
+  tokens: SurfacedToken[],
+  bestPairByMint: Map<string, DexPair>
+): Promise<SurfacedToken[]> {
+  const hydrated: SurfacedToken[] = [];
+
+  for (let index = 0; index < tokens.length; index += TOKEN_HYDRATION_BATCH_SIZE) {
+    const batch = tokens.slice(index, index + TOKEN_HYDRATION_BATCH_SIZE);
+    const resolved = await Promise.all(
+      batch.map(async (token) => {
+        const bestPair = bestPairByMint.get(token.mint) ?? pickBestPair(await getTokenPairs(token.mint));
+        const enrichment = await enrichToken({
+          mint: token.mint,
+          pair: bestPair,
+          name: token.name,
+          symbol: token.symbol,
+          priceUsd: token.price,
+        });
+        return {
+          ...token,
+          imageUrl: enrichment.imageUrl ?? token.imageUrl,
+          liquidityUsd: enrichment.liquidityUsd ?? token.liquidityUsd,
+          fdvUsd: enrichment.fdvUsd ?? token.fdvUsd,
+          holders: enrichment.holders ?? token.holders,
+          bondingCurveStatus: enrichment.bondingCurveStatus ?? token.bondingCurveStatus,
+          rugcheckScore: enrichment.rugcheckScore ?? token.rugcheckScore,
+          safe: enrichment.safe ?? token.safe,
+          riskScore: enrichment.risk.score,
+          riskLabel: enrichment.risk.label,
+          riskReasons: enrichment.risk.reasons,
+          riskBlocked: enrichment.risk.blocked,
+        };
+      })
+    );
+    hydrated.push(...resolved);
   }
 
-  const tokens = await Promise.all(Array.from(byMint.entries()).map(async ([mint, p]) => {
+  return hydrated;
+}
+
+function applyInlineRisk(token: SurfacedToken, pair?: DexPair): SurfacedToken {
+  const risk = analyzeTokenRisk({
+    pair,
+    mint: token.mint,
+    name: token.name,
+    symbol: token.symbol,
+    priceUsd: token.price,
+    volume24h: token.volume24h,
+    imageUrl: token.imageUrl,
+  });
+
+  return {
+    ...token,
+    safe: risk.label === "low" || risk.label === "moderate",
+    riskScore: risk.score,
+    riskLabel: risk.label,
+    riskReasons: risk.reasons,
+    riskBlocked: risk.blocked,
+  };
+}
+
+function pairsToSurfacedTokens(bestPairByMint: Map<string, DexPair>, keywords: string[]): SurfacedToken[] {
+  return Array.from(bestPairByMint.entries()).map(([mint, p]) => {
     const token = (p.baseToken.address === mint ? p.baseToken : p.quoteToken) as { address: string; symbol: string; name: string };
     const name = token.name || token.symbol || "Unknown";
     const symbol = token.symbol || "???";
-    const priceUsd = p.priceUsd ? parseFloat(p.priceUsd) : undefined;
+    const priceUsd = parseUsd(p.priceUsd);
     const vol24h = p.volume?.h24;
-    const dexImageUrl = p.info?.imageUrl?.startsWith("http")
-      ? p.info.imageUrl
-      : p.info?.imageUrl
-        ? `https://cdn.dexscreener.com/cms/images/${p.info.imageUrl}?width=800&height=800&quality=90`
-        : undefined;
-    const jup = !dexImageUrl ? await getJupiterTokenByMint(mint) : null;
-    const imageUrl = dexImageUrl ?? jup?.imageUrl;
-    const risk = analyzeTokenRisk({ pair: p, mint, name, symbol, priceUsd, volume24h: vol24h, imageUrl });
     const nameMatch = keywords.length ? matchTokenToKeywords(name, symbol, keywords) : true;
-    const volumeWeight = vol24h ? Math.min(vol24h / 100_000, 1) * 0.5 : 0;
-    const relevanceScore = (nameMatch ? 0.5 : 0) + volumeWeight;
+    const volumeWeight = vol24h ? Math.min(vol24h / 250_000, 1) * 0.45 : 0;
+    const liquidityWeight = p.liquidity?.usd ? Math.min(p.liquidity.usd / 250_000, 1) * 0.25 : 0;
+    const keywordWeight = nameMatch ? 0.3 : 0;
+    const relevanceScore = volumeWeight + liquidityWeight + keywordWeight;
     const matchType: "name" | "volume" | "ct" = nameMatch ? "name" : "volume";
 
     return {
@@ -126,24 +309,49 @@ async function pairsToSurfacedTokens(pairs: DexPair[], keywords: string[]): Prom
       symbol,
       price: priceUsd,
       volume24h: vol24h ? Math.round(vol24h) : undefined,
-      imageUrl,
+      imageUrl: normalizeDexImageUrl(p.info?.imageUrl),
+      liquidityUsd: p.liquidity?.usd,
+      fdvUsd: p.fdv ?? p.marketCap,
       relevanceScore,
       matchType,
       launchpad: getLaunchpadFromMint(mint),
-      riskScore: risk.score,
-      riskLabel: risk.label,
-      riskReasons: risk.reasons,
-      riskBlocked: risk.blocked,
     };
-  }));
-  return tokens.filter((t) => !t.riskBlocked);
+  });
 }
 
 const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
+const DEFAULT_DISCOVERY_TERMS = ["bitcoin", "solana", "ethereum", "election", "sports"];
 
 function parseKeywordsParam(param?: string): string[] {
   if (!param?.trim()) return [];
   return param.split(/[\s,]+/).filter((k) => k.length >= 2).slice(0, 5);
+}
+
+function buildSurfacedTokensCacheKey(marketId?: string, categoryId?: string, keywordsParam?: string): string {
+  return JSON.stringify({
+    marketId: marketId?.trim() || "",
+    categoryId: categoryId?.trim() || "",
+    keywords: parseKeywordsParam(keywordsParam).sort(),
+  });
+}
+
+function pickBestPair(pairs: DexPair[]): DexPair | undefined {
+  return pairs.reduce<DexPair | undefined>((best, pair) => {
+    if (!best) return pair;
+    return (pair.volume?.h24 ?? 0) > (best.volume?.h24 ?? 0) ? pair : best;
+  }, undefined);
+}
+
+function buildBestPairByMint(pairs: DexPair[]): Map<string, DexPair> {
+  const byMint = new Map<string, DexPair>();
+  for (const pair of pairs) {
+    const mint = tokenMintFromPair(pair);
+    const existing = byMint.get(mint);
+    if (!existing || (pair.volume?.h24 ?? 0) > (existing.volume?.h24 ?? 0)) {
+      byMint.set(mint, pair);
+    }
+  }
+  return byMint;
 }
 
 /** Extract meaningful keywords from a market title for token search. */
@@ -162,84 +370,108 @@ export function extractKeywordsFromTitle(title: string): string[] {
 }
 
 export async function getSurfacedTokens(marketId?: string, categoryId?: string, keywordsParam?: string): Promise<SurfacedToken[]> {
-  const hasExplicitKeywords = parseKeywordsParam(keywordsParam).length > 0 || !!categoryId;
-  const keywords =
-    parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
-    : categoryId ? getKeywordsForCategory(categoryId)
-    : [];
+  const cacheKey = buildSurfacedTokensCacheKey(marketId, categoryId, keywordsParam);
+  const cached = surfacedTokensCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const allPairs: DexPair[] = [];
-  const seenMints = new Set<string>();
+  const inFlight = surfacedTokensInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
 
-  if (!hasExplicitKeywords) {
-    if (process.env.BAGS_API_KEY) {
-      try {
-        const pools = await getBagsPools();
-        const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, 24);
-        for (let i = 0; i < bagsMints.length; i += 4) {
-          const batch = bagsMints.slice(i, i + 4);
-          const results = await Promise.all(batch.map((m) => getTokenPairs(m)));
-          for (let j = 0; j < batch.length; j++) {
-            const pairs = results[j];
-            const queriedMint = batch[j];
-            if (pairs.length > 0 && !seenMints.has(queriedMint)) {
-              const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
+  const promise = (async () => {
+    const keywords =
+      parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
+      : categoryId ? getKeywordsForCategory(categoryId)
+      : [];
+    const isDefaultDiscovery = !marketId && !categoryId && keywords.length === 0;
+
+    const allPairs: DexPair[] = [];
+    const seenMints = new Set<string>();
+
+    try {
+      if (process.env.BAGS_API_KEY && !isDefaultDiscovery) {
+        try {
+          const pools = await getBagsPools();
+          const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, TARGETED_RESULT_LIMIT);
+          const results = await Promise.all(bagsMints.map((mint) => getTokenPairs(mint)));
+          for (let index = 0; index < bagsMints.length; index += 1) {
+            const queriedMint = bagsMints[index];
+            const best = pickBestPair(results[index]);
+            if (best && !seenMints.has(queriedMint)) {
               seenMints.add(queriedMint);
               allPairs.push(best);
             }
           }
+        } catch (e) {
+          console.warn("[tokens] Bags pools fetch failed:", e);
         }
-      } catch (e) {
-        console.warn("[tokens] Bags pools fetch failed:", e);
       }
-    }
-    try {
-      const boosted = await getLatestBoostedTokens();
-      const boostedMints = boosted.slice(0, 16).map((t) => t.tokenAddress).filter((m) => !seenMints.has(m));
-      for (let i = 0; i < boostedMints.length; i += 4) {
-        const batch = boostedMints.slice(i, i + 4);
-        const results = await Promise.all(batch.map((m) => getTokenPairs(m)));
-        for (let j = 0; j < batch.length; j++) {
-          const pairs = results[j];
-          const queriedMint = batch[j];
-          if (pairs.length > 0 && !seenMints.has(queriedMint)) {
-            const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
+
+      try {
+        const boosted = await getLatestBoostedTokens();
+        const boostedMints = boosted
+          .slice(0, isDefaultDiscovery ? DEFAULT_DISCOVERY_RESULT_LIMIT : TARGETED_RESULT_LIMIT)
+          .map((t) => t.tokenAddress)
+          .filter((mint) => !seenMints.has(mint));
+        const results = await Promise.all(boostedMints.map((mint) => getTokenPairs(mint)));
+        for (let index = 0; index < boostedMints.length; index += 1) {
+          const queriedMint = boostedMints[index];
+          const best = pickBestPair(results[index]);
+          if (best && !seenMints.has(queriedMint)) {
             seenMints.add(queriedMint);
             allPairs.push(best);
           }
         }
+      } catch (e) {
+        console.warn("[tokens] DexScreener boosted failed:", e);
       }
-      const surfaced = await pairsToSurfacedTokens(allPairs, []);
-      if (surfaced.length > 0) {
-        return surfaced
-          .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
-          .slice(0, 24);
-      }
-    } catch (e) {
-      console.warn("[tokens] DexScreener boosted failed:", e);
-    }
-  }
 
-  if (keywords.length > 0) {
-    try {
-      const searchTerms = keywords.slice(0, 5);
-      const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
-      const keywordPairs: DexPair[] = searchResults.flat();
-      const surfaced = await pairsToSurfacedTokens(keywordPairs, keywords);
-      if (surfaced.length > 0) {
-        return surfaced
-          .sort((a, b) => b.relevanceScore - a.relevanceScore)
-          .slice(0, 24);
+      const shouldRunDiscoverySearch = keywords.length > 0 || !marketId;
+      if (shouldRunDiscoverySearch) {
+        try {
+          const searchTerms = (keywords.length > 0 ? keywords : DEFAULT_DISCOVERY_TERMS).slice(0, isDefaultDiscovery ? 3 : 5);
+          const searchResults = await Promise.all(searchTerms.map((term) => searchPairs(term)));
+          const keywordPairs: DexPair[] = searchResults.flat();
+          for (const pair of keywordPairs) {
+            const mint = tokenMintFromPair(pair);
+            if (seenMints.has(mint)) continue;
+            seenMints.add(mint);
+            allPairs.push(pair);
+          }
+        } catch (e) {
+          console.warn("[tokens] DexScreener search failed:", e);
+        }
       }
-    } catch (e) {
-      console.warn("[tokens] DexScreener search failed:", e);
-    }
-  }
 
-  const surfaced = await pairsToSurfacedTokens(allPairs, keywords);
-  return surfaced
-    .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
-    .slice(0, 24);
+      const bestPairByMint = buildBestPairByMint(allPairs);
+      const surfaced = pairsToSurfacedTokens(bestPairByMint, keywords);
+      const ranked = surfaced
+        .sort((a, b) => {
+          if (keywords.length > 0) return b.relevanceScore - a.relevanceScore;
+          return (b.volume24h ?? 0) - (a.volume24h ?? 0);
+        })
+        .slice(0, isDefaultDiscovery ? DEFAULT_DISCOVERY_RESULT_LIMIT : TARGETED_RESULT_LIMIT)
+        .map((token) => applyInlineRisk(token, bestPairByMint.get(token.mint)))
+        .filter((token) => !token.riskBlocked);
+
+      const filtered = isDefaultDiscovery
+        ? ranked
+        : (await hydrateSurfacedTokens(ranked, bestPairByMint)).filter((token) => !token.riskBlocked);
+
+      surfacedTokensCache.set(cacheKey, {
+        expiresAt: Date.now() + TOKENS_CACHE_MS,
+        value: filtered,
+      });
+      return filtered;
+    } catch (error) {
+      if (cached) return cached.value;
+      throw error;
+    } finally {
+      surfacedTokensInFlight.delete(cacheKey);
+    }
+  })();
+
+  surfacedTokensInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 export interface TokenInfo {
@@ -249,6 +481,12 @@ export interface TokenInfo {
   imageUrl?: string;
   priceUsd?: number;
   volume24h?: number;
+  liquidityUsd?: number;
+  fdvUsd?: number;
+  holders?: number;
+  bondingCurveStatus?: BondingCurveStatus;
+  rugcheckScore?: number;
+  safe?: boolean;
   riskScore?: number;
   riskLabel?: RiskLabel;
   riskReasons?: string[];
@@ -263,7 +501,10 @@ const JUPITER_CACHE_MS = 60 * 60 * 1000;
 async function getJupiterTokenByMint(mint: string): Promise<{ name: string; symbol: string; imageUrl?: string } | null> {
   try {
     if (!jupiterTokenCache || Date.now() - jupiterCacheTime > JUPITER_CACHE_MS) {
-      const res = await fetch(JUPITER_TOKEN_LIST_URL, { headers: { Accept: "application/json" } });
+      const res = await fetch(JUPITER_TOKEN_LIST_URL, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(JUPITER_TIMEOUT_MS),
+      });
       if (!res.ok) return null;
       const list = (await res.json()) as Array<{ address: string; symbol?: string; name?: string; logoURI?: string }>;
       jupiterTokenCache = new Map();
@@ -293,54 +534,56 @@ export async function getTokenInfoByMint(mint: string): Promise<TokenInfo | null
     if (pairs.length > 0) {
       const best = pairs.reduce((a, b) => ((a.volume?.h24 ?? 0) > (b.volume?.h24 ?? 0) ? a : b));
       const base = best.baseToken.address === mint ? best.baseToken : best.quoteToken;
-      const priceUsd = best.priceUsd ? parseFloat(best.priceUsd) : undefined;
-      const imageUrl = best.info?.imageUrl?.startsWith("http")
-        ? best.info.imageUrl
-        : best.info?.imageUrl
-          ? `https://cdn.dexscreener.com/cms/images/${best.info.imageUrl}?width=800&height=800&quality=90`
-          : undefined;
-      const risk = analyzeTokenRisk({
-        pair: best,
+      const priceUsd = parseUsd(best.priceUsd);
+      const enrichment = await enrichToken({
         mint,
         name: base.name || base.symbol || "Unknown",
         symbol: base.symbol || "???",
+        pair: best,
         priceUsd,
-        volume24h: best.volume?.h24,
-        imageUrl,
       });
       return {
         mint,
         name: base.name || base.symbol || "Unknown",
         symbol: base.symbol || "???",
-        imageUrl,
+        imageUrl: enrichment.imageUrl,
         priceUsd,
         volume24h: best.volume?.h24 ? Math.round(best.volume.h24) : undefined,
-        riskScore: risk.score,
-        riskLabel: risk.label,
-        riskReasons: risk.reasons,
-        riskBlocked: risk.blocked,
+        liquidityUsd: enrichment.liquidityUsd,
+        fdvUsd: enrichment.fdvUsd,
+        holders: enrichment.holders,
+        bondingCurveStatus: enrichment.bondingCurveStatus,
+        rugcheckScore: enrichment.rugcheckScore,
+        safe: enrichment.safe,
+        riskScore: enrichment.risk.score,
+        riskLabel: enrichment.risk.label,
+        riskReasons: enrichment.risk.reasons,
+        riskBlocked: enrichment.risk.blocked,
       };
     }
     const jup = await getJupiterTokenByMint(mint);
     if (jup) {
-      const risk = analyzeTokenRisk({
+      const enrichment = await enrichToken({
         mint,
         name: jup.name,
         symbol: jup.symbol,
-        priceUsd: undefined,
-        volume24h: undefined,
-        imageUrl: jup.imageUrl,
       });
       return {
         mint,
         name: jup.name,
         symbol: jup.symbol,
-        imageUrl: jup.imageUrl,
+        imageUrl: enrichment.imageUrl ?? jup.imageUrl,
         priceUsd: undefined,
-        riskScore: risk.score,
-        riskLabel: risk.label,
-        riskReasons: risk.reasons,
-        riskBlocked: risk.blocked,
+        liquidityUsd: enrichment.liquidityUsd,
+        fdvUsd: enrichment.fdvUsd,
+        holders: enrichment.holders,
+        bondingCurveStatus: enrichment.bondingCurveStatus,
+        rugcheckScore: enrichment.rugcheckScore,
+        safe: enrichment.safe,
+        riskScore: enrichment.risk.score,
+        riskLabel: enrichment.risk.label,
+        riskReasons: enrichment.risk.reasons,
+        riskBlocked: enrichment.risk.blocked,
       };
     }
     return null;

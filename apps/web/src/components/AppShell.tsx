@@ -1,7 +1,6 @@
 "use client";
 
 import { UnifiedBuyPanel } from "./UnifiedBuyPanel";
-import { TradePanelErrorBoundary } from "./TradePanelErrorBoundary";
 import { ThemeSync } from "./ThemeSync";
 import { ToastContainer } from "./Toast";
 import { OnboardingModal } from "./OnboardingModal";
@@ -21,9 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </AccessGate>
       <Footer />
-      <TradePanelErrorBoundary>
-        <UnifiedBuyPanel />
-      </TradePanelErrorBoundary>
+      <UnifiedBuyPanel />
       <ToastContainer />
       <OnboardingModal />
       <IssueBadge />

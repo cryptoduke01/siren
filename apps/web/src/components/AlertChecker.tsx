@@ -5,7 +5,8 @@ import { useMarkets } from "@/hooks/useMarkets";
 import { useAlertStore } from "@/store/useAlertStore";
 import { useToastStore } from "@/store/useToastStore";
 import { useSignalHistoryStore } from "@/store/useSignalHistoryStore";
-import { API_URL } from "@/lib/apiUrl";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export function AlertChecker() {
   const { data: markets = [] } = useMarkets();

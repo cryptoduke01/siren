@@ -29,6 +29,17 @@ function VelocityBadge({ v }: { v: number }) {
   );
 }
 
+function SourceBadge({ source }: { source: MarketWithVelocity["source"] }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
+      style={{ background: source === "kalshi" ? "#00B2FF" : "#6B3FDB", color: "#FFFFFF" }}
+    >
+      {source === "kalshi" ? "Kalshi" : "Polymarket"}
+    </span>
+  );
+}
+
 export function MarketBottomSheet({
   isOpen,
   onClose,
@@ -148,6 +159,9 @@ export function MarketBottomSheet({
                       >
                         <div className="absolute top-2 right-2">
                           <StarButton type="market" id={m.ticker} />
+                        </div>
+                        <div className="mb-2 flex items-center gap-2">
+                          <SourceBadge source={m.source} />
                         </div>
                         <div className="flex items-baseline justify-between gap-2 mb-2">
                           <span

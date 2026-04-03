@@ -8,7 +8,8 @@ import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { Footer } from "@/components/Footer";
 import { useThemeStore } from "@/store/useThemeStore";
-import { API_URL } from "@/lib/apiUrl";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export default function WaitlistPage() {
   const [name, setName] = useState("");
@@ -93,7 +94,7 @@ export default function WaitlistPage() {
               {[
                 "Live Kalshi market data routed through DFlow.",
                 "Token surfacing that actually tracks real-world events.",
-                "Creator rails via Bags with fee-sharing built in.",
+                "Creator tools via Bags with fee-sharing built in.",
               ].map((text) => (
                 <li key={text} className="flex items-start gap-3">
                   <span
