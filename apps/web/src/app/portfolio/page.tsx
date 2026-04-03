@@ -345,16 +345,22 @@ function TokenRow({ symbol, balance, usdValue }: {
 // ── Position Row ────────────────────────────────────────────────────
 
 function PositionRow({ position: p }: { position: Position }) {
+  const [expanded, setExpanded] = useState(false);
   const settled = p.status === "settled";
   const pnl = p.pnlUsd ?? 0;
   const pnlPct = p.pnlPct ?? 0;
   const shares = p.quantity ?? p.balance ?? 0;
   const prob = p.probability ?? 0;
   const entry = p.entryPrice ?? 0;
-  const current = p.currentPrice ?? (prob / 100);
+  const current = p.currentPrice ?? (prob > 1 ? prob / 100 : prob);
+  const kalshiUrl = p.kalshi_url || `https://kalshi.com/markets/${p.ticker?.toLowerCase()}`;
+
   return (
-    <div className="rounded-lg border px-4 py-3"
-      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+    <div
+      className="rounded-lg border px-4 py-3 cursor-pointer transition-colors hover:border-[var(--accent)]/30"
+      style={{ borderColor: expanded ? "var(--accent)" : "var(--border-subtle)", background: "var(--bg-base)" }}
+      onClick={() => { hapticLight(); setExpanded(!expanded); }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate font-heading text-sm font-medium" style={{ color: "var(--text-1)" }}>
@@ -375,6 +381,7 @@ function PositionRow({ position: p }: { position: Position }) {
                 Settled
               </span>
             )}
+            <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} style={{ color: "var(--text-3)" }} />
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -394,6 +401,34 @@ function PositionRow({ position: p }: { position: Position }) {
         {current > 0 && <span>{settled ? "Final" : "Current"} ${fmtUsd(current)}</span>}
         <span>Prob {prob > 1 ? prob.toFixed(0) : (prob * 100).toFixed(0)}%</span>
       </div>
+
+      {expanded && (
+        <div className="mt-3 border-t pt-3 flex flex-wrap gap-2" style={{ borderColor: "var(--border-subtle)" }}>
+          <a
+            href={kalshiUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
+            style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+          >
+            View on Kalshi ↗
+          </a>
+          {!settled && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); window.open(kalshiUrl, "_blank"); }}
+              className="rounded-md px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all"
+              style={{ background: "rgba(239,68,68,0.12)", color: "var(--down)" }}
+            >
+              Sell Position
+            </button>
+          )}
+          <span className="font-mono text-[10px] self-center" style={{ color: "var(--text-3)" }}>
+            {p.ticker}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

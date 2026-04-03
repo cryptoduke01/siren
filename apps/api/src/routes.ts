@@ -946,6 +946,58 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get<{ Querystring: { q: string } }>("/api/markets/search", async (req, reply) => {
+    const q = (req.query.q ?? "").trim().toLowerCase();
+    if (!q || q.length < 2) return reply.send({ success: true, data: [] });
+    try {
+      const all = await withTimeout(getMarketsWithVelocity(), MARKET_ROUTE_TIMEOUT_MS, "markets-search");
+      const matches = all.filter(
+        (m) =>
+          m.title?.toLowerCase().includes(q) ||
+          m.ticker?.toLowerCase().includes(q) ||
+          m.subtitle?.toLowerCase().includes(q)
+      );
+      if (matches.length > 0) {
+        return reply.send({ success: true, data: matches });
+      }
+      const gammaRes = await fetch(
+        `https://gamma-api.polymarket.com/markets?closed=false&limit=20&active=true&_q=${encodeURIComponent(q)}`,
+        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(6_000) },
+      ).catch(() => null);
+      if (gammaRes?.ok) {
+        const gammaData = (await gammaRes.json()) as Array<{
+          condition_id?: string;
+          question?: string;
+          groupItemTitle?: string;
+          outcomePrices?: string;
+          volume?: string;
+          active?: boolean;
+        }>;
+        const extra = gammaData
+          .filter((m) => m.active !== false && m.question)
+          .slice(0, 15)
+          .map((m) => {
+            const prices = m.outcomePrices ? JSON.parse(m.outcomePrices) : [];
+            const yesPrice = parseFloat(prices[0]) || 0.5;
+            return {
+              ticker: m.condition_id ?? "",
+              title: m.question ?? "",
+              subtitle: m.groupItemTitle,
+              probability: yesPrice * 100,
+              volume: parseFloat(m.volume ?? "0"),
+              source: "polymarket" as const,
+              velocity_1h: 0,
+            };
+          });
+        return reply.send({ success: true, data: extra });
+      }
+      return reply.send({ success: true, data: [] });
+    } catch (e) {
+      app.log.warn(e);
+      return reply.send({ success: true, data: [] });
+    }
+  });
+
   app.get("/api/signals", async (_req, reply) => {
     reply.header("Cache-Control", "public, max-age=5, stale-while-revalidate=30");
     if (signalRouteCache && signalRouteCache.expiresAt > Date.now()) {

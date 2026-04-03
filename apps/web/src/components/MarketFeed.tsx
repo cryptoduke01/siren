@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToastStore } from "@/store/useToastStore";
 import { useSirenStore } from "@/store/useSirenStore";
@@ -9,6 +10,7 @@ import { useSignals } from "@/hooks/useSignals";
 import { MarketDetailPanel } from "./MarketDetailPanel";
 import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
+import { API_URL } from "@/lib/apiUrl";
 import type { MarketWithVelocity, PredictionSignal, SignalSource } from "@siren/shared";
 import { toSelectedMarket } from "@/lib/marketSelection";
 
@@ -83,6 +85,25 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
   const { data: markets = [], isLoading, isError, refetch } = useMarkets();
   const { signals, status: signalStatus } = useSignals();
 
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const { data: serverSearchResults = [] } = useQuery({
+    queryKey: ["market-search", debouncedQuery],
+    queryFn: async (): Promise<MarketWithVelocity[]> => {
+      if (!debouncedQuery || debouncedQuery.length < 2) return [];
+      const res = await fetch(`${API_URL}/api/markets/search?q=${encodeURIComponent(debouncedQuery)}`, { credentials: "omit" });
+      if (!res.ok) return [];
+      const json = await res.json().catch(() => ({}));
+      return (json.data ?? []) as MarketWithVelocity[];
+    },
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
@@ -153,8 +174,14 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         });
         break;
     }
+    if (searchQuery.trim() && sorted.length < 5 && serverSearchResults.length > 0) {
+      const existingTickers = new Set(sorted.map((m) => m.ticker));
+      const extra = serverSearchResults.filter((m) => !existingTickers.has(m.ticker));
+      sorted.push(...extra);
+    }
+
     return sorted;
-  }, [markets, sourceFilter, searchQuery, sortMode, hotSignalTickers]);
+  }, [markets, sourceFilter, searchQuery, sortMode, hotSignalTickers, serverSearchResults]);
 
   const handleSelectMarket = (m: MarketWithVelocity) => {
     hapticLight();
