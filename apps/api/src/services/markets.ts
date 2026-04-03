@@ -82,8 +82,24 @@ const KALSHI_TRADES_MAX_PAGES = 12;
 const DFLOW_TIMEOUT_MS = 5_000;
 let marketsCache: { expiresAt: number; value: MarketWithVelocity[] } | null = null;
 let marketsInFlight: Promise<MarketWithVelocity[]> | null = null;
+const MAX_TRADE_ACTIVITY_CACHE = 200;
 const marketTradeActivityCache = new Map<string, { expiresAt: number; value: MarketTradeActivity }>();
 const marketTradeActivityInFlight = new Map<string, Promise<MarketTradeActivity>>();
+
+function evictTradeActivityCache(): void {
+  if (marketTradeActivityCache.size <= MAX_TRADE_ACTIVITY_CACHE) return;
+  const now = Date.now();
+  for (const [key, entry] of marketTradeActivityCache) {
+    if (entry.expiresAt < now) marketTradeActivityCache.delete(key);
+  }
+  if (marketTradeActivityCache.size <= MAX_TRADE_ACTIVITY_CACHE) return;
+  const toRemove = marketTradeActivityCache.size - MAX_TRADE_ACTIVITY_CACHE;
+  const iter = marketTradeActivityCache.keys();
+  for (let i = 0; i < toRemove; i++) {
+    const key = iter.next().value;
+    if (key) marketTradeActivityCache.delete(key);
+  }
+}
 
 function parseDollarPrice(value?: string): number | undefined {
   if (!value) return undefined;
@@ -246,6 +262,7 @@ export async function getMarketTradeActivity(ticker: string): Promise<MarketTrad
         expiresAt: Date.now() + MARKET_ACTIVITY_CACHE_MS,
         value,
       });
+      evictTradeActivityCache();
       return value;
     } catch (error) {
       const stale = marketTradeActivityCache.get(normalizedTicker);

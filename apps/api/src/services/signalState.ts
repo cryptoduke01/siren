@@ -18,8 +18,19 @@ const SIGNAL_STATUS_KEY = "siren:signals:status";
 const SNAPSHOT_KEY_PREFIX = "siren:signals:snapshots";
 const SNAPSHOT_TTL_MS = 2 * 60 * 1000;
 const MAX_SIGNAL_ITEMS = 100;
+const MAX_SNAPSHOT_KEYS = 300;
 
 const memorySnapshots = new Map<string, MarketProbabilitySnapshot[]>();
+
+function evictOldSnapshotKeys(): void {
+  if (memorySnapshots.size <= MAX_SNAPSHOT_KEYS) return;
+  const toRemove = memorySnapshots.size - MAX_SNAPSHOT_KEYS;
+  const iter = memorySnapshots.keys();
+  for (let i = 0; i < toRemove; i++) {
+    const key = iter.next().value;
+    if (key) memorySnapshots.delete(key);
+  }
+}
 let memorySignals: PredictionSignal[] = [];
 let memoryUpdatedAt = new Date().toISOString();
 const memoryStatuses = new Map<SignalSource, SignalSourceStatus>([
@@ -179,6 +190,7 @@ export async function saveProbabilitySnapshot(
     .slice(-8);
 
   await setStoredSnapshots(source, marketId, snapshots);
+  evictOldSnapshotKeys();
 }
 
 export async function markSignalSourceHealthy(source: SignalSource): Promise<SignalFeedSnapshot> {

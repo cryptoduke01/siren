@@ -257,7 +257,8 @@ async function fetchBaseBalanceEth(address: string): Promise<number> {
   return parseEthFromHexWei(payload.result);
 }
 
-// In-memory volume store (resets on restart). For persistence, add Supabase/DB.
+const MAX_VOLUME_WALLETS = 200;
+const MAX_VOLUME_ENTRIES_PER_WALLET = 200;
 const volumeStore = new Map<string, Array<{ ts: number; volumeSol: number }>>();
 function getVolumeStats(): {
   platform7d: number;
@@ -1313,8 +1314,12 @@ export function registerRoutes(app: FastifyInstance) {
     if (w.length < 32) return reply.status(400).send({ success: false, error: "Invalid wallet" });
     const entries = volumeStore.get(w) ?? [];
     entries.push({ ts: Date.now(), volumeSol });
-    if (entries.length > 500) entries.splice(0, entries.length - 500);
+    if (entries.length > MAX_VOLUME_ENTRIES_PER_WALLET) entries.splice(0, entries.length - MAX_VOLUME_ENTRIES_PER_WALLET);
     volumeStore.set(w, entries);
+    if (volumeStore.size > MAX_VOLUME_WALLETS) {
+      const oldest = volumeStore.keys().next().value;
+      if (oldest) volumeStore.delete(oldest);
+    }
     return reply.send({ success: true });
   });
 

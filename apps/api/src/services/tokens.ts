@@ -40,9 +40,32 @@ const TOKENS_CACHE_MS = 45 * 1000;
 const TOKEN_HYDRATION_BATCH_SIZE = 6;
 const DEFAULT_DISCOVERY_RESULT_LIMIT = 16;
 const TARGETED_RESULT_LIMIT = 12;
+const MAX_RUGCHECK_CACHE = 200;
+const MAX_SURFACED_CACHE = 50;
 const rugcheckCache = new Map<string, { expiry: number; value: RugcheckSummary | null }>();
 const surfacedTokensCache = new Map<string, { expiresAt: number; value: SurfacedToken[] }>();
 const surfacedTokensInFlight = new Map<string, Promise<SurfacedToken[]>>();
+
+function evictMapByExpiry<T extends { expiry?: number; expiresAt?: number }>(
+  map: Map<string, T>,
+  maxSize: number,
+): void {
+  if (map.size <= maxSize) return;
+  const now = Date.now();
+  for (const [key, entry] of map) {
+    const exp = (entry as { expiry?: number }).expiry ?? (entry as { expiresAt?: number }).expiresAt ?? Infinity;
+    if (exp < now) map.delete(key);
+  }
+  if (map.size <= maxSize) {
+    return;
+  }
+  const toRemove = map.size - maxSize;
+  const iter = map.keys();
+  for (let i = 0; i < toRemove; i++) {
+    const key = iter.next().value;
+    if (key) map.delete(key);
+  }
+}
 
 /** Detect launchpad from mint suffix (Bags: BAGS, Pump.fun: pump, Bonk.fun: bonk, Moonshot: shot). */
 export function getLaunchpadFromMint(mint: string): LaunchpadId | undefined {
@@ -124,9 +147,11 @@ async function getRugcheckSummary(mint: string): Promise<RugcheckSummary | null>
             : rugcheckScore < 60,
     };
     rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value });
+    evictMapByExpiry(rugcheckCache, MAX_RUGCHECK_CACHE);
     return value;
   } catch {
     rugcheckCache.set(mint, { expiry: Date.now() + RUGCHECK_CACHE_MS, value: null });
+    evictMapByExpiry(rugcheckCache, MAX_RUGCHECK_CACHE);
     return null;
   }
 }
@@ -461,6 +486,7 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
         expiresAt: Date.now() + TOKENS_CACHE_MS,
         value: filtered,
       });
+      evictMapByExpiry(surfacedTokensCache, MAX_SURFACED_CACHE);
       return filtered;
     } catch (error) {
       if (cached) return cached.value;
