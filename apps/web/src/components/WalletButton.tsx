@@ -8,7 +8,7 @@ import { hapticLight } from "@/lib/haptics";
 import { ChevronDown, Copy, LogOut, KeyRound, EyeOff } from "lucide-react";
 
 export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
-  const { connected, publicKey, evmAddress, disconnect, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
+  const { connected, publicKey, disconnect, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [privateKey, setPrivateKey] = useState<string | null>(null);
@@ -47,9 +47,9 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
     disconnect();
   };
 
-  const handleCopyAddress = (value: string) => {
+  const handleCopyAddress = () => {
     hapticLight();
-    if (value) navigator.clipboard.writeText(value);
+    if (fullAddress) navigator.clipboard.writeText(fullAddress);
     setDropdownOpen(false);
   };
 
@@ -82,14 +82,9 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
             className={`absolute top-full mt-1 py-1 rounded-lg border min-w-[160px] z-50 ${fullWidth ? "left-0 right-0 w-full" : "right-0"}`}
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}
           >
-            <button type="button" onClick={() => handleCopyAddress(fullAddress)} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-1)" }}>
-              <Copy className="w-3.5 h-3.5" /> Copy Solana address
+            <button type="button" onClick={handleCopyAddress} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-1)" }}>
+              <Copy className="w-3.5 h-3.5" /> Copy address
             </button>
-            {evmAddress && (
-              <button type="button" onClick={() => handleCopyAddress(evmAddress)} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-1)" }}>
-                <Copy className="w-3.5 h-3.5" /> Copy EVM address
-              </button>
-            )}
             {canExportPrivateKey && (
               <button type="button" onClick={handleExportPrivateKey} className="w-full flex items-center gap-2 px-3 py-2 text-left font-body text-xs hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-1)" }}>
                 <KeyRound className="w-3.5 h-3.5" /> Export private key

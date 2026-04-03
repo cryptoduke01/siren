@@ -29,7 +29,7 @@ This guide tells you exactly what to configure and deploy. Everything else is do
 
 ## 3. Privy Auth (login + embedded wallets)
 
-**Status:** Integrated. When `NEXT_PUBLIC_PRIVY_APP_ID` is set, the app uses Privy for social sign-in (Google, GitHub, X) and creates embedded Solana + EVM wallets automatically.
+**Status:** Integrated. When `NEXT_PUBLIC_PRIVY_APP_ID` is set, the app uses Privy for connect/sign-in (wallet, email, Google, GitHub, X).
 
 **Your steps:**
 1. In **apps/web/.env.local** add:
@@ -38,8 +38,7 @@ This guide tells you exactly what to configure and deploy. Everything else is do
    ```
    (Get App ID from [dashboard.privy.io](https://dashboard.privy.io))
 2. **Privy dashboard** — set allowed origins (e.g. `https://onsiren.xyz`, `http://localhost:3000`)
-3. Enable **Google, GitHub, X** and **Embedded wallets**.
-4. Turn on **Solana** and **Ethereum** wallet creation on login (all users). Siren defaults the EVM side to Base / Ethereum / Polygon in-app.
+3. Enable **Google, GitHub, X** and **Embedded wallets** (create on login: all users)
 
 ---
 
@@ -54,7 +53,7 @@ This guide tells you exactly what to configure and deploy. Everything else is do
 
 | Service        | Env vars / config |
 |----------------|-------------------|
-| API (Render)   | `RESEND_API_KEY`, `SIREN_EMAIL_FROM`, `SIREN_APP_URL`, `SUPABASE_*`, `SIREN_ACCESS_CODE`, `REDIS_URL`, DFlow/Bags/Jupiter keys, Polymarket keys |
+| API (Render)   | `RESEND_API_KEY`, `SIREN_EMAIL_FROM`, `SIREN_APP_URL`, `SUPABASE_*`, `SIREN_ACCESS_CODE`, DFlow/Bags/Jupiter keys |
 | Web (Vercel)   | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`, `NEXT_PUBLIC_PRIVY_APP_ID`, `NEXT_PUBLIC_ADMIN_PASSCODE` |
 
 ---

@@ -56,45 +56,24 @@ export interface SwapOrderParams {
   slippageBps?: number;
   tryDflowFirst?: boolean;
   countryCode?: string | null;
-  forcePredictionMarket?: boolean;
 }
 
 export interface SwapOrderResult {
   provider: SwapProvider;
   transaction: string;
   error?: string;
-  executionMode?: "sync" | "async";
-  lastValidBlockHeight?: number;
-  inAmount?: string;
-  outAmount?: string;
 }
 
 export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderResult> {
-  const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true, countryCode, forcePredictionMarket = false } = params;
+  const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true, countryCode } = params;
 
   const mints = await getMarketMints();
   const inputIsMarket = isMarketMint(inputMint, mints);
   const outputIsMarket = isMarketMint(outputMint, mints);
-  const involvesPredictionMarket = forcePredictionMarket || inputIsMarket || outputIsMarket;
   const dflowBlocked = shouldBlockByCountry(countryCode);
+  const canUseDflow = (inputIsMarket || outputIsMarket) && tryDflowFirst && !dflowBlocked;
 
-  if (involvesPredictionMarket) {
-    if (dflowBlocked) {
-      return {
-        provider: "dflow",
-        transaction: "",
-        error: "Prediction market trading is not available in your jurisdiction.",
-      };
-    }
-
-    if (!tryDflowFirst) {
-      return {
-        provider: "dflow",
-        transaction: "",
-        error: "Prediction market routing requires DFlow.",
-      };
-    }
-
+  if (canUseDflow) {
     const dflow = await getDflowOrder({
       inputMint,
       outputMint,
@@ -104,21 +83,8 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
       predictionMarketSlippageBps: 500,
     });
     if (dflow.transaction) {
-      return {
-        provider: "dflow",
-        transaction: dflow.transaction,
-        executionMode: dflow.executionMode,
-        lastValidBlockHeight: dflow.lastValidBlockHeight,
-        inAmount: dflow.inAmount,
-        outAmount: dflow.outAmount,
-      };
+      return { provider: "dflow", transaction: dflow.transaction };
     }
-
-    return {
-      provider: "dflow",
-      transaction: "",
-      error: dflow.error || "Prediction market routing is unavailable right now.",
-    };
   }
 
   const inputIsBags = isBagsMint(inputMint);

@@ -67,9 +67,9 @@ https://auth.privy.io/api/v1/oauth/callback
 
 ## 5. Web App
 
-Set `NEXT_PUBLIC_PRIVY_APP_ID` in your web env (Vercel, `.env.local`). The app uses Privy as the only sign-in surface:
+Set `NEXT_PUBLIC_PRIVY_APP_ID` in your web env (Vercel, `.env.local`). The app shows two login options:
 
-1. **Social login only** — Google, GitHub, or X
-2. **Embedded wallets on login** — Privy creates Solana plus EVM wallets for the user automatically
+1. **Connect Solana wallet** — Phantom, Solflare, Torus (via wallet adapter)
+2. **Log in with email/social** — Privy modal with email, Google, GitHub, X
 
-Privy login methods in `providers.tsx`: `["google", "github", "twitter"]`.
+Privy login methods in `providers.tsx`: `["email", "google", "github", "twitter"]`.

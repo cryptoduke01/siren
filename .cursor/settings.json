@@ -1,0 +1,19 @@
+{
+  "plugins": {
+    "render": {
+      "enabled": true
+    },
+    "vercel": {
+      "enabled": true
+    },
+    "firecrawl": {
+      "enabled": true
+    },
+    "circle": {
+      "enabled": true
+    },
+    "phantom-connect": {
+      "enabled": true
+    }
+  }
+}

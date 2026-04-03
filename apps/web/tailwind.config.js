@@ -9,7 +9,8 @@ module.exports = {
     extend: {
       fontFamily: {
         heading: ["Clash Display", "sans-serif"],
-        body: ["Inter", "ui-sans-serif", "sans-serif"],
+        body: ["Cabinet Grotesk", "Inter", "ui-sans-serif", "sans-serif"],
+        label: ["Departure Mono", "ui-monospace", "monospace"],
         mono: ["Departure Mono", "ui-monospace", "monospace"],
       },
     },

@@ -1,5 +1,3 @@
-export type SignalSource = "kalshi" | "polymarket";
-
 export interface KalshiMarket {
   ticker: string;
   event_ticker: string;
@@ -12,34 +10,18 @@ export interface KalshiMarket {
   no_ask?: number;
   last_price?: number;
   volume: number;
-  volume_24h?: number;
-  liquidity?: number;
   open_interest: number;
   close_time?: number;
   open_time?: number;
 }
 
 export interface MarketWithVelocity extends KalshiMarket {
-  source: SignalSource;
-  platform_id?: string;
-  market_url?: string;
   velocity_1h: number;
   probability: number;
   yes_mint?: string;
   no_mint?: string;
-  yes_token_id?: string;
-  no_token_id?: string;
-  condition_id?: string;
-  market_slug?: string;
   series_ticker?: string;
   kalshi_url?: string;
-}
-
-export interface MarketTradeActivity {
-  ticker: string;
-  recent_trades_1h?: number;
-  recent_trades_24h: number;
-  last_trade_at?: string;
 }
 
 export interface BagsToken {
@@ -50,12 +32,6 @@ export interface BagsToken {
   imageUrl?: string;
   price?: number;
   volume24h?: number;
-  liquidityUsd?: number;
-  fdvUsd?: number;
-  holders?: number;
-  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
-  rugcheckScore?: number;
-  safe?: boolean;
   ctMentions?: number;
   score?: number;
   launchedAt?: number;
@@ -73,45 +49,6 @@ export interface SurfacedToken extends BagsToken {
   matchType: "name" | "volume" | "ct";
   /** Launchpad detected from mint (Bags, Pump.fun, Bonk.fun, etc.). */
   launchpad?: LaunchpadId;
-}
-
-export interface SignalOrderBookSnapshot {
-  tokenId?: string;
-  bestBid?: number;
-  bestAsk?: number;
-  spread?: number;
-  lastTradePrice?: number;
-  updatedAt?: string;
-}
-
-export interface PredictionSignal {
-  id: string;
-  marketId: string;
-  source: SignalSource;
-  question: string;
-  currentProb: number;
-  previousProb: number;
-  delta: number;
-  direction: "up" | "down";
-  volume: number;
-  timestamp: string;
-  matchedTokens: SurfacedToken[];
-  marketUrl?: string;
-  book?: SignalOrderBookSnapshot;
-}
-
-export interface SignalSourceStatus {
-  source: SignalSource;
-  connected: boolean;
-  lastSuccessAt?: string;
-  lastFailureAt?: string;
-  lastError?: string;
-}
-
-export interface SignalFeedSnapshot {
-  signals: PredictionSignal[];
-  status: SignalSourceStatus[];
-  updatedAt: string;
 }
 
 export interface DFlowMarket {

@@ -6,7 +6,6 @@
  */
 
 const BASE_URL = process.env.DEXSCREENER_BASE_URL || "https://api.dexscreener.com";
-const DEXSCREENER_TIMEOUT_MS = 6_000;
 
 export interface DexPair {
   chainId: string;
@@ -15,8 +14,6 @@ export interface DexPair {
   baseToken: { address: string; symbol: string; name: string };
   quoteToken: { address: string; symbol: string; name: string };
   priceUsd?: string;
-  fdv?: number;
-  marketCap?: number;
   volume?: { h24?: number; h6?: number; h1?: number };
   liquidity?: { usd?: number };
   info?: { imageUrl?: string };
@@ -41,21 +38,14 @@ interface BoostedResponse {
   data?: BoostedToken[];
 }
 
-async function fetchDexScreener<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(DEXSCREENER_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`DexScreener API error: ${res.status}`);
-  return (await res.json()) as T;
-}
-
 /** Search pairs by token symbol, name, or address. Returns Solana pairs only. */
 export async function searchPairs(query: string): Promise<DexPair[]> {
   const q = encodeURIComponent(query.trim());
   if (!q) return [];
   const url = `${BASE_URL}/latest/dex/search?q=${q}`;
-  const json = await fetchDexScreener<SearchResponse>(url);
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`DexScreener search error: ${res.status}`);
+  const json = (await res.json()) as SearchResponse;
   const pairs = json.pairs ?? [];
   return pairs.filter((p) => p.chainId === "solana");
 }
@@ -63,14 +53,18 @@ export async function searchPairs(query: string): Promise<DexPair[]> {
 /** Get top boosted tokens (trending). Rate limit 60/min. */
 export async function getTopBoostedTokens(): Promise<BoostedToken[]> {
   const url = `${BASE_URL}/token-boosts/top/v1`;
-  const json = await fetchDexScreener<BoostedResponse>(url);
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`DexScreener boosted error: ${res.status}`);
+  const json = (await res.json()) as BoostedResponse;
   return (json.data ?? []).filter((t) => t.chainId === "solana");
 }
 
 /** Get latest boosted tokens (new uprising). Returns raw array. Rate limit 60/min. */
 export async function getLatestBoostedTokens(): Promise<BoostedToken[]> {
   const url = `${BASE_URL}/token-boosts/latest/v1`;
-  const json = await fetchDexScreener<BoostedToken[] | BoostedResponse>(url);
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`DexScreener boosted error: ${res.status}`);
+  const json = (await res.json()) as BoostedToken[] | BoostedResponse;
   const arr = Array.isArray(json) ? json : (json as BoostedResponse).data ?? [];
   return arr.filter((t) => t.chainId === "solana");
 }
@@ -78,10 +72,8 @@ export async function getLatestBoostedTokens(): Promise<BoostedToken[]> {
 /** Get pairs for a token address. Returns Solana pairs with price/volume. */
 export async function getTokenPairs(tokenAddress: string): Promise<DexPair[]> {
   const url = `${BASE_URL}/token-pairs/v1/solana/${encodeURIComponent(tokenAddress)}`;
-  try {
-    const json = await fetchDexScreener<{ schemaVersion?: string; pairs?: DexPair[] }>(url);
-    return (json.pairs ?? []).filter((p) => p.chainId === "solana");
-  } catch {
-    return [];
-  }
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) return [];
+  const json = (await res.json()) as { schemaVersion?: string; pairs?: DexPair[] };
+  return (json.pairs ?? []).filter((p) => p.chainId === "solana");
 }

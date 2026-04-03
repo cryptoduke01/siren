@@ -5,19 +5,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToastStore } from "@/store/useToastStore";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useMarkets } from "@/hooks/useMarkets";
-import { useSignals } from "@/hooks/useSignals";
 import { MarketDetailPanel } from "./MarketDetailPanel";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
-import type { MarketWithVelocity, PredictionSignal } from "@siren/shared";
-import { toSelectedMarket } from "@/lib/marketSelection";
+import type { MarketWithVelocity } from "@siren/shared";
 
 const INITIAL_SHOWN = 16;
 const CATEGORIES = ["All", "Politics", "Crypto", "Sports", "Business", "Entertainment"];
-const LIVE_SIGNAL_WINDOW_MS = 30 * 60 * 1000;
 
 type SortMode = "default" | "volume" | "open_interest" | "ending_soon" | "hot";
-type SignalFilter = "all" | "kalshi" | "polymarket";
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   All: [],
@@ -45,85 +41,37 @@ function marketAvatar(title: string): string {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(letter)}&background=0b1220&color=e5e7eb&size=64`;
 }
 
-function formatCompactStat(value?: number): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value);
-}
+const MARKET_KEYWORDS = ["trump", "fed", "rates", "cpi", "inflation", "sec", "bitcoin", "btc", "election", "world", "cup", "georgia", "purdue", "uae", "icc", "t20", "sol", "eth", "jpow", "pepe", "bonk"];
+const STOP_WORDS = new Set(["will", "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "any", "did", "let", "put", "say", "she", "too", "use", "from", "than", "that", "this", "with", "what", "when", "where", "which"]);
 
-function formatSignalTimestamp(timestamp: string): string {
-  const parsed = Date.parse(timestamp);
-  if (!Number.isFinite(parsed)) return "";
-  const deltaMinutes = Math.max(0, Math.round((Date.now() - parsed) / 60_000));
-  if (deltaMinutes < 1) return "just now";
-  if (deltaMinutes === 1) return "1 min ago";
-  if (deltaMinutes < 60) return `${deltaMinutes} mins ago`;
-  const deltaHours = Math.round(deltaMinutes / 60);
-  return `${deltaHours}h ago`;
-}
-
-function formatSignalVolume(volume: number): string {
-  return new Intl.NumberFormat("en-US", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(volume);
-}
-
-function SourceBadge({ source }: { source: PredictionSignal["source"] }) {
-  const badge =
-    source === "kalshi"
-      ? { label: "KALSHI", background: "#00B2FF" }
-      : { label: "POLYMARKET", background: "#6B3FDB" };
-
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
-      style={{ background: badge.background, color: "#FFFFFF" }}
-    >
-      {badge.label}
-    </span>
-  );
+function extractKeywords(title: string): string[] {
+  const lower = title.toLowerCase();
+  const fromKnown = MARKET_KEYWORDS.filter((kw) => lower.includes(kw)).slice(0, 2);
+  const words = lower.replace(/[^\w\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
+  const seen = new Set(fromKnown);
+  const out = [...fromKnown];
+  for (const w of words) {
+    if (!seen.has(w) && out.length < 4) {
+      seen.add(w);
+      out.push(w);
+    }
+  }
+  return out;
 }
 
 export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: MarketWithVelocity) => void } = {}) {
-  const { selectedMarket, selectedSignal, setSelectedMarket, setSelectedSignal } = useSirenStore();
+  const { selectedMarket, setSelectedMarket, setDetailPanelOpen } = useSirenStore();
   const [shownCount, setShownCount] = useState(INITIAL_SHOWN);
   const [activeCategory, setActiveCategory] = useState("All");
   const [marketSearchQuery, setMarketSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("hot");
-  const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
 
   const addToast = useToastStore((s) => s.addToast);
   const { data: markets = [], isLoading, isError, error, refetch } = useMarkets();
-  const {
-    signals,
-    status: signalStatus,
-    isError: isSignalError,
-    error: signalError,
-    refetch: refetchSignals,
-  } = useSignals();
 
   useEffect(() => {
     if (isError && error) addToast("Unable to load markets. Please try again in a moment.", "error");
   }, [isError, error, addToast]);
-
-  useEffect(() => {
-    if (isSignalError && signalError) {
-      addToast("Unable to load live signals. Market browsing is still available.", "error");
-    }
-  }, [isSignalError, signalError, addToast]);
-
-  const liveSignals = useMemo(
-    () => signals.filter((signal) => Date.now() - Date.parse(signal.timestamp) <= LIVE_SIGNAL_WINDOW_MS),
-    [signals]
-  );
-  const filteredSignals = useMemo(() => {
-    const sourceFiltered =
-      signalFilter === "all" ? liveSignals : liveSignals.filter((signal) => signal.source === signalFilter);
-    return [...sourceFiltered].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-  }, [liveSignals, signalFilter]);
 
   const categoryFiltered =
     activeCategory === "All"
@@ -143,12 +91,9 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
       (m) =>
         (m.title && m.title.toLowerCase().includes(q)) ||
         (m.ticker && m.ticker.toLowerCase().includes(q)) ||
-        (m.source && m.source.toLowerCase().includes(q)) ||
         (m.subtitle && m.subtitle.toLowerCase().includes(q)) ||
         (m.event_ticker && m.event_ticker.toLowerCase().includes(q)) ||
-        ((m.market_url || m.kalshi_url) &&
-          ((m.market_url || m.kalshi_url)!.toLowerCase().includes(q) ||
-            (m.market_url || m.kalshi_url)!.toLowerCase().includes(normalized)))
+        (m.kalshi_url && (m.kalshi_url.toLowerCase().includes(q) || m.kalshi_url.toLowerCase().includes(normalized)))
     );
   }, [categoryFiltered, marketSearchQuery]);
 
@@ -174,21 +119,6 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
     }
   }, [filteredMarkets, sortMode]);
 
-  const handleSelectSignal = (signal: PredictionSignal) => {
-    hapticLight();
-    const linkedMarket = markets.find(
-      (market) =>
-        market.source === signal.source &&
-        (market.platform_id === signal.marketId || market.ticker === signal.marketId)
-    );
-    if (linkedMarket) {
-      setSelectedMarket(toSelectedMarket(linkedMarket));
-      onAfterSelectMarket?.(linkedMarket);
-      return;
-    }
-    setSelectedSignal(signal);
-  };
-
   return (
     <div
       className="h-full flex flex-col overflow-hidden min-h-0"
@@ -197,125 +127,6 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         borderRight: "1px solid var(--border-subtle)",
       }}
     >
-      <div className="flex-shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {signalStatus.map((status) => (
-              <div
-                key={status.source}
-                className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.12em]"
-                style={{
-                  borderColor: "var(--border-subtle)",
-                  background: "var(--bg-surface)",
-                  color: "var(--text-2)",
-                }}
-              >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: status.connected ? "var(--up)" : "var(--down)" }}
-                />
-                {status.source === "kalshi" ? "Kalshi" : "Polymarket"}
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              refetchSignals();
-            }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border px-3 font-body text-[11px]"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
-        </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto scrollbar-hidden">
-          {[
-            { id: "all", label: "ALL" },
-            { id: "kalshi", label: "KALSHI" },
-            { id: "polymarket", label: "POLYMARKET" },
-          ].map((filter) => (
-            <button
-              key={filter.id}
-              type="button"
-              onClick={() => {
-                hapticLight();
-                setSignalFilter(filter.id as SignalFilter);
-              }}
-              className="rounded-[8px] border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
-              style={{
-                background: signalFilter === filter.id ? "var(--bg-elevated)" : "transparent",
-                borderColor: signalFilter === filter.id ? "var(--border-active)" : "var(--border-subtle)",
-                color: signalFilter === filter.id ? "var(--text-1)" : "var(--text-3)",
-              }}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1 scrollbar-hidden">
-          {filteredSignals.length > 0 ? (
-            filteredSignals.map((signal) => {
-              const isSelected =
-                selectedSignal?.id === signal.id ||
-                (selectedMarket?.source === signal.source &&
-                  (selectedMarket.platform_id === signal.marketId || selectedMarket.ticker === signal.marketId));
-              return (
-                <button
-                  key={signal.id}
-                  type="button"
-                  onClick={() => handleSelectSignal(signal)}
-                  className="w-full rounded-[14px] border p-3 text-left transition-all duration-[120ms] ease hover:bg-[var(--bg-elevated)]"
-                  style={{
-                    background: isSelected ? "var(--bg-elevated)" : "var(--bg-surface)",
-                    borderColor: isSelected ? "var(--border-active)" : "var(--border-subtle)",
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <SourceBadge source={signal.source} />
-                        <span className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>
-                          {formatSignalTimestamp(signal.timestamp)}
-                        </span>
-                      </div>
-                      <p className="mt-2 font-heading text-[13px] font-semibold leading-tight" style={{ color: "var(--text-1)" }}>
-                        {signal.question}
-                      </p>
-                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                        {signal.matchedTokens.length} matched tokens · Vol {formatSignalVolume(signal.volume)}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p
-                        className="font-mono text-sm font-semibold tabular-nums"
-                        style={{ color: signal.delta >= 0 ? "var(--up)" : "var(--down)" }}
-                      >
-                        {signal.delta >= 0 ? "+" : ""}
-                        {signal.delta.toFixed(1)}%
-                      </p>
-                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-                        YES {signal.currentProb.toFixed(1)}%
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          ) : (
-            <div
-              className="rounded-[14px] border border-dashed p-4"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
-            >
-              <p className="font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-                No big live moves yet. When Kalshi or Polymarket starts moving, the strongest signals will show up here.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
       <div className="flex-shrink-0 px-4 pt-3 pb-2">
         <button
           type="button"
@@ -341,7 +152,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         />
       </div>
       <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-2">
-        {CATEGORIES.map((cat) => (
+        {["All", "Politics", "Crypto", "Sports"].map((cat) => (
           <button
             key={cat}
             type="button"
@@ -410,15 +221,28 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   }}
                   onClick={() => {
                     hapticLight();
-                    setSelectedMarket(toSelectedMarket(m));
+                    setSelectedMarket({
+                      ticker: m.ticker,
+                      title: m.title,
+                      probability: m.probability,
+                      velocity_1h: m.velocity_1h,
+                      volume: m.volume,
+                      open_interest: m.open_interest,
+                      event_ticker: m.event_ticker,
+                      series_ticker: m.series_ticker,
+                      subtitle: m.subtitle,
+                      keywords: extractKeywords(m.title),
+                      yes_mint: m.yes_mint,
+                      no_mint: m.no_mint,
+                      kalshi_url: m.kalshi_url,
+                    });
                     onAfterSelectMarket?.(m);
                   }}
                 >
-                  <div className="mb-2 flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 mb-2 min-w-0">
                     <img src={marketAvatar(m.title)} alt="" className="w-6 h-6 rounded-md object-cover shrink-0" />
-                    <SourceBadge source={m.source} />
                     <p
-                      className="min-w-0 flex-1 font-heading text-[13px] font-bold leading-tight line-clamp-1"
+                      className="font-heading font-bold text-[13px] leading-tight line-clamp-1 min-w-0"
                       style={{ color: "var(--text-1)" }}
                     >
                       {m.title}
@@ -447,20 +271,34 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>
-                      24h {formatCompactStat(m.volume_24h)} · OI {formatCompactStat(m.open_interest)}
+                      Vol {m.volume?.toLocaleString() ?? "—"}
                     </span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         hapticLight();
-                        setSelectedMarket(toSelectedMarket(m));
+                        setSelectedMarket({
+                          ticker: m.ticker,
+                          title: m.title,
+                          probability: m.probability,
+                          velocity_1h: m.velocity_1h,
+                          volume: m.volume,
+                          open_interest: m.open_interest,
+                          event_ticker: m.event_ticker,
+                          series_ticker: m.series_ticker,
+                          subtitle: m.subtitle,
+                          keywords: extractKeywords(m.title),
+                          yes_mint: m.yes_mint,
+                          no_mint: m.no_mint,
+                          kalshi_url: m.kalshi_url,
+                        });
                         onAfterSelectMarket?.(m);
                       }}
                       className="font-body text-[10px] font-medium hover:underline"
                       style={{ color: "var(--accent)" }}
                     >
-                      {m.source === "polymarket" ? "Open Poly + tokens" : "Open market + tokens"}
+                      Matched tokens: {Math.max(1, extractKeywords(m.title).length)}
                     </button>
                   </div>
                 </motion.li>

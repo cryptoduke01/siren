@@ -10,7 +10,6 @@ import { useMarkets } from "@/hooks/useMarkets";
 import { useSirenStore } from "@/store/useSirenStore";
 import { StarButton } from "@/components/StarButton";
 import { hapticLight } from "@/lib/haptics";
-import { toSelectedMarket } from "@/lib/marketSelection";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -22,12 +21,6 @@ async function fetchTokenInfo(
   symbol: string;
   imageUrl?: string;
   priceUsd?: number;
-  liquidityUsd?: number;
-  fdvUsd?: number;
-  holders?: number;
-  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
-  rugcheckScore?: number;
-  safe?: boolean;
   riskScore?: number;
   riskLabel?: "low" | "moderate" | "high" | "critical";
   riskReasons?: string[];
@@ -103,7 +96,27 @@ export default function WatchlistPage() {
                       style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
                       onClick={() => {
                         hapticLight();
-                        setSelectedMarket(toSelectedMarket(m));
+                        const keywords = m.title
+                          .toLowerCase()
+                          .replace(/[^\w\s]/g, " ")
+                          .split(/\s+/)
+                          .filter((w) => w.length >= 2)
+                          .slice(0, 4);
+                        setSelectedMarket({
+                          ticker: m.ticker,
+                          title: m.title,
+                          probability: m.probability,
+                          velocity_1h: m.velocity_1h,
+                          volume: m.volume,
+                          open_interest: m.open_interest,
+                          event_ticker: m.event_ticker,
+                          series_ticker: m.series_ticker,
+                          subtitle: m.subtitle,
+                          keywords,
+                          yes_mint: m.yes_mint,
+                          no_mint: m.no_mint,
+                          kalshi_url: m.kalshi_url,
+                        });
                         router.push("/");
                       }}
                     >
@@ -155,12 +168,6 @@ export default function WatchlistPage() {
                           symbol: info?.symbol ?? "???",
                           price: info?.priceUsd,
                           volume24h: undefined,
-                          liquidityUsd: info?.liquidityUsd,
-                          fdvUsd: info?.fdvUsd,
-                          holders: info?.holders,
-                          bondingCurveStatus: info?.bondingCurveStatus,
-                          rugcheckScore: info?.rugcheckScore,
-                          safe: info?.safe,
                           ctMentions: undefined,
                           riskScore: info?.riskScore,
                           riskLabel: info?.riskLabel,

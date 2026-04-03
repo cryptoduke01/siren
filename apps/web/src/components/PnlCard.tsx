@@ -23,7 +23,6 @@ interface PnlCardProps {
   totalPnlPercent: number | null;
   positions: PnlPosition[];
   walletAddress?: string | null;
-  displayName?: string | null;
   isLoading?: boolean;
   /** Called when user clicks sell for a position. Opens buy panel in sell mode. */
   onSell?: (position: PnlPosition) => void;
@@ -59,7 +58,6 @@ export function PnlCard({
   totalPnlPercent,
   positions,
   walletAddress,
-  displayName,
   isLoading,
   onSell,
 }: PnlCardProps) {
@@ -70,13 +68,12 @@ export function PnlCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const displayPositions = positions;
-  const positionCount = displayPositions.length;
-  const activeIndex = positionCount > 0 ? selectedIndex % positionCount : 0;
-  const selected = displayPositions[activeIndex] ?? displayPositions[0];
+  const selected = displayPositions[selectedIndex] ?? displayPositions[0];
 
   const pnlUsd = selected?.pnlUsd ?? totalPnlUsd;
   const pnlPercent = selected?.pnlPercent ?? totalPnlPercent;
   const hasPnl = pnlUsd !== null && pnlUsd !== 0;
+  const isPositive = pnlUsd != null && pnlUsd > 0;
   const isLoss = pnlUsd != null && pnlUsd < 0;
   const hasShareableContent =
     positions.some((p) => (p.valueUsd ?? 0) > 0 || p.pnlUsd !== null || p.pnlPercent !== null);
@@ -85,7 +82,6 @@ export function PnlCard({
   const glowRgb = isLoss ? "255, 69, 96" : "0, 255, 133";
 
   const tokenLabel = selected?.title ?? "—";
-  const isPredictionCard = selected?.side != null;
   const signalLine =
     selected == null
       ? ""
@@ -222,7 +218,7 @@ export function PnlCard({
           <div className="relative z-[2] flex h-full flex-col p-5 pr-14 md:p-6 md:pr-16">
             <div className="min-w-0">
               <p className="font-heading text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: accent }}>
-                {isPredictionCard ? "Prediction P&L" : "P&L snapshot"}
+                P&amp;L snapshot
               </p>
               {walletAddress && (
                 <p className="mt-1 font-mono text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
@@ -257,29 +253,10 @@ export function PnlCard({
                   {privacy ? "•• • •••••• ••••" : signalLine}
                 </p>
               )}
-              {isPredictionCard && (
-                <div
-                  className="mt-3 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-heading font-semibold uppercase tracking-[0.14em]"
-                  style={{
-                    background: "rgba(255,255,255,0.06)",
-                    color: accent,
-                    border: `1px solid rgba(${glowRgb}, 0.28)`,
-                  }}
-                >
-                  Marked to live market
-                </div>
-              )}
             </div>
 
             <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-              <div className="min-w-0">
-                <img src="/brand/mark.svg" alt="Siren" className="h-6 w-auto opacity-95 md:h-7" />
-                {displayName && (
-                  <p className="mt-1 font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                    {displayName}
-                  </p>
-                )}
-              </div>
+              <img src="/brand/mark.svg" alt="Siren" className="h-6 w-auto opacity-95 md:h-7" />
               <span className="font-mono text-xs font-medium md:text-sm" style={{ color: accent }}>
                 onsiren.xyz
               </span>
@@ -306,7 +283,7 @@ export function PnlCard({
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <span className="font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
-                  {activeIndex + 1} / {displayPositions.length}
+                  {selectedIndex + 1} / {displayPositions.length}
                 </span>
                 <button
                   type="button"

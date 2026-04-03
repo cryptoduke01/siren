@@ -1,260 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import bs58 from "bs58";
-import { getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
+import { getMarketsWithVelocity } from "./services/markets.js";
 import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
 import { createTokenInfo, createFeeShareConfig, createLaunchTransaction, getTokenCreators, getTokenClaimStats, getBagsPools, getBagsPoolByTokenMint, getTokenLifetimeFees, getClaimablePositions, getClaimTransactionsV3, getBagsTradeQuote, createBagsSwapTransaction } from "./services/bags.js";
-import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
+import { getDflowOrder } from "./services/dflow.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
-import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
-import { sendWelcomeWithAccessCode, sendLaunchThreadEmail, canSendEmail } from "./services/email.js";
-import { getInMemorySignalFeedSnapshot, getSignalFeedSnapshot } from "./services/signalState.js";
+import { sendWelcomeWithAccessCode, sendVolumeCompetitionEmail, canSendEmail } from "./services/email.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const STABLE_QUOTE_SYMBOLS = new Set(["USD", "USDC", "USDT", "USDS", "USDE"]);
-const MARKET_ROUTE_TIMEOUT_MS = 10_000;
-const TOKEN_ROUTE_TIMEOUT_MS = 8_000;
-const SIGNAL_ROUTE_TIMEOUT_MS = 1_500;
-const SIGNAL_ROUTE_CACHE_MS = 5_000;
-const SOL_PRICE_ROUTE_TIMEOUT_MS = 4_500;
-const SOL_PRICE_CACHE_MS = 60_000;
-const DFLOW_PROOF_ROUTE_TIMEOUT_MS = 5_000;
-const DFLOW_PROOF_VERIFY_URL = process.env.DFLOW_PROOF_VERIFY_URL?.trim() || "https://proof.dflow.net/verify";
-
-type SolPricePair = {
-  chainId?: string;
-  priceUsd?: string;
-  liquidity?: { usd?: number };
-  volume?: { h24?: number };
-  baseToken?: { address?: string; symbol?: string };
-  quoteToken?: { address?: string; symbol?: string };
-};
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
-    }),
-  ]).finally(() => {
-    if (timeoutId) clearTimeout(timeoutId);
-  });
-}
-
-function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
-  if (!pairs?.length) return 0;
-
-  const candidates = pairs.filter((pair) => {
-    if (pair.chainId !== "solana") return false;
-    const baseAddress = pair.baseToken?.address;
-    const quoteAddress = pair.quoteToken?.address;
-    const baseSymbol = pair.baseToken?.symbol?.toUpperCase();
-    const quoteSymbol = pair.quoteToken?.symbol?.toUpperCase();
-
-    const baseIsSol = baseAddress === SOL_MINT;
-    const quoteIsSol = quoteAddress === SOL_MINT;
-    const baseIsStable = !!baseSymbol && STABLE_QUOTE_SYMBOLS.has(baseSymbol);
-    const quoteIsStable = !!quoteSymbol && STABLE_QUOTE_SYMBOLS.has(quoteSymbol);
-
-    return (baseIsSol && quoteIsStable) || (quoteIsSol && baseIsStable);
-  });
-
-  const best = candidates.reduce<SolPricePair | null>((currentBest, pair) => {
-    if (!currentBest) return pair;
-    const pairLiquidity = pair.liquidity?.usd ?? 0;
-    const bestLiquidity = currentBest.liquidity?.usd ?? 0;
-    if (pairLiquidity !== bestLiquidity) {
-      return pairLiquidity > bestLiquidity ? pair : currentBest;
-    }
-    const pairVolume = pair.volume?.h24 ?? 0;
-    const bestVolume = currentBest.volume?.h24 ?? 0;
-    return pairVolume > bestVolume ? pair : currentBest;
-  }, null);
-
-  const parsed = best?.priceUsd ? parseFloat(best.priceUsd) : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function getTradeErrorStatus(error?: string | null): number {
-  const lower = error?.toLowerCase().trim() ?? "";
-  if (!lower) return 503;
-  if (lower.includes("rate limited") || lower.includes("429")) return 429;
-  if (
-    lower.includes("wallet must be verified") ||
-    lower.includes("unverified_wallet_not_allowed") ||
-    lower.includes("dflow.net/proof") ||
-    lower.includes("proof verification") ||
-    lower.includes("jurisdiction")
-  ) {
-    return 403;
-  }
-  if (
-    lower.includes("not tradable") ||
-    lower.includes("validation error") ||
-    lower.includes("insufficient") ||
-    lower.includes("slippage") ||
-    lower.includes("400")
-  ) {
-    return 400;
-  }
-  return 503;
-}
-
-let signalRouteCache: { expiresAt: number; value: Awaited<ReturnType<typeof getSignalFeedSnapshot>> } | null = null;
-let solPriceCache: { expiresAt: number; value: number } | null = null;
-let solPriceInFlight: Promise<number> | null = null;
-let ethPriceCache: { expiresAt: number; value: number } | null = null;
-let ethPriceInFlight: Promise<number> | null = null;
-const BASE_RPC_URL = process.env.BASE_RPC_URL?.trim() || "https://mainnet.base.org";
-
-function buildSignalFeedResponse(snapshot: Awaited<ReturnType<typeof getSignalFeedSnapshot>>) {
-  return {
-    success: true,
-    data: snapshot.signals,
-    status: snapshot.status,
-    updatedAt: snapshot.updatedAt,
-  };
-}
-
-async function fetchSolPriceUsd(): Promise<number> {
-  if (solPriceCache && solPriceCache.expiresAt > Date.now()) {
-    return solPriceCache.value;
-  }
-
-  if (solPriceInFlight) {
-    return solPriceInFlight;
-  }
-
-  solPriceInFlight = (async () => {
-    let usd = 0;
-
-    try {
-      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(3_500),
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { solana?: { usd?: number } };
-        usd = json.solana?.usd ?? 0;
-      }
-    } catch {
-      /* CoinGecko failed, try DexScreener */
-    }
-
-    if (!usd || !Number.isFinite(usd)) {
-      try {
-        const ds = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${SOL_MINT}`, {
-          signal: AbortSignal.timeout(3_500),
-        });
-        if (ds.ok) {
-          const json = (await ds.json()) as { pairs?: SolPricePair[] };
-          usd = pickReliableSolUsdPrice(json.pairs);
-        }
-      } catch {
-        /* fallback failed */
-      }
-    }
-
-    const normalized = usd && Number.isFinite(usd) ? usd : 0;
-    if (normalized > 0) {
-      solPriceCache = {
-        expiresAt: Date.now() + SOL_PRICE_CACHE_MS,
-        value: normalized,
-      };
-    }
-
-    return normalized || solPriceCache?.value || 0;
-  })().finally(() => {
-    solPriceInFlight = null;
-  });
-
-  return solPriceInFlight;
-}
-
-async function fetchEthPriceUsd(): Promise<number> {
-  if (ethPriceCache && ethPriceCache.expiresAt > Date.now()) {
-    return ethPriceCache.value;
-  }
-
-  if (ethPriceInFlight) {
-    return ethPriceInFlight;
-  }
-
-  ethPriceInFlight = (async () => {
-    let usd = 0;
-
-    try {
-      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(3_500),
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { ethereum?: { usd?: number } };
-        usd = json.ethereum?.usd ?? 0;
-      }
-    } catch {
-      /* CoinGecko failed. */
-    }
-
-    ethPriceCache = {
-      expiresAt: Date.now() + SOL_PRICE_CACHE_MS,
-      value: usd,
-    };
-    ethPriceInFlight = null;
-    return usd;
-  })();
-
-  return ethPriceInFlight;
-}
-
-function isHexEvmAddress(value: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(value);
-}
-
-function parseEthFromHexWei(value: string): number {
-  const wei = BigInt(value);
-  return Number(wei) / 1e18;
-}
-
-function buildDflowVerifyUrl(address: string): string {
-  return DFLOW_PROOF_VERIFY_URL.endsWith("/")
-    ? `${DFLOW_PROOF_VERIFY_URL}${encodeURIComponent(address)}`
-    : `${DFLOW_PROOF_VERIFY_URL}/${encodeURIComponent(address)}`;
-}
-
-async function fetchBaseBalanceEth(address: string): Promise<number> {
-  const response = await fetch(BASE_RPC_URL, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "eth_getBalance",
-      params: [address, "latest"],
-    }),
-    signal: AbortSignal.timeout(6_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Base RPC error: ${response.status}`);
-  }
-
-  const payload = (await response.json()) as { result?: string; error?: { message?: string } };
-  if (payload.error) {
-    throw new Error(payload.error.message || "Base RPC returned an error");
-  }
-  if (typeof payload.result !== "string") {
-    throw new Error("Base RPC did not return a balance");
-  }
-
-  return parseEthFromHexWei(payload.result);
-}
 
 // In-memory volume store (resets on restart). For persistence, add Supabase/DB.
 const volumeStore = new Map<string, Array<{ ts: number; volumeSol: number }>>();
@@ -516,8 +272,8 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  /** Admin: send launch-thread email to all waitlist signups with email. */
-  app.post("/api/admin/waitlist/send-launch-thread-email", async (_req, reply) => {
+  /** Admin: send volume competition email to all waitlist signups with email. */
+  app.post("/api/admin/waitlist/send-volume-email", async (_req, reply) => {
     try {
       const supabase = getSupabaseAdminClient();
       const { data: rows, error: listError } = await supabase
@@ -544,23 +300,23 @@ export function registerRoutes(app: FastifyInstance) {
           skippedEmails.push(row.email);
           continue;
         }
-        const result = await sendLaunchThreadEmail({ to: row.email, name: row.name });
+        const result = await sendVolumeCompetitionEmail({ to: row.email, name: row.name });
         if (result.ok) sent++;
         else {
           failed++;
           failedEmails.push(row.email);
-          app.log.warn({ email: row.email, err: result.error }, "Failed to send launch thread email");
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send volume email");
         }
       }
       return reply.send({ success: true, sent, failed, skipped, total: entries.length, failedEmails, skippedEmails });
     } catch (e) {
       app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to send launch thread emails" });
+      return reply.status(500).send({ success: false, error: "Failed to send volume emails" });
     }
   });
 
-  /** Admin: send launch-thread email to a specific list of emails (pasted manually). */
-  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-launch-thread-email-by-email", async (req, reply) => {
+  /** Admin: send volume competition email to a specific list of emails (pasted manually). */
+  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-volume-email-by-email", async (req, reply) => {
     try {
       const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
       const normalized = Array.from(
@@ -606,19 +362,19 @@ export function registerRoutes(app: FastifyInstance) {
           skippedEmails.push(email);
           continue;
         }
-        const result = await sendLaunchThreadEmail({ to: row.email, name: row.name });
+        const result = await sendVolumeCompetitionEmail({ to: row.email, name: row.name });
         if (result.ok) sent++;
         else {
           failed++;
           failedEmails.push(row.email);
-          app.log.warn({ email: row.email, err: result.error }, "Failed to send launch thread email (manual)");
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send volume email (manual)");
         }
       }
 
       return reply.send({ success: true, sent, failed, skipped, total: normalized.length, failedEmails, skippedEmails });
     } catch (e) {
       app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to send launch thread emails (manual)" });
+      return reply.status(500).send({ success: false, error: "Failed to send volume emails (manual)" });
     }
   });
 
@@ -746,112 +502,6 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   /** DFlow prediction market order: get quote + transaction. Geo-fenced for US/restricted. */
-  app.get<{ Querystring: { countryCode?: string } }>("/api/prediction-markets/eligibility", async (req, reply) => {
-    const countryCode =
-      (req.query.countryCode as string) ||
-      (req.headers["cf-ipcountry"] as string) ||
-      (req.headers["x-country-code"] as string) ||
-      null;
-    const blocked = shouldBlockByCountry(countryCode);
-    return reply.send({
-      success: true,
-      data: {
-        blocked,
-        countryCode,
-        reason: blocked ? "Prediction market trading is not available in your jurisdiction." : null,
-      },
-    });
-  });
-
-  app.post<{ Body: { venue?: string; mode?: string; market?: string; side?: string; inputAsset?: string; amount?: string; wallet?: string; message?: string } }>(
-    "/api/trade-errors/log",
-    async (req, reply) => {
-      const body = req.body ?? {};
-      const message = typeof body.message === "string" ? body.message : "";
-      const lower = message.toLowerCase();
-      const payload = {
-        venue: body.venue ?? "unknown",
-        mode: body.mode ?? "unknown",
-        market: body.market ?? null,
-        side: body.side ?? null,
-        inputAsset: body.inputAsset ?? null,
-        amount: body.amount ?? null,
-        wallet: typeof body.wallet === "string" ? `${body.wallet.slice(0, 6)}...${body.wallet.slice(-4)}` : null,
-        message,
-      };
-
-      if (lower.includes("insufficient")) {
-        app.log.info(payload, "Trade failure reported: insufficient funds");
-      } else {
-        app.log.warn(payload, "Trade failure reported");
-      }
-
-      return reply.send({ success: true });
-    }
-  );
-
-  app.get<{ Querystring: { address?: string } }>("/api/dflow/proof-status", async (req, reply) => {
-    const address = req.query.address?.trim();
-    if (!address) {
-      return reply.status(400).send({ success: false, error: "address required" });
-    }
-
-    try {
-      const response = await withTimeout(
-        fetch(buildDflowVerifyUrl(address), {
-          headers: { Accept: "application/json" },
-          signal: AbortSignal.timeout(DFLOW_PROOF_ROUTE_TIMEOUT_MS),
-        }),
-        DFLOW_PROOF_ROUTE_TIMEOUT_MS,
-        "dflow-proof-status"
-      );
-
-      if (!response.ok) {
-        return reply.status(503).send({
-          success: false,
-          error: `Proof verify failed: ${response.status}`,
-        });
-      }
-
-      const payload = (await response.json()) as { verified?: boolean };
-      return reply.send({
-        success: true,
-        data: {
-          address,
-          verified: Boolean(payload.verified),
-        },
-      });
-    } catch (error) {
-      app.log.warn(error, "Unable to verify DFlow proof status");
-      return reply.status(503).send({
-        success: false,
-        error: "Unable to verify wallet status right now.",
-      });
-    }
-  });
-
-  app.post<{ Body: { address?: string } }>("/api/polymarket/deposit-addresses", async (req, reply) => {
-    const address = req.body?.address?.trim();
-    if (!address) {
-      return reply.status(400).send({ success: false, error: "address required" });
-    }
-
-    try {
-      const payload = await withTimeout(createDepositAddresses(address), 10_000, "polymarket-deposit-addresses");
-      return reply.send({
-        success: true,
-        data: payload,
-      });
-    } catch (error) {
-      app.log.warn(error, "Unable to create Polymarket deposit addresses");
-      return reply.status(503).send({
-        success: false,
-        error: "Unable to create Polymarket deposit addresses right now.",
-      });
-    }
-  });
-
-  /** DFlow prediction market order: get quote + transaction. Geo-fenced for US/restricted. */
   app.get<{
     Querystring: { outputMint: string; amount: string; userPublicKey: string; inputMint?: string; slippageBps?: string; countryCode?: string };
   }>("/api/dflow/order", async (req, reply) => {
@@ -890,7 +540,7 @@ export function registerRoutes(app: FastifyInstance) {
 
       if (result.error) {
         app.log.warn({ outputMint: outputMint?.slice(0, 8), amount, inputMint: effectiveInputMint }, result.error);
-        return reply.status(getTradeErrorStatus(result.error)).send({
+        return reply.status(503).send({
           success: false,
           error: result.error,
         });
@@ -899,10 +549,6 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.send({
         success: true,
         transaction: result.transaction,
-        executionMode: result.executionMode,
-        lastValidBlockHeight: result.lastValidBlockHeight,
-        inAmount: result.inAmount,
-        outAmount: result.outAmount,
       });
     } catch (e) {
       app.log.error(e);
@@ -913,82 +559,24 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get<{ Querystring: { signature: string; lastValidBlockHeight?: string } }>("/api/dflow/order-status", async (req, reply) => {
-    const { signature, lastValidBlockHeight } = req.query;
-    if (!signature?.trim()) {
-      return reply.status(400).send({ success: false, error: "signature required" });
-    }
-    try {
-      const result = await getDflowOrderStatus(
-        signature.trim(),
-        lastValidBlockHeight ? Number(lastValidBlockHeight) : undefined
-      );
-      if (result.error) {
-        return reply.status(503).send({ success: false, error: result.error });
-      }
-      return reply.send({ success: true, data: result });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: (e as Error).message || "DFlow order status failed" });
-    }
-  });
-
   app.get("/api/markets", async (_req, reply) => {
-    reply.header("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
     try {
-      const markets = await withTimeout(getMarketsWithVelocity(), MARKET_ROUTE_TIMEOUT_MS, "markets");
+      const markets = await getMarketsWithVelocity();
       return reply.send({ success: true, data: markets });
     } catch (e) {
-      app.log.warn(e);
-      return reply.send({ success: true, data: [] });
-    }
-  });
-
-  app.get("/api/signals", async (_req, reply) => {
-    reply.header("Cache-Control", "public, max-age=5, stale-while-revalidate=30");
-    if (signalRouteCache && signalRouteCache.expiresAt > Date.now()) {
-      return reply.send(buildSignalFeedResponse(signalRouteCache.value));
-    }
-
-    try {
-      const snapshot = await withTimeout(getSignalFeedSnapshot(), SIGNAL_ROUTE_TIMEOUT_MS, "signals");
-      signalRouteCache = {
-        expiresAt: Date.now() + SIGNAL_ROUTE_CACHE_MS,
-        value: snapshot,
-      };
-      return reply.send(buildSignalFeedResponse(snapshot));
-    } catch (e) {
-      app.log.warn(e);
-      return reply.send(buildSignalFeedResponse(signalRouteCache?.value ?? getInMemorySignalFeedSnapshot()));
-    }
-  });
-
-  app.get<{ Params: { ticker: string } }>("/api/markets/:ticker/activity", async (req, reply) => {
-    const ticker = req.params.ticker?.trim();
-    if (!ticker) {
-      return reply.status(400).send({ success: false, error: "ticker required" });
-    }
-    try {
-      const activity = await getMarketTradeActivity(ticker);
-      return reply.send({ success: true, data: activity });
-    } catch (e) {
       app.log.error(e);
-      return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch market activity" });
+      return reply.status(500).send({ success: false, error: "Failed to fetch markets" });
     }
   });
 
   app.get<{ Querystring: { marketId?: string; categoryId?: string; keywords?: string } }>("/api/tokens", async (req, reply) => {
     const { marketId, categoryId, keywords: keywordsParam } = req.query;
     try {
-      const tokens = await withTimeout(
-        getSurfacedTokens(marketId, categoryId, keywordsParam),
-        TOKEN_ROUTE_TIMEOUT_MS,
-        "tokens"
-      );
+      const tokens = await getSurfacedTokens(marketId, categoryId, keywordsParam);
       return reply.send({ success: true, data: tokens });
     } catch (e) {
-      app.log.warn(e);
-      return reply.send({ success: true, data: [] });
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch tokens" });
     }
   });
 
@@ -1018,35 +606,16 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.status(503).send({ success: false, error: "X API not configured. Set TWITTER_BEARER_TOKEN." });
     }
     try {
-      const cleanMint = mint.trim();
-      const info = await getTokenInfoByMint(cleanMint).catch(() => null);
-      const symbol = info?.symbol?.trim();
-      const safeSymbol =
-        symbol && symbol.length >= 2 && symbol.length <= 10 && !["token", "unknown"].includes(symbol.toLowerCase())
-          ? symbol
-          : null;
-      const queryParts = [`"${cleanMint}"`];
-      if (safeSymbol) queryParts.push(`$${safeSymbol}`);
-      const query = `(${queryParts.join(" OR ")}) lang:en -is:retweet`;
-      const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(query)}&max_results=10&tweet.fields=created_at,author_id,text,public_metrics`;
-      req.log.info(
-        { mint: cleanMint, query, bearerConfigured: Boolean(process.env.TWITTER_BEARER_TOKEN?.trim()) },
-        "token-tweets query"
-      );
+      const q = encodeURIComponent(`"${mint.trim()}"`);
+      const url = `https://api.twitter.com/2/tweets/search/recent?query=${q}&max_results=10&tweet.fields=created_at,author_id,text,public_metrics`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${bearer}`, Accept: "application/json" },
       });
-      const data = (await res.json()) as {
-        data?: Array<{ id: string; text: string; created_at?: string; author_id?: string }>;
-        error?: { message?: string };
-        title?: string;
-        detail?: string;
-        errors?: Array<{ message?: string }>;
-      };
+      const data = (await res.json()) as { data?: Array<{ id: string; text: string; created_at?: string; author_id?: string }>; error?: { message?: string } };
       if (!res.ok) {
         return reply.status(res.status >= 500 ? 503 : res.status).send({
           success: false,
-          error: data.detail ?? data.errors?.[0]?.message ?? data.error?.message ?? data.title ?? "X API error",
+          error: data.error?.message ?? "X API error",
         });
       }
       const tweets = data.data ?? [];
@@ -1058,47 +627,35 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/sol-price", async (_req, reply) => {
-    reply.header("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
     try {
-      const usd = await withTimeout(fetchSolPriceUsd(), SOL_PRICE_ROUTE_TIMEOUT_MS, "sol-price");
-      return reply.send({ success: true, usd });
+      let usd = 0;
+      try {
+        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
+          headers: { Accept: "application/json" },
+        });
+        if (res.ok) {
+          const json = (await res.json()) as { solana?: { usd?: number } };
+          usd = json.solana?.usd ?? 0;
+        }
+      } catch {
+        /* CoinGecko failed, try DexScreener */
+      }
+      if (!usd || !Number.isFinite(usd)) {
+        try {
+          const ds = await fetch("https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112");
+          if (ds.ok) {
+            const j = (await ds.json()) as { pairs?: Array<{ priceUsd?: string }> };
+            const p = j.pairs?.[0]?.priceUsd;
+            if (p) usd = parseFloat(p) || 0;
+          }
+        } catch {
+          /* fallback failed */
+        }
+      }
+      return reply.send({ success: true, usd: usd && Number.isFinite(usd) ? usd : 0 });
     } catch (e) {
-      app.log.warn(e);
-      return reply.send({ success: true, usd: solPriceCache?.value ?? 0 });
-    }
-  });
-
-  app.get("/api/eth-price", async (_req, reply) => {
-    reply.header("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
-    try {
-      const usd = await withTimeout(fetchEthPriceUsd(), SOL_PRICE_ROUTE_TIMEOUT_MS, "eth-price");
-      return reply.send({ success: true, usd });
-    } catch (e) {
-      app.log.warn(e);
-      return reply.send({ success: true, usd: ethPriceCache?.value ?? 0 });
-    }
-  });
-
-  app.get<{ Querystring: { address: string } }>("/api/base/balance", async (req, reply) => {
-    reply.header("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
-    const address = req.query.address?.trim();
-    if (!address || !isHexEvmAddress(address)) {
-      return reply.status(400).send({ success: false, error: "Valid EVM address required" });
-    }
-
-    try {
-      const eth = await withTimeout(fetchBaseBalanceEth(address), 6_000, "base-balance");
-      return reply.send({
-        success: true,
-        data: {
-          chain: "base",
-          address,
-          eth,
-        },
-      });
-    } catch (e) {
-      app.log.warn(e);
-      return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch Base balance" });
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch SOL price" });
     }
   });
 
@@ -1313,22 +870,14 @@ export function registerRoutes(app: FastifyInstance) {
       });
 
       if (error) {
-        app.log.warn({ err: error, wallet: wallet.slice(0, 8), mint: mint.slice(0, 8) }, "siren_trades insert skipped");
-        return reply.status(202).send({
-          success: true,
-          persisted: false,
-          warning: error.message || "Trade log skipped",
-        });
+        app.log.error({ err: error }, "siren_trades insert failed");
+        return reply.status(503).send({ success: false, error: error.message || "Trade log failed" });
       }
 
-      return reply.send({ success: true, persisted: true });
+      return reply.send({ success: true });
     } catch (e) {
-      app.log.warn(e, "siren_trades insert skipped with exception");
-      return reply.status(202).send({
-        success: true,
-        persisted: false,
-        warning: (e as Error).message || "Trade log skipped",
-      });
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: (e as Error).message || "Trade log failed" });
     }
   });
 
@@ -1379,10 +928,10 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Unified swap: DFlow first for prediction market tokens, Jupiter fallback. */
   app.post<{
-    Body: { inputMint: string; outputMint: string; amount: string; userPublicKey: string; slippageBps?: number; tryDflowFirst?: boolean; forcePredictionMarket?: boolean };
+    Body: { inputMint: string; outputMint: string; amount: string; userPublicKey: string; slippageBps?: number; tryDflowFirst?: boolean };
     Querystring: { countryCode?: string };
   }>("/api/swap/order", async (req, reply) => {
-    const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true, forcePredictionMarket = false } = req.body || {};
+    const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true } = req.body || {};
     const countryCode = (req.body as { countryCode?: string })?.countryCode ?? req.query.countryCode ?? req.headers["cf-ipcountry"] ?? req.headers["x-country-code"];
     if (!inputMint || !outputMint || !amount || !userPublicKey) {
       return reply.status(400).send({ success: false, error: "inputMint, outputMint, amount, userPublicKey required" });
@@ -1396,10 +945,9 @@ export function registerRoutes(app: FastifyInstance) {
         slippageBps: Number(slippageBps) || 200,
         tryDflowFirst,
         countryCode: countryCode as string | undefined,
-        forcePredictionMarket,
       });
       if (result.error || !result.transaction) {
-        return reply.status(getTradeErrorStatus(result.error)).send({ success: false, error: result.error || "Swap failed" });
+        return reply.status(503).send({ success: false, error: result.error || "Swap failed" });
       }
       let txBase64 = result.transaction;
       if (result.provider === "bags" || result.provider === "dflow") {
@@ -1410,15 +958,7 @@ export function registerRoutes(app: FastifyInstance) {
           return reply.status(500).send({ success: false, error: "Invalid transaction format" });
         }
       }
-      return reply.send({
-        success: true,
-        provider: result.provider,
-        transaction: txBase64,
-        executionMode: result.executionMode,
-        lastValidBlockHeight: result.lastValidBlockHeight,
-        inAmount: result.inAmount,
-        outAmount: result.outAmount,
-      });
+      return reply.send({ success: true, provider: result.provider, transaction: txBase64 });
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: (e as Error).message || "Swap failed" });

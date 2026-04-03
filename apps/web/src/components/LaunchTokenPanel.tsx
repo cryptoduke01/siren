@@ -42,7 +42,7 @@ const inputStyle = "w-full px-3 py-2 rounded-xl text-sm border transition-all fo
 const labelStyle = "text-[10px] font-medium uppercase tracking-wider block mb-1";
 
 export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
-  const { connected, publicKey, signTransaction } = useSirenWallet();
+  const { connected, publicKey, signTransaction, walletSessionStatus } = useSirenWallet();
   const { connection } = useConnection();
   const [step, setStep] = useState<Step>("form");
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +59,15 @@ export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
 
   const runLaunch = async () => {
     setError(null);
+    if (walletSessionStatus !== "ready") {
+      setError(
+        walletSessionStatus === "needs-privy-login"
+          ? "Sign in with Privy first."
+          : "Wallet is still initializing. Please wait and try again."
+      );
+      setStep("error");
+      return;
+    }
     if (!connected || !publicKey || !signTransaction) {
       setError("Connect your wallet first.");
       setStep("error");
@@ -159,6 +168,7 @@ export function LaunchTokenPanel({ onClose }: { onClose: () => void }) {
         localStorage.setItem(key, JSON.stringify(arr));
       } catch (_) {}
     } catch (e) {
+      console.error("[Siren] LaunchTokenPanel runLaunch failed", e);
       setError(extractErrorMessage(e));
       setStep("error");
     }

@@ -2,61 +2,9 @@ import { Resend } from "resend";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.SIREN_EMAIL_FROM || "Siren <onboarding@resend.dev>";
-const APP_URL = (process.env.SIREN_APP_URL || "https://onsiren.xyz").replace(/\/+$/, "");
+const APP_URL = process.env.SIREN_APP_URL || "https://onsiren.xyz";
 const DOCS_URL = "https://docs.onsiren.xyz";
 const X_URL = "https://x.com/sirentracker";
-const LAUNCH_THREAD_URL = "https://x.com/cryptoduke01/status/2037410069109768374";
-const LAUNCH_THREAD_TITLE = "Prediction Markets, Memes, and The Madness";
-const LAUNCH_THREAD_PREVIEW =
-  "There is a particular kind of suffering that belongs only to the man who sees what is coming and cannot make anyone believe him.";
-const LAUNCH_THREAD_IMAGE_URL = `${APP_URL}/emails/launch-thread-cover.jpg`;
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRateLimitError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const maybeError = error as { message?: string; statusCode?: number; name?: string };
-  return (
-    maybeError.statusCode === 429 ||
-    /429|rate limit|too many requests/i.test(maybeError.message || "") ||
-    /rate limit/i.test(maybeError.name || "")
-  );
-}
-
-async function sendEmailWithRetry(payload: {
-  to: string;
-  subject: string;
-  html: string;
-  text: string;
-}): Promise<{ ok: boolean; error?: string }> {
-  if (!resend) return { ok: false, error: "Email not configured" };
-
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const { error } = await resend.emails.send({
-      from: FROM,
-      to: [payload.to],
-      subject: payload.subject,
-      html: payload.html,
-      text: payload.text,
-    });
-
-    if (!error) return { ok: true };
-    lastError = error;
-
-    if (!isRateLimitError(error) || attempt === 3) break;
-    await sleep(700 * (attempt + 1));
-  }
-
-  const message = lastError && typeof lastError === "object" && "message" in lastError
-    ? String((lastError as { message?: string }).message || "Email send failed")
-    : "Email send failed";
-
-  return { ok: false, error: message };
-}
 
 export function canSendEmail(): boolean {
   return !!resend;
@@ -146,29 +94,25 @@ export async function sendWelcomeWithAccessCode(params: {
 </html>
 `.trim();
 
-  const text = [
-    `${greeting},`,
-    "You're in - welcome to Siren.",
-    `Your one-time access code is: ${params.code}`,
-    `Open Siren: ${APP_URL}`,
-    "Enter your 6-digit code, connect your wallet or sign in, and start exploring event-driven meme tokens on Solana.",
-  ].join("\n\n");
-
-  return sendEmailWithRetry({
-    to: params.to,
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: [params.to],
     subject: "Your Siren access code - you're in",
     html,
-    text,
   });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
-export async function sendLaunchThreadEmail(params: {
+export async function sendVolumeCompetitionEmail(params: {
   to: string;
   name?: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!resend) return { ok: false, error: "Email not configured" };
 
   const greeting = params.name ? `Hi ${params.name}` : "Hi there";
+  const logoUrl = `${APP_URL}/brand/mark.svg`;
 
   const html = `
 <!DOCTYPE html>
@@ -176,171 +120,59 @@ export async function sendLaunchThreadEmail(params: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light">
-  <meta name="supported-color-schemes" content="light">
-  <title>The official Siren launch thread is live</title>
+  <title>Siren Volume Sprint</title>
 </head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4fbf6;color:#111827;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    The official Siren launch thread is out. Read it, show it love on X, and get ready for the thread contest coming soon.
-  </div>
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f4fbf6" style="background-color:#f4fbf6;">
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0b0b10;color:#e5e5f0;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0b0b10;">
     <tr>
-      <td align="center" style="padding:24px 12px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffff" style="max-width:680px;border:1px solid #dbe8df;border-radius:30px;background-color:#ffffff;overflow:hidden;">
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;border:1px solid #20202a;border-radius:14px;background:#111119;">
           <tr>
-            <td style="padding:0;border-top:4px solid #00ff85;">
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f7fffa" style="background-color:#f7fffa;border-bottom:1px solid #dbe8df;">
-                <tr>
-                  <td style="padding:30px 24px 26px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="padding-bottom:18px;">
-                          <table role="presentation" cellpadding="0" cellspacing="0">
-                            <tr>
-                              <td bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #d7e6de;border-radius:999px;padding:10px 14px;">
-                                <span style="display:inline-block;font-size:18px;font-weight:800;letter-spacing:0.18em;color:#081019;">SIREN</span>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>
-                          <p style="margin:0 0 12px;font-size:12px;line-height:1.4;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:#087443;">
-                            Official Launch Thread
-                          </p>
-                          <h1 style="margin:0 0 14px;font-size:40px;line-height:1.04;font-weight:800;letter-spacing:-0.04em;color:#0f172a;">
-                            Siren is live on the timeline.
-                          </h1>
-                          <p style="margin:0;font-size:18px;line-height:1.7;color:#334155;max-width:560px;">
-                            ${greeting}, the official Siren launch thread is out. It tells the story, sets the tone, and gives people their first real feel for what we’re building.
-                          </p>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding-top:22px;">
-                          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                            <tr>
-                              <td style="padding-bottom:10px;">
-                                <a href="${LAUNCH_THREAD_URL}" style="display:block;background:#00c76a;color:#ffffff;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 24px;border-radius:16px;">
-                                  Read the thread
-                                </a>
-                              </td>
-                            </tr>
-                          </table>
-                          <p style="margin:0;padding-top:2px;font-size:14px;line-height:1.7;color:#4b5563;">
-                            Then open Siren at <a href="${APP_URL}" style="color:#0f172a;font-weight:700;text-decoration:underline;">onsiren.xyz</a>.
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+            <td style="padding:24px 22px 20px;border-bottom:1px solid #20202a;">
+              <img src="${logoUrl}" alt="Siren" width="120" height="32" style="display:block;height:28px;width:auto;" />
             </td>
           </tr>
           <tr>
-            <td style="padding:26px 24px 30px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 22px;">
+            <td style="padding:24px 22px 28px;">
+              <h1 style="margin:0 0 12px;font-size:22px;font-weight:650;color:#fafafc;">Siren Volume Sprint is live</h1>
+              <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#b4b4c8;">
+                ${greeting},
+              </p>
+              <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#b4b4c8;">
+                We’ve been heads down wiring swaps, portfolio PnL, Bags fee claiming, and surfaced tokens around real-world events - and we’re finally ready to start inviting more traders back in.
+              </p>
+              <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#b4b4c8;">
+                Now’s a great time to jump back in, try the terminal, and help us shake out the edges. Connect your wallet, trade a few tokens, and tell us what feels good (or rough).
+              </p>
+              <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#b4b4c8;">
+                We’re also kicking off a low‑key volume competition for early users. We’ll share full details (prizes, dates, and rules) publicly soon - for now, just know that early trading volume will count.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;">
                 <tr>
-                  <td bgcolor="#fcfffd" style="background-color:#fcfffd;border:1px solid #dbe8df;border-radius:24px;overflow:hidden;">
-                    <img src="${LAUNCH_THREAD_IMAGE_URL}" alt="${LAUNCH_THREAD_TITLE}" width="564" height="226" style="display:block;width:100%;height:auto;" />
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="padding:22px 22px 24px;">
-                          <p style="margin:0 0 8px;font-size:12px;line-height:1.4;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:#2563eb;">
-                            Launch Story
-                          </p>
-                          <h2 style="margin:0 0 10px;font-size:32px;line-height:1.14;font-weight:800;color:#0f172a;">
-                            ${LAUNCH_THREAD_TITLE}
-                          </h2>
-                          <p style="margin:0;font-size:17px;line-height:1.75;color:#475569;">
-                            ${LAUNCH_THREAD_PREVIEW}
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
+                  <td style="background:#141421;border-radius:10px;padding:14px 16px;">
+                    <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#e5e5f0;">Rough sketch</p>
+                    <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6;color:#a1a1b5;">
+                      <li>Trade any token surfaced in the Siren terminal</li>
+                      <li>Volume is tracked per wallet in SOL (and ≈USD) on Siren</li>
+                      <li>We’ll publish the exact leaderboard + prize breakdown in the coming days</li>
+                    </ul>
                   </td>
                 </tr>
               </table>
-
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 18px;">
-                <tr>
-                  <td bgcolor="#f8fffb" style="background-color:#f8fffb;border:1px solid #dbe8df;border-radius:24px;padding:22px;">
-                    <p style="margin:0 0 10px;font-size:12px;line-height:1.4;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:#0f172a;">
-                      What We Need From You
-                    </p>
-                    <p style="margin:0 0 16px;font-size:16px;line-height:1.75;color:#334155;">
-                      Help us put real wind behind it. If you’re on the waitlist, this is the moment to push the story out a little further.
-                    </p>
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#0f172a;">
-                          <span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:999px;background:#dcfce7;color:#087443;font-size:13px;font-weight:800;margin-right:10px;">1</span>
-                          Like the thread
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#0f172a;">
-                          <span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:999px;background:#dcfce7;color:#087443;font-size:13px;font-weight:800;margin-right:10px;">2</span>
-                          Retweet it
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#0f172a;">
-                          <span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:999px;background:#dcfce7;color:#087443;font-size:13px;font-weight:800;margin-right:10px;">3</span>
-                          Comment on it
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="font-size:15px;line-height:1.7;color:#0f172a;">
-                          <span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:999px;background:#dcfce7;color:#087443;font-size:13px;font-weight:800;margin-right:10px;">4</span>
-                          Share it with friends who should know about Siren
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 22px;">
-                <tr>
-                  <td bgcolor="#eef6ff" style="background-color:#eef6ff;border-radius:24px;padding:22px;border:1px solid #d7e6ff;">
-                    <p style="margin:0 0 8px;font-size:12px;line-height:1.4;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:#2563eb;">
-                      Thread Contest Coming Soon
-                    </p>
-                    <p style="margin:0 0 12px;font-size:17px;line-height:1.75;color:#0f172a;">
-                      We’re teeing up a thread contest for the waitlist next. Start warming up your takes, your memes, your charts, and your timeline game now.
-                    </p>
-                    <p style="margin:0;font-size:15px;line-height:1.75;color:#475569;">
-                      More details soon. For now, gear up and stay close.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                <tr>
-                  <td style="padding-bottom:12px;">
-                    <a href="${LAUNCH_THREAD_URL}" style="display:block;background:#0f172a;color:#f8fafc;font-size:16px;font-weight:800;text-align:center;text-decoration:none;padding:15px 22px;border-radius:16px;">
-                      Open the thread on X
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+              <a href="${APP_URL}" style="display:inline-block;background:#22c55e;color:#050509;font-size:14px;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px;margin:0 0 12px;">
+                Open Siren ->
+              </a>
+              <p style="margin:8px 0 0;font-size:12px;color:#717189;">
                 You’re receiving this because you joined the Siren waitlist or connected a wallet.
               </p>
             </td>
           </tr>
           <tr>
-            <td bgcolor="#fbfefc" style="padding:18px 24px 24px;border-top:1px solid #e6efe8;background-color:#fbfefc;">
-              <p style="margin:0 0 8px;font-size:12px;color:#64748b;">
-                <a href="${DOCS_URL}" style="color:#475569;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#475569;text-decoration:underline;">X @sirentracker</a>
+            <td style="padding:18px 22px 20px;border-top:1px solid #20202a;">
+              <p style="margin:0 0 6px;font-size:11px;color:#77778f;">
+                <a href="${DOCS_URL}" style="color:#77778f;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#77778f;text-decoration:underline;">X @sirentracker</a>
               </p>
-              <p style="margin:0;font-size:12px;color:#94a3b8;">
+              <p style="margin:0;font-size:11px;color:#55556a;">
                 (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
               </p>
             </td>
@@ -353,21 +185,13 @@ export async function sendLaunchThreadEmail(params: {
 </html>
 `.trim();
 
-  const text = [
-    `${greeting},`,
-    "The official Siren launch thread is live.",
-    `${LAUNCH_THREAD_TITLE}`,
-    LAUNCH_THREAD_PREVIEW,
-    `Read the thread: ${LAUNCH_THREAD_URL}`,
-    "Help us out by liking it, retweeting it, commenting on it, and sharing it with friends.",
-    "A thread contest for the waitlist is coming soon, so gear up.",
-    `Open Siren: ${APP_URL}`,
-  ].join("\n\n");
-
-  return sendEmailWithRetry({
-    to: params.to,
-    subject: "The official Siren launch thread is live",
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: [params.to],
+    subject: "Siren Volume Sprint - trade to climb the board",
     html,
-    text,
   });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }

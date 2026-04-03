@@ -4,7 +4,6 @@
  */
 
 const BAGS_BASE = "https://public-api-v2.bags.fm/api/v1";
-const BAGS_TIMEOUT_MS = 6_000;
 
 function getHeaders(): Record<string, string> {
   const key = process.env.BAGS_API_KEY;
@@ -166,7 +165,6 @@ export async function getBagsPools(onlyMigrated?: boolean): Promise<BagsPoolInfo
   const qs = onlyMigrated ? "?onlyMigrated=true" : "";
   const res = await fetch(`${BAGS_BASE}/solana/bags/pools${qs}`, {
     headers: BAGS_GET_HEADERS(),
-    signal: AbortSignal.timeout(BAGS_TIMEOUT_MS),
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || `Bags get pools: ${res.status}`);
@@ -178,10 +176,7 @@ export async function getBagsPools(onlyMigrated?: boolean): Promise<BagsPoolInfo
 export async function getBagsPoolByTokenMint(tokenMint: string): Promise<BagsPoolInfo | null> {
   const res = await fetch(
     `${BAGS_BASE}/solana/bags/pools/token-mint?tokenMint=${encodeURIComponent(tokenMint)}`,
-    {
-      headers: BAGS_GET_HEADERS(),
-      signal: AbortSignal.timeout(BAGS_TIMEOUT_MS),
-    }
+    { headers: BAGS_GET_HEADERS() }
   );
   const json = await res.json();
   if (!res.ok) {

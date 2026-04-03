@@ -1,31 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  XCircle,
-  Trash2,
-  Users,
-  ClipboardList,
-  Copy,
-  Check,
-  KeyRound,
-  Mail,
-  Search,
-  Activity,
-  ChartColumnBig,
-  Gauge,
-  Rocket,
-  Sparkles,
-  TrendingUp,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { XCircle, Trash2, Users, ClipboardList, Copy, Check, KeyRound, Mail, Search } from "lucide-react";
 import { toPng } from "html-to-image";
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -34,7 +16,6 @@ import {
 import { hapticLight } from "@/lib/haptics";
 import { PasscodeDigits } from "@/components/PasscodeDigits";
 import { AdminNav } from "@/components/AdminNav";
-import { fetchSolPriceUsd } from "@/lib/pricing";
 
 type WaitlistRow = {
   id: string;
@@ -60,25 +41,6 @@ type AppUserRow = {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
 const STORAGE_KEY = "siren-admin-pass-ok";
-const LAUNCH_THREAD_URL = "https://x.com/cryptoduke01/status/2037410069109768374";
-const LAUNCH_THREAD_IMAGE = "/emails/launch-thread-cover.jpg";
-const LAUNCH_THREAD_TITLE = "Prediction Markets, Memes, and The Madness";
-const LAUNCH_THREAD_PREVIEW =
-  "There is a particular kind of suffering that belongs only to the man who sees what is coming and cannot make anyone believe him.";
-const TABLE_PAGE_SIZE = 25;
-const PANEL_BG =
-  "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, white 6%) 0%, color-mix(in srgb, var(--bg-elevated) 96%, transparent) 100%)";
-const HERO_BG =
-  "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 24%), radial-gradient(circle at top right, color-mix(in srgb, var(--kalshi) 18%, transparent), transparent 26%), linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, transparent) 0%, color-mix(in srgb, var(--bg-base) 96%, transparent) 100%)";
-const PANEL_BORDER = "color-mix(in srgb, var(--border-default) 76%, var(--accent) 24%)";
-const SUBTLE_BORDER = "color-mix(in srgb, var(--border-subtle) 84%, var(--accent) 16%)";
-const SOFT_BG = "color-mix(in srgb, var(--bg-elevated) 88%, transparent)";
-const BADGE_BG = "color-mix(in srgb, var(--accent-dim) 70%, var(--bg-elevated) 30%)";
-const TOOLTIP_BG = "color-mix(in srgb, var(--bg-base) 94%, var(--bg-surface) 6%)";
-const GRID_STROKE = "color-mix(in srgb, var(--border-subtle) 52%, transparent)";
-const TAB_ACTIVE_BG = "color-mix(in srgb, var(--bg-elevated) 82%, white 18%)";
-const IMAGE_OVERLAY_BG =
-  "linear-gradient(90deg, color-mix(in srgb, var(--bg-base) 8%, transparent) 0%, color-mix(in srgb, var(--bg-base) 74%, transparent) 100%)";
 
 type Tab = "waitlist" | "app-users" | "volume";
 
@@ -89,201 +51,7 @@ type VolumeData = {
   byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }>;
 };
 
-type DispatchResult = {
-  sent: number;
-  failed: number;
-  skipped: number;
-  total: number;
-  failedEmails?: string[];
-  skippedEmails?: string[];
-};
-
-function pageCount(total: number, pageSize: number) {
-  return Math.max(1, Math.ceil(total / pageSize));
-}
-
-function formatCompactNumber(value: number | null | undefined) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: value >= 1000 ? 1 : 0 }).format(value);
-}
-
-function formatSol(value: number | null | undefined, digits = 2) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  return value.toLocaleString(undefined, { maximumFractionDigits: digits });
-}
-
-function formatPercent(value: number | null | undefined) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
-}
-
-function renderDispatchList(list: string[] | undefined, label: string) {
-  if (!list || list.length === 0) return null;
-  return (
-    <details className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-      <summary className="cursor-pointer">{label} ({list.length})</summary>
-      <div className="mt-2 flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard.writeText(list.join(", ")).then(() => {});
-            hapticLight();
-          }}
-          className="self-start px-2 py-1 rounded border text-[10px]"
-          style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
-        >
-          Copy all
-        </button>
-        <ul className="list-disc pl-4">
-          {list.map((email) => (
-            <li key={`${label}-${email}`}>{email || "Unknown email"}</li>
-          ))}
-        </ul>
-      </div>
-    </details>
-  );
-}
-
-function DispatchSummary({ result, accentLabel }: { result: DispatchResult | null; accentLabel: string }) {
-  if (!result) return null;
-
-  return (
-    <div
-      className="rounded-2xl border p-4 space-y-2"
-      style={{
-        background: PANEL_BG,
-        borderColor: PANEL_BORDER,
-      }}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-heading uppercase tracking-[0.18em]"
-          style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-        >
-          {accentLabel}
-        </span>
-        <span className="font-body text-xs" style={{ color: "var(--text-2)" }}>
-          Sent {result.sent}, failed {result.failed}, skipped {result.skipped} of {result.total}.
-        </span>
-      </div>
-      {renderDispatchList(result.failedEmails, "Failed emails")}
-      {renderDispatchList(result.skippedEmails, "Skipped emails")}
-    </div>
-  );
-}
-
-function InlineDispatchStatus({ result, label }: { result: DispatchResult | null; label: string }) {
-  if (!result) return null;
-
-  return (
-    <div
-      aria-live="polite"
-      className="mt-4 rounded-2xl border px-4 py-3"
-      style={{ borderColor: PANEL_BORDER, background: BADGE_BG }}
-    >
-      <p className="font-heading text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>
-        {label}
-      </p>
-      <p className="mt-1 font-body text-sm" style={{ color: "var(--text-1)" }}>
-        Sent {result.sent}, failed {result.failed}, skipped {result.skipped} of {result.total}.
-      </p>
-    </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  hint,
-  icon,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  icon: ReactNode;
-}) {
-  return (
-    <div
-      className="relative overflow-hidden rounded-[24px] border p-4"
-      style={{
-        background:
-          "radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 14%, transparent), transparent 30%), linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, white 6%) 0%, color-mix(in srgb, var(--bg-elevated) 96%, transparent) 100%)",
-        borderColor: PANEL_BORDER,
-        boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--text-1) 6%, transparent)",
-      }}
-    >
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-          {label}
-        </p>
-        <div
-          className="flex h-10 w-10 items-center justify-center rounded-2xl border"
-          style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG, color: "var(--accent)" }}
-        >
-          {icon}
-        </div>
-      </div>
-      <p className="font-heading text-[32px] leading-none tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
-        {value}
-      </p>
-      <p className="mt-3 font-body text-xs leading-5" style={{ color: "var(--text-2)" }}>
-        {hint}
-      </p>
-    </div>
-  );
-}
-
-function PaginationControls({
-  page,
-  totalItems,
-  pageSize,
-  onPageChange,
-}: {
-  page: number;
-  totalItems: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
-}) {
-  const totalPages = pageCount(totalItems, pageSize);
-  const safePage = Math.min(page, totalPages);
-  const start = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1;
-  const end = Math.min(safePage * pageSize, totalItems);
-
-  return (
-    <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
-      <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-        Showing {start}-{end} of {totalItems.toLocaleString()}
-      </p>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onPageChange(Math.max(1, safePage - 1))}
-          disabled={safePage <= 1}
-          className="inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-[11px] font-heading uppercase tracking-[0.12em] disabled:opacity-50"
-          style={{ borderColor: "var(--border-subtle)", background: SOFT_BG, color: "var(--text-2)" }}
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Prev
-        </button>
-        <div className="rounded-xl border px-3 py-2 text-[11px] font-heading uppercase tracking-[0.12em]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-2)" }}>
-          Page {safePage} / {totalPages}
-        </div>
-        <button
-          type="button"
-          onClick={() => onPageChange(Math.min(totalPages, safePage + 1))}
-          disabled={safePage >= totalPages}
-          className="inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-[11px] font-heading uppercase tracking-[0.12em] disabled:opacity-50"
-          style={{ borderColor: "var(--border-subtle)", background: SOFT_BG, color: "var(--text-2)" }}
-        >
-          Next
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function CopyableCell({ value, mono = false, className = "" }: { value: string | null; mono?: boolean; className?: string }) {
+function CopyableCell({ value, mono = false }: { value: string | null; mono?: boolean }) {
   const [copied, setCopied] = useState(false);
   const text = value || "—";
   const copy = () => {
@@ -295,7 +63,7 @@ function CopyableCell({ value, mono = false, className = "" }: { value: string |
     });
   };
   return (
-    <td className={`px-4 py-3 align-top ${className}`}>
+    <td className="px-4 py-3 align-top">
       <div className="flex items-start gap-2 group max-w-[320px]">
         <span
           className={`flex-1 min-w-0 break-all ${mono ? "font-mono text-[11px]" : ""}`}
@@ -329,17 +97,20 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendAllLoading, setSendAllLoading] = useState(false);
-  const [codeEmailResult, setCodeEmailResult] = useState<DispatchResult | null>(null);
+  const [sendAllResult, setSendAllResult] = useState<{
+    sent: number;
+    failed: number;
+    skipped: number;
+    total: number;
+    failedEmails?: string[];
+    skippedEmails?: string[];
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [launchEmailLoading, setLaunchEmailLoading] = useState(false);
+  const [volumeEmailLoading, setVolumeEmailLoading] = useState(false);
   const [solPriceUsd, setSolPriceUsd] = useState(0);
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
   const [volumeLoading, setVolumeLoading] = useState(false);
-  const [launchEmailInput, setLaunchEmailInput] = useState("");
-  const [launchEmailResult, setLaunchEmailResult] = useState<DispatchResult | null>(null);
-  const [waitlistPage, setWaitlistPage] = useState(1);
-  const [appUsersPage, setAppUsersPage] = useState(1);
-  const [volumePage, setVolumePage] = useState(1);
+  const [volumeEmailInput, setVolumeEmailInput] = useState("");
 
   type UserStats = {
     totalUsers: number;
@@ -360,28 +131,6 @@ export default function AdminPage() {
           r.wallet?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : waitlistRows;
-
-  const waitlistTotalPages = pageCount(filteredWaitlist.length, TABLE_PAGE_SIZE);
-  const safeWaitlistPage = Math.min(waitlistPage, waitlistTotalPages);
-  const paginatedWaitlist = useMemo(() => {
-    const start = (safeWaitlistPage - 1) * TABLE_PAGE_SIZE;
-    return filteredWaitlist.slice(start, start + TABLE_PAGE_SIZE);
-  }, [filteredWaitlist, safeWaitlistPage]);
-
-  const appUsersTotalPages = pageCount(appUsers.length, TABLE_PAGE_SIZE);
-  const safeAppUsersPage = Math.min(appUsersPage, appUsersTotalPages);
-  const paginatedAppUsers = useMemo(() => {
-    const start = (safeAppUsersPage - 1) * TABLE_PAGE_SIZE;
-    return appUsers.slice(start, start + TABLE_PAGE_SIZE);
-  }, [appUsers, safeAppUsersPage]);
-
-  const volumeRows = volumeData?.byWallet ?? [];
-  const volumeTotalPages = pageCount(volumeRows.length, TABLE_PAGE_SIZE);
-  const safeVolumePage = Math.min(volumePage, volumeTotalPages);
-  const paginatedVolumeRows = useMemo(() => {
-    const start = (safeVolumePage - 1) * TABLE_PAGE_SIZE;
-    return volumeRows.slice(start, start + TABLE_PAGE_SIZE);
-  }, [safeVolumePage, volumeRows]);
 
   const waitlistDailySeries = useMemo(() => {
     const days = 14;
@@ -405,40 +154,6 @@ export default function AdminPage() {
     }
     return buckets;
   }, [waitlistRows]);
-
-  const waitlistInsights = useMemo(() => {
-    const withCode = waitlistRows.filter((row) => !!row.access_code).length;
-    const activated = waitlistRows.filter((row) => !!row.access_code_used_at).length;
-    const contactable = waitlistRows.filter((row) => !!row.email?.trim()).length;
-    const last14d = waitlistDailySeries.reduce((sum, item) => sum + item.count, 0);
-    const activationRate = withCode > 0 ? (activated / withCode) * 100 : 0;
-    const contactCoverage = waitlistRows.length > 0 ? (contactable / waitlistRows.length) * 100 : 0;
-    return {
-      withCode,
-      activated,
-      contactable,
-      last14d,
-      activationRate,
-      contactCoverage,
-      avgDailySignups: waitlistDailySeries.length > 0 ? last14d / waitlistDailySeries.length : 0,
-    };
-  }, [waitlistDailySeries, waitlistRows]);
-
-  const usageInsights = useMemo(() => {
-    const totalUsers = userStats?.totalUsers ?? 0;
-    const newUsers7d = userStats?.newUsers7d ?? 0;
-    const activeUsers24h = userStats?.activeUsers24h ?? 0;
-    const platform7d = volumeData?.platform7d ?? 0;
-    return {
-      totalUsers,
-      newUsers7d,
-      activeUsers24h,
-      platform7d,
-      visitorMomentum: waitlistInsights.last14d,
-      activationShare: waitlistRows.length > 0 ? (totalUsers / waitlistRows.length) * 100 : 0,
-      activeShare: totalUsers > 0 ? (activeUsers24h / totalUsers) * 100 : 0,
-    };
-  }, [userStats, volumeData, waitlistInsights.last14d, waitlistRows.length]);
 
   const handlePassSubmit = () => {
     if (!ADMIN_PASSCODE) {
@@ -466,24 +181,14 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    setWaitlistPage(1);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    if (waitlistPage > waitlistTotalPages) setWaitlistPage(waitlistTotalPages);
-  }, [waitlistPage, waitlistTotalPages]);
-
-  useEffect(() => {
-    if (appUsersPage > appUsersTotalPages) setAppUsersPage(appUsersTotalPages);
-  }, [appUsersPage, appUsersTotalPages]);
-
-  useEffect(() => {
-    if (volumePage > volumeTotalPages) setVolumePage(volumeTotalPages);
-  }, [volumePage, volumeTotalPages]);
-
-  useEffect(() => {
     const loadSolPrice = async () => {
-      setSolPriceUsd(await fetchSolPriceUsd(API_URL));
+      try {
+        const res = await fetch(`${API_URL}/api/sol-price`, { credentials: "omit" });
+        const j = await res.json();
+        setSolPriceUsd(typeof j.usd === "number" ? j.usd : 0);
+      } catch {
+        setSolPriceUsd(0);
+      }
     };
     void loadSolPrice();
   }, []);
@@ -625,13 +330,13 @@ export default function AdminPage() {
 
   const handleSendAllCodes = async () => {
     hapticLight();
-    setCodeEmailResult(null);
+    setSendAllResult(null);
     setSendAllLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/admin/waitlist/send-all-codes`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      setCodeEmailResult({
+      setSendAllResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -647,15 +352,14 @@ export default function AdminPage() {
     }
   };
 
-  const handleSendLaunchEmail = async () => {
+  const handleSendVolumeEmail = async () => {
     hapticLight();
-    setLaunchEmailResult(null);
-    setLaunchEmailLoading(true);
+    setVolumeEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-launch-thread-email`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-volume-email`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send launch thread emails");
-      setLaunchEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send volume emails");
+      setSendAllResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -664,15 +368,15 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send launch thread emails");
+      setError(e instanceof Error ? e.message : "Failed to send volume emails");
     } finally {
-      setLaunchEmailLoading(false);
+      setVolumeEmailLoading(false);
     }
   };
 
-  const handleSendLaunchEmailManual = async () => {
+  const handleSendVolumeEmailManual = async () => {
     hapticLight();
-    const raw = launchEmailInput
+    const raw = volumeEmailInput
       .split(/[\n,]+/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
@@ -680,17 +384,16 @@ export default function AdminPage() {
       setError("Paste one or more emails first.");
       return;
     }
-    setLaunchEmailResult(null);
-    setLaunchEmailLoading(true);
+    setVolumeEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-launch-thread-email-by-email`, {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-volume-email-by-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emails: raw }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send launch thread emails");
-      setLaunchEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send volume emails");
+      setSendAllResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -699,9 +402,9 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send launch thread emails");
+      setError(e instanceof Error ? e.message : "Failed to send volume emails");
     } finally {
-      setLaunchEmailLoading(false);
+      setVolumeEmailLoading(false);
     }
   };
 
@@ -800,234 +503,165 @@ export default function AdminPage() {
       <AdminNav />
       <div className="flex-1 px-4 py-8 overflow-x-hidden min-w-0">
         <div className="max-w-6xl mx-auto min-w-0">
-          <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                <Sparkles className="h-3.5 w-3.5" />
-                Launch mode
-              </div>
-              <h1 className="font-heading text-[30px] leading-none tracking-[-0.04em] md:text-[42px]">Siren Admin</h1>
-              <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                Campaign dispatch, waitlist operations, and premium readouts for audience momentum, app usage, and trading activity.
+          <header className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="font-heading text-xl mb-1">Siren Admin</h1>
+              <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                Waitlist signups and app users
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="rounded-2xl border px-4 py-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Launch thread</p>
-                <a href={LAUNCH_THREAD_URL} target="_blank" rel="noreferrer" className="font-heading text-sm hover:opacity-80 transition-opacity" style={{ color: "var(--text-1)" }}>
-                  View on X
-                </a>
-              </div>
-              <button
-                type="button"
-                onClick={refresh}
-                className="px-4 py-3 rounded-2xl text-xs font-heading uppercase tracking-[0.14em]"
-                style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-default)" }}
-              >
-                Refresh board
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={refresh}
+              className="px-3 py-1.5 rounded-[8px] text-xs font-heading uppercase tracking-[0.12em]"
+              style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-default)" }}
+            >
+              Refresh
+            </button>
           </header>
 
           <div
             ref={dashboardRef}
-            className="relative mb-6 overflow-hidden rounded-[32px] border p-5 md:p-6"
-            style={{
-              background: HERO_BG,
-              borderColor: PANEL_BORDER,
-              boxShadow: "0 24px 80px color-mix(in srgb, var(--bg-void) 34%, transparent), inset 0 1px 0 color-mix(in srgb, var(--text-1) 6%, transparent)",
-            }}
+            className="mb-6 p-4 rounded-xl border"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
-            <div className="pointer-events-none absolute left-[-10%] top-[-18%] h-56 w-56 rounded-full" style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", filter: "blur(60px)" }} />
-            <div className="pointer-events-none absolute right-[-6%] top-[10%] h-56 w-56 rounded-full" style={{ background: "color-mix(in srgb, var(--kalshi) 12%, transparent)", filter: "blur(72px)" }} />
-
-            <div className="relative mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-2xl">
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                  <Gauge className="h-3.5 w-3.5" />
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-heading text-sm mb-1" style={{ color: "var(--text-2)" }}>
                   Dashboard overview
-                </div>
-                <h2 className="font-heading text-2xl tracking-[-0.04em] md:text-[34px]" style={{ color: "var(--text-1)" }}>
-                  Premium pulse on usage, volume, and audience heat.
                 </h2>
-                <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                  App usage, visitor momentum, and launch readiness in one view. Export-ready for quick team updates.
+                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                  Daily volume, waitlist activity, and app user health.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="rounded-2xl border px-4 py-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                  <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Audience momentum</p>
-                  <p className="font-heading text-lg" style={{ color: "var(--text-1)" }}>
-                    {formatCompactNumber(usageInsights.visitorMomentum)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleExportDashboard}
-                  disabled={dashboardExporting}
-                  className="px-4 py-3 rounded-2xl text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50 transition-opacity"
-                  style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
-                >
-                  {dashboardExporting ? "Exporting…" : "Export PNG"}
-                </button>
+              <button
+                type="button"
+                onClick={handleExportDashboard}
+                disabled={dashboardExporting}
+                className="px-3 py-2 rounded-lg text-xs font-heading uppercase tracking-[0.10em] disabled:opacity-50 transition-opacity"
+                style={{ background: "var(--bg-elevated)", color: "var(--text-1)", border: "1px solid var(--border-default)" }}
+              >
+                {dashboardExporting ? "Exporting…" : "Export PNG"}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Total app users
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {userStats ? userStats.totalUsers.toLocaleString() : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  New users (24h)
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {userStats ? userStats.newUsers24h.toLocaleString() : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Active users (24h)
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {userStats ? userStats.activeUsers24h.toLocaleString() : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Platform volume (7d)
+                </p>
+                <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {volumeData ? volumeData.platform7d.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "—"} SOL
+                </p>
               </div>
             </div>
 
-            <div className="relative grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard
-                label="Total app users"
-                value={formatCompactNumber(userStats?.totalUsers)}
-                hint={`${formatCompactNumber(userStats?.newUsers7d)} new in the last 7 days`}
-                icon={<Users className="h-4 w-4" />}
-              />
-              <MetricCard
-                label="Active users (24h)"
-                value={formatCompactNumber(userStats?.activeUsers24h)}
-                hint={`${formatPercent(usageInsights.activeShare)} of all users came back in the last day`}
-                icon={<Activity className="h-4 w-4" />}
-              />
-              <MetricCard
-                label="Platform volume (7d)"
-                value={`${formatSol(volumeData?.platform7d, 1)} SOL`}
-                hint={`${formatSol(volumeData?.platformAllTime, 1)} SOL all-time volume`}
-                icon={<ChartColumnBig className="h-4 w-4" />}
-              />
-              <MetricCard
-                label="Waitlist activated"
-                value={formatPercent(waitlistInsights.activationRate)}
-                hint={`${waitlistInsights.activated.toLocaleString()} of ${waitlistInsights.withCode.toLocaleString()} issued codes have converted`}
-                icon={<Rocket className="h-4 w-4" />}
-              />
-            </div>
-
-            <div className="relative mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <div
-                className="rounded-[28px] border p-5"
-                style={{
-                  borderColor: SUBTLE_BORDER,
-                  background: PANEL_BG,
-                }}
-              >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      App usage
-                    </p>
-                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Daily platform volume
-                    </h3>
-                    <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                      7-day flow: {formatSol(volumeData?.platform7d, 2)} SOL
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border px-3 py-2 text-right" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                    <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>All time</p>
-                    <p className="font-heading text-base" style={{ color: "var(--text-1)" }}>{formatSol(volumeData?.platformAllTime, 1)} SOL</p>
-                  </div>
-                </div>
-                <div className="h-[250px]">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  Daily platform volume (SOL)
+                </p>
+                <div className="h-[240px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={dailyVolumeSeries}>
-                      <defs>
-                        <linearGradient id="adminVolumeFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.34} />
-                          <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} strokeDasharray="2 8" stroke={GRID_STROKE} />
-                      <XAxis dataKey="day" tickFormatter={(value) => (typeof value === "string" ? value.slice(5) : value)} stroke="var(--text-3)" tickLine={false} axisLine={false} />
-                      <YAxis stroke="var(--text-3)" tickFormatter={(value) => `${value}`} tickLine={false} axisLine={false} width={36} />
+                    <LineChart data={dailyVolumeSeries}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                      <XAxis dataKey="day" tickFormatter={(v) => (typeof v === "string" ? v.slice(5) : v)} stroke="var(--text-3)" />
+                      <YAxis stroke="var(--text-3)" tickFormatter={(v) => `${v}`} />
                       <Tooltip
-                        contentStyle={{ background: TOOLTIP_BG, border: `1px solid ${SUBTLE_BORDER}`, borderRadius: 16 }}
+                        contentStyle={{ background: "var(--bg-base)", border: "1px solid var(--border-subtle)" }}
                         labelStyle={{ color: "var(--text-2)" }}
                       />
-                      <Area type="monotone" dataKey="volumeSol" stroke="var(--accent)" strokeWidth={3} fill="url(#adminVolumeFill)" dot={false} />
-                    </AreaChart>
+                      <Line type="monotone" dataKey="volumeSol" stroke="var(--accent)" dot={false} strokeWidth={2} />
+                    </LineChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-
-              <div
-                className="rounded-[28px] border p-5"
-                style={{
-                  borderColor: SUBTLE_BORDER,
-                  background: PANEL_BG,
-                }}
-              >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Visitor pipeline
-                    </p>
-                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Waitlist signups
-                    </h3>
-                    <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                      {formatCompactNumber(waitlistInsights.last14d)} signups across the last 14 days
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border px-3 py-2 text-right" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                    <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Avg daily</p>
-                    <p className="font-heading text-base" style={{ color: "var(--text-1)" }}>{waitlistInsights.avgDailySignups.toFixed(1)}</p>
-                  </div>
-                </div>
-                <div className="h-[250px]">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  Waitlist signups (last 14 days)
+                </p>
+                <div className="h-[240px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={waitlistDailySeries}>
-                      <defs>
-                        <linearGradient id="adminWaitlistFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--border-active)" stopOpacity={0.30} />
-                          <stop offset="100%" stopColor="var(--border-active)" stopOpacity={0.03} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} strokeDasharray="2 8" stroke={GRID_STROKE} />
-                      <XAxis dataKey="day" tickFormatter={(value) => (typeof value === "string" ? value.slice(5) : value)} stroke="var(--text-3)" tickLine={false} axisLine={false} />
-                      <YAxis stroke="var(--text-3)" tickLine={false} axisLine={false} width={28} />
+                    <LineChart data={waitlistDailySeries}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                      <XAxis dataKey="day" tickFormatter={(v) => (typeof v === "string" ? v.slice(5) : v)} stroke="var(--text-3)" />
+                      <YAxis stroke="var(--text-3)" />
                       <Tooltip
-                        contentStyle={{ background: TOOLTIP_BG, border: `1px solid ${SUBTLE_BORDER}`, borderRadius: 16 }}
+                        contentStyle={{ background: "var(--bg-base)", border: "1px solid var(--border-subtle)" }}
                         labelStyle={{ color: "var(--text-2)" }}
                       />
-                      <Area type="monotone" dataKey="count" stroke="var(--border-active)" strokeWidth={3} fill="url(#adminWaitlistFill)" dot={false} />
-                    </AreaChart>
+                      <Line type="monotone" dataKey="count" stroke="var(--accent)" dot={false} strokeWidth={2} />
+                    </LineChart>
                   </ResponsiveContainer>
                 </div>
               </div>
             </div>
 
-            <div className="relative mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="rounded-[24px] border p-4" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Waitlist coverage</p>
-                <p className="mt-2 font-heading text-2xl" style={{ color: "var(--text-1)" }}>{formatPercent(waitlistInsights.contactCoverage)}</p>
-                <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                  {waitlistInsights.contactable.toLocaleString()} signups are ready for campaign sends.
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  Waitlist pipeline
                 </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Total waitlist</p>
+                    <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                      {waitlistRows.length.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>Showing</p>
+                    <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                      500 max
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-[24px] border p-4" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Launch readiness</p>
-                <p className="mt-2 font-heading text-2xl" style={{ color: "var(--text-1)" }}>{formatCompactNumber(waitlistInsights.withCode)}</p>
-                <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                  Access codes issued to the queue so far.
+
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <p className="font-body text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
+                  PnL & trading metrics
                 </p>
-              </div>
-              <div className="rounded-[24px] border p-4" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Usage efficiency</p>
-                <p className="mt-2 font-heading text-2xl" style={{ color: "var(--text-1)" }}>{formatPercent(usageInsights.activationShare)}</p>
-                <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                  App users relative to the current waitlist size.
+                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                  PnL tracking is currently shown in-app (Portfolio). Admin PnL aggregation needs server-side trade logging first.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="mb-6 flex gap-1 rounded-2xl border p-1" style={{ background: SOFT_BG, border: `1px solid ${SUBTLE_BORDER}` }}>
+          <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
             <button
               type="button"
               onClick={() => { hapticLight(); setTab("waitlist"); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-heading transition-colors"
               style={{
-                background: tab === "waitlist" ? TAB_ACTIVE_BG : "transparent",
+                background: tab === "waitlist" ? "var(--bg-elevated)" : "transparent",
                 color: tab === "waitlist" ? "var(--text-1)" : "var(--text-3)",
-                border: tab === "waitlist" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
+                border: tab === "waitlist" ? "1px solid var(--border-default)" : "1px solid transparent",
               }}
             >
               <ClipboardList className="w-4 h-4" />
@@ -1038,9 +672,9 @@ export default function AdminPage() {
               onClick={() => { hapticLight(); setTab("app-users"); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-heading transition-colors"
               style={{
-                background: tab === "app-users" ? TAB_ACTIVE_BG : "transparent",
+                background: tab === "app-users" ? "var(--bg-elevated)" : "transparent",
                 color: tab === "app-users" ? "var(--text-1)" : "var(--text-3)",
-                border: tab === "app-users" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
+                border: tab === "app-users" ? "1px solid var(--border-default)" : "1px solid transparent",
               }}
             >
               <Users className="w-4 h-4" />
@@ -1051,9 +685,9 @@ export default function AdminPage() {
               onClick={() => { hapticLight(); setTab("volume"); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-heading transition-colors"
               style={{
-                background: tab === "volume" ? TAB_ACTIVE_BG : "transparent",
+                background: tab === "volume" ? "var(--bg-elevated)" : "transparent",
                 color: tab === "volume" ? "var(--text-1)" : "var(--text-3)",
-                border: tab === "volume" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
+                border: tab === "volume" ? "1px solid var(--border-default)" : "1px solid transparent",
               }}
             >
               Volume
@@ -1107,330 +741,240 @@ export default function AdminPage() {
 
           {tab === "waitlist" && (
             <section className="min-w-0 overflow-hidden">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Waitlist + launch campaign
-                  </h2>
-                  <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Announce the official launch thread, keep failure capture tight, and move the queue forward.
-                  </p>
-                </div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
-                  <input
-                    type="text"
-                    placeholder="Search email, name, wallet..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-2xl border py-3 pl-9 pr-4 font-body text-xs sm:w-72"
-                    style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
-                  />
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <h2 className="font-heading text-sm" style={{ color: "var(--text-2)" }}>
+                  Waitlist signups — people who joined via the waitlist form
+                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
+                    <input
+                      type="text"
+                      placeholder="Search email, name, wallet..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-8 pr-3 py-2 rounded-lg font-body text-xs w-48 md:w-64 border"
+                      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                    />
+                  </div>
+                <button
+                  type="button"
+                  onClick={handleSendAllCodes}
+                  disabled={sendAllLoading || waitlistRows.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-opacity disabled:opacity-50"
+                  style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                >
+                  {sendAllLoading ? (
+                    <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4" />
+                  )}
+                  {sendAllLoading ? "Sending…" : "Send access codes to all"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendVolumeEmail}
+                  disabled={volumeEmailLoading || waitlistRows.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-opacity disabled:opacity-50"
+                  style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
+                >
+                  {volumeEmailLoading ? (
+                    <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4" />
+                  )}
+                  {volumeEmailLoading ? "Emailing…" : "Email volume sprint"}
+                </button>
                 </div>
               </div>
-
-              <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr,0.85fr]">
-                <div
-                  className="overflow-hidden rounded-[28px] border"
-                  style={{
-                    borderColor: PANEL_BORDER,
-                    background: PANEL_BG,
-                    boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--text-1) 6%, transparent)",
-                  }}
-                >
-                  <div className="grid grid-cols-1 lg:grid-cols-[0.95fr,1.05fr]">
-                    <div className="relative min-h-[280px]">
-                      <img src={LAUNCH_THREAD_IMAGE} alt={LAUNCH_THREAD_TITLE} className="h-full w-full object-cover" />
-                      <div className="absolute inset-0" style={{ background: IMAGE_OVERLAY_BG }} />
-                    </div>
-                    <div className="p-5 md:p-6">
-                      <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Current campaign
-                      </div>
-                      <h3 className="font-heading text-[28px] leading-[1.02] tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
-                        Official launch thread is live
-                      </h3>
-                      <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                        <span style={{ color: "var(--text-1)" }}>{LAUNCH_THREAD_TITLE}</span> is ready to push. The email tells the waitlist to read it, like it, retweet it, comment on it, and share it with friends.
-                      </p>
-                      <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-3)" }}>
-                        {LAUNCH_THREAD_PREVIEW}
-                      </p>
-
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        {["Like it", "Retweet it", "Comment on it", "Share with friends"].map((item) => (
-                          <span key={item} className="rounded-full border px-3 py-2 text-[11px] font-body" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG, color: "var(--text-2)" }}>
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                          <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Reach ready</p>
-                          <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.contactable.toLocaleString()}</p>
-                        </div>
-                        <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                          <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Codes used</p>
-                          <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.activated.toLocaleString()}</p>
-                        </div>
-                        <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                          <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Contest cue</p>
-                          <p className="mt-2 font-heading text-xl" style={{ color: "var(--accent)" }}>Soon</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        <a
-                          href={LAUNCH_THREAD_URL}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em]"
-                          style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                        >
-                          Open thread
-                        </a>
+              <div className="mb-3">
+                <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>
+                  Paste specific emails (e.g. failed ones) to resend the volume sprint update only to them.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <textarea
+                    value={volumeEmailInput}
+                    onChange={(e) => setVolumeEmailInput(e.target.value)}
+                    className="flex-1 min-h-[60px] px-3 py-2 rounded-lg font-mono text-[11px] border"
+                    style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                    placeholder="lawrencekelvin001@gmail.com&#10;odewumiprecious@gmail.com&#10;kloop058@gmail.com&#10;eokorie1911@gmail.com"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendVolumeEmailManual}
+                    disabled={volumeEmailLoading}
+                    className="px-4 py-2 rounded-lg font-body text-xs font-medium shrink-0 disabled:opacity-50"
+                    style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                  >
+                    Send to pasted emails
+                  </button>
+                </div>
+              </div>
+              {sendAllResult && (
+                <div className="mb-3 space-y-1">
+                  <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
+                    Sent {sendAllResult.sent}, failed {sendAllResult.failed}, skipped {sendAllResult.skipped} of {sendAllResult.total}.
+                  </p>
+                  {sendAllResult.failedEmails && sendAllResult.failedEmails.length > 0 && (
+                    <details className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      <summary className="cursor-pointer">View failed emails ({sendAllResult.failedEmails.length})</summary>
+                      <div className="mt-1 flex flex-col gap-1">
                         <button
                           type="button"
-                          onClick={handleSendLaunchEmail}
-                          disabled={launchEmailLoading || waitlistRows.length === 0}
-                          className="flex items-center gap-2 rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                          style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
+                          onClick={() => {
+                            const list = sendAllResult.failedEmails!.join(", ");
+                            navigator.clipboard.writeText(list).then(() => {});
+                            hapticLight();
+                          }}
+                          className="self-start px-2 py-1 rounded border text-[10px]"
+                          style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
                         >
-                          {launchEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
-                          {launchEmailLoading ? "Sending…" : "Send to all waitlist emails"}
+                          Copy all
                         </button>
+                        <ul className="list-disc pl-4">
+                          {sendAllResult.failedEmails.map((email) => (
+                            <li key={email}>{email}</li>
+                          ))}
+                        </ul>
                       </div>
-                      <InlineDispatchStatus result={launchEmailResult} label="Launch email result" />
-                    </div>
-                  </div>
+                    </details>
+                  )}
                 </div>
-
-                <div className="space-y-4">
-                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Manual resend
-                    </p>
-                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Retry the missed launch emails
-                    </h3>
-                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Paste failed or skipped addresses here to rerun just the launch announcement.
-                    </p>
-                    <textarea
-                      value={launchEmailInput}
-                      onChange={(e) => setLaunchEmailInput(e.target.value)}
-                      className="mt-4 min-h-[132px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
-                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
-                      placeholder="lawrencekelvin001@gmail.com&#10;odewumiprecious@gmail.com&#10;kloop058@gmail.com&#10;eokorie1911@gmail.com"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSendLaunchEmailManual}
-                      disabled={launchEmailLoading}
-                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                    >
-                      {launchEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <TrendingUp className="h-4 w-4" />}
-                      Send to pasted emails
-                    </button>
-                  </div>
-
-                  <DispatchSummary result={launchEmailResult} accentLabel="Launch thread email" />
-
-                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Access code dispatch
-                    </p>
-                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Keep onboarding moving
-                    </h3>
-                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Send fresh access codes to everyone still in the queue.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleSendAllCodes}
-                      disabled={sendAllLoading || waitlistRows.length === 0}
-                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                      style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
-                    >
-                      {sendAllLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
-                      {sendAllLoading ? "Sending…" : "Send access codes to all"}
-                    </button>
-                    <InlineDispatchStatus result={codeEmailResult} label="Access code email result" />
-                  </div>
-
-                  <DispatchSummary result={codeEmailResult} accentLabel="Access code email" />
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-[24px] border min-w-0" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                <div className="flex flex-col gap-2 border-b px-4 py-4 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
-                  <div>
-                    <h3 className="font-heading text-base" style={{ color: "var(--text-1)" }}>Waitlist table</h3>
-                    <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      Paginated so the queue is easier to scan and manage.
-                    </p>
-                  </div>
-                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    {filteredWaitlist.length.toLocaleString()} matching signups
-                  </p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[860px] text-left text-xs font-body">
-                    <thead>
-                      <tr style={{ background: "var(--bg-elevated)" }}>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Created</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider md:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Name</th>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Email</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider xl:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Access code</th>
-                        <th className="px-4 py-3 border-b w-24 font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Actions</th>
+              )}
+              <div className="overflow-x-auto rounded-xl border min-w-0" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <table className="w-full min-w-[700px] text-left text-xs font-body">
+                  <thead>
+                    <tr style={{ background: "var(--bg-elevated)" }}>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Created</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Name</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Email</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Access code</th>
+                      <th className="px-4 py-3 border-b w-24 font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredWaitlist.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-6 text-center text-sm" colSpan={6} style={{ color: "var(--text-3)" }}>
+                          {searchQuery.trim() ? "No matches for your search." : "No waitlist signups yet."}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedWaitlist.length === 0 ? (
-                        <tr>
-                          <td className="px-4 py-6 text-center text-sm" colSpan={6} style={{ color: "var(--text-3)" }}>
-                            {searchQuery.trim() ? "No matches for your search." : "No waitlist signups yet."}
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedWaitlist.map((row, idx) => (
-                          <tr
-                            key={row.id}
-                            className="border-t transition-colors hover:bg-[var(--bg-elevated)]"
-                            style={{
-                              borderColor: "var(--border-subtle)",
-                              background: idx % 2 === 0 ? "color-mix(in srgb, var(--bg-surface) 88%, transparent)" : "transparent",
-                            }}
-                          >
-                            <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{new Date(row.created_at).toLocaleString()}</td>
-                            <td className="hidden px-4 py-3 md:table-cell">{row.name || "—"}</td>
-                            <td className="px-4 py-3">{row.email}</td>
-                            <CopyableCell value={row.wallet} mono className="hidden xl:table-cell" />
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                {row.access_code ? (
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-mono text-[11px]" style={{ color: "var(--text-2)" }}>{row.access_code}</span>
-                                    {row.access_code_used_at && (
-                                      <>
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--bg-elevated)", color: "var(--text-3)" }} title={new Date(row.access_code_used_at).toLocaleString()}>Used</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleGenerateCode(row.id)}
-                                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium"
-                                          style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                                          title="Regenerate new code"
-                                        >
-                                          <KeyRound className="w-3.5 h-3.5" />
-                                          Regenerate
-                                        </button>
-                                      </>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => { hapticLight(); navigator.clipboard.writeText(row.access_code!).then(() => {}); }}
-                                      className="p-1 rounded"
-                                      style={{ color: "var(--text-3)" }}
-                                      aria-label="Copy code"
-                                    >
-                                      <Copy className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <span style={{ color: "var(--text-3)" }}>—</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleGenerateCode(row.id)}
-                                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium"
-                                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                                      title="Generate 6-digit code"
-                                    >
-                                      <KeyRound className="w-3.5 h-3.5" />
-                                      Generate
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1 flex-wrap">
-                                {row.access_code && row.email && (
+                    ) : (
+                      filteredWaitlist.map((row) => (
+                        <tr key={row.id} className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                          <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{new Date(row.created_at).toLocaleString()}</td>
+                          <td className="px-4 py-3">{row.name || "—"}</td>
+                          <td className="px-4 py-3">{row.email}</td>
+                          <CopyableCell value={row.wallet} mono />
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {row.access_code ? (
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono text-[11px]" style={{ color: "var(--text-2)" }}>{row.access_code}</span>
+                                  {row.access_code_used_at && (
+                                    <>
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--bg-elevated)", color: "var(--text-3)" }} title={new Date(row.access_code_used_at).toLocaleString()}>Used</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGenerateCode(row.id)}
+                                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium"
+                                        style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                                        title="Regenerate new code"
+                                      >
+                                        <KeyRound className="w-3.5 h-3.5" />
+                                        Regenerate
+                                      </button>
+                                    </>
+                                  )}
                                   <button
                                     type="button"
-                                    onClick={() => handleResendEmail(row.id)}
-                                    disabled={resendingId === row.id}
-                                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-opacity disabled:opacity-50"
-                                    style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
-                                    title="Resend access code email"
+                                    onClick={() => { hapticLight(); navigator.clipboard.writeText(row.access_code!).then(() => {}); }}
+                                    className="p-1 rounded"
+                                    style={{ color: "var(--text-3)" }}
+                                    aria-label="Copy code"
                                   >
-                                    {resendingId === row.id ? (
-                                      <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                                    ) : (
-                                      <Mail className="w-3.5 h-3.5" />
-                                    )}
-                                    Resend email
+                                    <Copy className="w-3.5 h-3.5" />
                                   </button>
-                                )}
-                                {!row.access_code && (
+                                </div>
+                              ) : (
+                                <>
+                                  <span style={{ color: "var(--text-3)" }}>—</span>
                                   <button
                                     type="button"
                                     onClick={() => handleGenerateCode(row.id)}
-                                    className="p-2 rounded-lg transition-colors"
-                                    style={{ color: "var(--accent)" }}
-                                    aria-label="Generate access code"
-                                    title="Generate 6-digit access code"
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium"
+                                    style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                                    title="Generate 6-digit code"
                                   >
-                                    <KeyRound className="w-4 h-4" />
+                                    <KeyRound className="w-3.5 h-3.5" />
+                                    Generate
                                   </button>
-                                )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {row.access_code && row.email && (
                                 <button
                                   type="button"
-                                  onClick={() => handleDelete(row.id)}
-                                  className="p-2 rounded-lg transition-colors"
-                                  style={{ color: "var(--down)" }}
-                                  aria-label="Delete"
+                                  onClick={() => handleResendEmail(row.id)}
+                                  disabled={resendingId === row.id}
+                                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-opacity disabled:opacity-50"
+                                  style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
+                                  title="Resend access code email"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  {resendingId === row.id ? (
+                                    <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                  ) : (
+                                    <Mail className="w-3.5 h-3.5" />
+                                  )}
+                                  Resend email
                                 </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <PaginationControls page={safeWaitlistPage} totalItems={filteredWaitlist.length} pageSize={TABLE_PAGE_SIZE} onPageChange={setWaitlistPage} />
+                              )}
+                              {!row.access_code && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateCode(row.id)}
+                                  className="p-2 rounded-lg transition-colors"
+                                  style={{ color: "var(--accent)" }}
+                                  aria-label="Generate access code"
+                                  title="Generate 6-digit access code"
+                                >
+                                  <KeyRound className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(row.id)}
+                                className="p-2 rounded-lg transition-colors"
+                                style={{ color: "var(--down)" }}
+                                aria-label="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}
 
           {tab === "volume" && (
             <section className="min-w-0 overflow-hidden">
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Volume intelligence
-                  </h2>
-                  <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    7d, 30d, and all-time flow, with the leaderboard paginated for easier review.
-                  </p>
-                </div>
-                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                  {volumeRows.length.toLocaleString()} wallets tracked
-                </p>
-              </div>
+              <h2 className="font-heading text-sm mb-3" style={{ color: "var(--text-2)" }}>
+                Volume — 7d / 30d / all-time (from API logs; resets on API restart)
+              </h2>
               {volumeLoading ? (
                 <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
               ) : volumeData ? (
                 <div className="space-y-4">
-                  <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                  <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                     <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Platform volume</p>
                     <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
                       7d: {(volumeData.platform7d ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
@@ -1447,61 +991,51 @@ export default function AdminPage() {
                       )}
                     </p>
                   </div>
-                  <div className="overflow-hidden rounded-[24px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[680px] text-left text-xs font-body">
-                        <thead>
-                          <tr style={{ background: "var(--bg-elevated)" }}>
-                            <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
-                            <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>7d (SOL)</th>
-                            <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider md:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>30d (SOL)</th>
-                            <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>All-time (SOL)</th>
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                    <table className="w-full text-left text-xs font-body">
+                      <thead>
+                        <tr style={{ background: "var(--bg-elevated)" }}>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>7d (SOL)</th>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>30d (SOL)</th>
+                          <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>All-time (SOL)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(!volumeData.byWallet || volumeData.byWallet.length === 0) ? (
+                          <tr>
+                            <td className="px-4 py-6 text-center text-sm" colSpan={4} style={{ color: "var(--text-3)" }}>
+                              No volume logged yet. Volume is logged when users complete swaps.
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {paginatedVolumeRows.length === 0 ? (
-                            <tr>
-                              <td className="px-4 py-6 text-center text-sm" colSpan={4} style={{ color: "var(--text-3)" }}>
-                                No volume logged yet. Volume is logged when users complete swaps.
-                              </td>
-                            </tr>
-                          ) : (
-                            paginatedVolumeRows.map((row, idx) => {
-                              const v7 = row.volume7d ?? 0;
-                              const v30 = row.volume30d ?? 0;
-                              const vAll = row.volumeAllTime ?? v7;
-                              return (
-                                <tr
-                                  key={row.wallet}
-                                  className="border-t transition-colors hover:bg-[var(--bg-elevated)]"
-                                  style={{
-                                    borderColor: "var(--border-subtle)",
-                                    background: idx % 2 === 0 ? "color-mix(in srgb, var(--bg-surface) 88%, transparent)" : "transparent",
-                                  }}
-                                >
-                                  <CopyableCell value={row.wallet} mono />
-                                  <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
-                                    {v7.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
-                                  </td>
-                                  <td className="hidden px-4 py-3 font-mono tabular-nums md:table-cell" style={{ color: "var(--text-2)" }}>
-                                    {v30.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
-                                  </td>
-                                  <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
-                                    {vAll.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
-                                    {solPriceUsd > 0 && (
-                                      <span className="text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
-                                        (≈${((vAll * solPriceUsd) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })})
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    <PaginationControls page={safeVolumePage} totalItems={volumeRows.length} pageSize={TABLE_PAGE_SIZE} onPageChange={setVolumePage} />
+                        ) : (
+                          volumeData.byWallet.map((row) => {
+                            const v7 = row.volume7d ?? 0;
+                            const v30 = row.volume30d ?? 0;
+                            const vAll = row.volumeAllTime ?? v7;
+                            return (
+                              <tr key={row.wallet} className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                                <CopyableCell value={row.wallet} mono />
+                                <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                  {v7.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                                </td>
+                                <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                  {v30.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                                </td>
+                                <td className="px-4 py-3 font-mono tabular-nums" style={{ color: "var(--text-2)" }}>
+                                  {vAll.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                                  {solPriceUsd > 0 && (
+                                    <span className="text-[10px] ml-1" style={{ color: "var(--text-3)" }}>
+                                      (≈${((vAll * solPriceUsd) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               ) : null}
@@ -1510,60 +1044,40 @@ export default function AdminPage() {
 
           {tab === "app-users" && (
             <section>
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    App users
-                  </h2>
-                  <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Wallet-connected users with a cleaner table layout and pagination.
-                  </p>
-                </div>
-                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                  {appUsers.length.toLocaleString()} users loaded
-                </p>
-              </div>
-              <div className="overflow-hidden rounded-[24px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-xs font-body">
-                    <thead>
-                      <tr style={{ background: "var(--bg-elevated)" }}>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Created</th>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Last seen</th>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider md:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Source</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider lg:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Country</th>
+              <h2 className="font-heading text-sm mb-3" style={{ color: "var(--text-2)" }}>
+                App users — users who connected a wallet in the app
+              </h2>
+              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <table className="min-w-full text-left text-xs font-body">
+                  <thead>
+                    <tr style={{ background: "var(--bg-elevated)" }}>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Created</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Last seen</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Source</th>
+                      <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Country</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appUsers.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-6 text-center text-sm" colSpan={5} style={{ color: "var(--text-3)" }}>
+                          No app users yet.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedAppUsers.length === 0 ? (
-                        <tr>
-                          <td className="px-4 py-6 text-center text-sm" colSpan={5} style={{ color: "var(--text-3)" }}>
-                            No app users yet.
-                          </td>
+                    ) : (
+                      appUsers.map((row) => (
+                        <tr key={row.id} className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                          <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{new Date(row.created_at).toLocaleString()}</td>
+                          <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : "—"}</td>
+                          <CopyableCell value={row.wallet} mono />
+                          <td className="px-4 py-3">{row.signup_source || "—"}</td>
+                          <CopyableCell value={row.country} />
                         </tr>
-                      ) : (
-                        paginatedAppUsers.map((row, idx) => (
-                          <tr
-                            key={row.id}
-                            className="border-t transition-colors hover:bg-[var(--bg-elevated)]"
-                            style={{
-                              borderColor: "var(--border-subtle)",
-                              background: idx % 2 === 0 ? "color-mix(in srgb, var(--bg-surface) 88%, transparent)" : "transparent",
-                            }}
-                          >
-                            <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{new Date(row.created_at).toLocaleString()}</td>
-                            <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : "—"}</td>
-                            <CopyableCell value={row.wallet} mono />
-                            <td className="hidden px-4 py-3 md:table-cell">{row.signup_source || "—"}</td>
-                            <CopyableCell value={row.country} className="hidden lg:table-cell" />
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <PaginationControls page={safeAppUsersPage} totalItems={appUsers.length} pageSize={TABLE_PAGE_SIZE} onPageChange={setAppUsersPage} />
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}
@@ -1572,3 +1086,4 @@ export default function AdminPage() {
     </div>
   );
 }
+

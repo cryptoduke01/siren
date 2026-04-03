@@ -4,9 +4,9 @@ import { useState } from "react";
 import type { LaunchpadId } from "@siren/shared";
 
 const LAUNCHPAD_CONFIG: Record<LaunchpadId, { label: string; color: string; logoUrl: string; fallback: string }> = {
-  bags: { label: "Bags", color: "var(--bags)", logoUrl: "https://bags.fm/assets/images/bags-icon.png", fallback: "B" },
+  bags: { label: "Bags", color: "var(--bags)", logoUrl: "/brand/mark.svg", fallback: "B" },
   pump: { label: "Pump", color: "#9945FF", logoUrl: "https://pump.fun/favicon.ico", fallback: "P" },
-  bonk: { label: "Bonk", color: "#F6B353", logoUrl: "https://brand.bonkcoin.com/_next/image?url=%2Fimages%2Flogo.png&w=640&q=75", fallback: "B" },
+  bonk: { label: "Bonk", color: "#F6B353", logoUrl: "https://bonkbot.io/favicon.ico", fallback: "B" },
   moonshot: { label: "Moonshot", color: "#E040FB", logoUrl: "https://moonshot.money/favicon.ico", fallback: "M" },
   other: { label: "Other", color: "var(--text-3)", logoUrl: "", fallback: "O" },
 };

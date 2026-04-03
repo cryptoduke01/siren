@@ -1,6 +1,5 @@
 import type { FastifyRequest } from "fastify";
 import { getMarketsWithVelocity } from "./services/markets.js";
-import { getSignalFeedSnapshot } from "./services/signalState.js";
 
 interface SocketLike {
   readyState: number;
@@ -20,12 +19,6 @@ export function createWebSocketHandler() {
         getMarketsWithVelocity()
           .then((data) => socket.send(JSON.stringify({ type: "markets", data })))
           .catch(() => {});
-        getSignalFeedSnapshot()
-          .then((snapshot) => {
-            socket.send(JSON.stringify({ type: "signals", data: snapshot.signals }));
-            socket.send(JSON.stringify({ type: "signal-status", data: snapshot.status }));
-          })
-          .catch(() => {});
       }
     };
 
@@ -39,16 +32,5 @@ export function broadcastMarkets(data: unknown) {
   const payload = JSON.stringify({ type: "markets", data });
   clients.forEach((client) => {
     if (client.readyState === 1) client.send(payload);
-  });
-}
-
-export function broadcastSignalSnapshot(snapshot: Awaited<ReturnType<typeof getSignalFeedSnapshot>>) {
-  const signalsPayload = JSON.stringify({ type: "signals", data: snapshot.signals });
-  const statusPayload = JSON.stringify({ type: "signal-status", data: snapshot.status });
-
-  clients.forEach((client) => {
-    if (client.readyState !== 1) return;
-    client.send(signalsPayload);
-    client.send(statusPayload);
   });
 }

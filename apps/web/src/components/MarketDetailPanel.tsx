@@ -2,7 +2,6 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
-import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { ExternalLink } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 
@@ -19,20 +18,13 @@ function VelocityBadge({ v }: { v: number }) {
 }
 
 export function MarketDetailPanel() {
-  const { selectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
-  const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
+  const { selectedMarket, setSelectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
   const isOpen = !!selectedMarket && detailPanelOpen;
 
   if (!selectedMarket || !detailPanelOpen) return null;
 
   const yesPct = Math.min(100, Math.max(0, selectedMarket.probability));
   const noPct = 100 - yesPct;
-  const canTradeInApp = selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
-  const venueLabel = selectedMarket.source === "kalshi" ? "Kalshi" : "Polymarket";
-  const marketUrl =
-    selectedMarket.market_url ||
-    selectedMarket.kalshi_url ||
-    (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com");
 
   return (
     <AnimatePresence>
@@ -95,81 +87,44 @@ export function MarketDetailPanel() {
                   <VelocityBadge v={selectedMarket.velocity_1h} />
                 </div>
                 <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Trades (24h)</p>
-                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{marketActivity?.recent_trades_24h?.toLocaleString() ?? "—"}</p>
-                </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Volume (24h)</p>
-                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.volume_24h?.toLocaleString() ?? "—"}</p>
-                </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Volume</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.volume?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-[6px] border p-4 col-span-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Open interest</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.open_interest?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Liquidity</p>
-                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.liquidity?.toLocaleString() ?? "—"}</p>
-                </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                  <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Last trade</p>
-                  <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{marketActivity?.last_trade_at ? new Date(marketActivity.last_trade_at).toLocaleTimeString() : "—"}</p>
-                </div>
               </div>
 
-              {canTradeInApp ? (
+              {(selectedMarket.yes_mint || selectedMarket.no_mint) ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      hapticLight();
-                      setDetailPanelOpen(false);
-                      setBuyPanelOpen(true, "market");
-                    }}
-                    className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2"
-                    style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                  >
-                    Trade In Siren
-                  </button>
                   <a
-                    href={marketUrl}
+                    href={selectedMarket.kalshi_url || "https://kalshi.com"}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
-                    className="w-full py-3 rounded-[6px] font-body font-medium text-sm transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2 border"
-                    style={{
-                      background: "var(--bg-elevated)",
-                      color: "var(--text-2)",
-                      borderColor: "var(--border-subtle)",
-                    }}
+                    className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2"
+                    style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    View market page
+                    Trade on Kalshi
                     <ExternalLink className="w-4 h-4" />
                   </a>
-                  <p className="text-center font-body text-xs" style={{ color: "var(--text-3)" }}>
-                    Market trades route through DFlow and may settle a little later than the token side.
-                  </p>
                 </>
               ) : (
                 <>
                   <a
-                    href={marketUrl}
+                    href={selectedMarket.kalshi_url || "https://kalshi.com"}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
                     className="flex items-center justify-center gap-2 w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    View market page
+                    Trade on Kalshi
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
-                    {selectedMarket.source === "kalshi"
-                      ? "This market is not available for in-app order entry right now."
-                      : "Polymarket market data is live here. Direct Polymarket trading inside Siren is still being added."}
+                    In-app trading requires outcome mints. Use Kalshi for this market.
                   </p>
                 </>
               )}

@@ -1,46 +1,11 @@
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,600,700&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=departure-mono@400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@font-face {
-  font-family: "Clash Display";
-  src: url("/fonts/clash-display-600.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Clash Display";
-  src: url("/fonts/clash-display-700.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Inter";
-  src: url("/fonts/inter-400.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Inter";
-  src: url("/fonts/inter-500.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Inter";
-  src: url("/fonts/inter-600.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-}
 
 :root {
   --bg-void: #060609;
@@ -57,7 +22,6 @@
   --bags: #00FF85;
   --bags-dim: #00FF8514;
   --kalshi: #5DDFB0;
-  --polymarket: #6B3FDB;
   --text-1: #F0F0F5;
   --text-2: #B0B0C8;
   --text-3: #7878A0;
@@ -96,7 +60,6 @@ html.light {
   --bags: #008848;
   --bags-dim: #00FF8520;
   --kalshi: #2BA86E;
-  --polymarket: #6B3FDB;
   --text-1: #16161D;
   --text-2: #505068;
   --text-3: #383850;
@@ -135,6 +98,8 @@ html,
 body {
   background: var(--bg-void);
   color: var(--text-1);
+  font-family: "Cabinet Grotesk", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
   min-height: 100dvh;
@@ -150,9 +115,9 @@ body {
   -ms-overflow-style: none;
 }
 
-/* Force mono utility to use the project body font. */
+/* Labels / addresses: Departure Mono */
 .font-mono {
-  font-family: Inter, sans-serif !important;
+  font-family: "Departure Mono", ui-monospace, monospace;
 }
 
 /* Brighter placeholders for inputs */
@@ -209,16 +174,11 @@ body {
 
 /* Terminal grid layout — single row so no gap under navbar */
 .app-shell {
-  position: relative;
   display: grid;
   grid-template-rows: 1fr;
   grid-template-columns: auto 1px minmax(0, 1fr);
-  height: 100dvh;
+  height: 100vh;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 28%),
-    radial-gradient(circle at bottom right, color-mix(in srgb, var(--kalshi) 8%, transparent), transparent 24%),
-    var(--bg-void);
 }
 
 .app-shell .topbar {
@@ -236,7 +196,6 @@ body {
   width: 360px;
   min-width: 280px;
   max-width: 560px;
-  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -244,7 +203,6 @@ body {
 .app-shell .main-panel {
   grid-column: 3;
   grid-row: 1;
-  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 16px 20px 20px;
@@ -253,8 +211,6 @@ body {
 .app-shell .right-panel {
   grid-column: 4;
   grid-row: 1;
-  min-height: 0;
-  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -272,16 +228,6 @@ body {
 @media (min-width: 1280px) {
   .app-shell .main-panel {
     padding: 20px 28px 28px 32px;
-  }
-}
-
-@media (min-width: 1536px) {
-  .app-shell {
-    grid-template-columns: auto 1px minmax(0, 1fr) clamp(296px, 23vw, 360px);
-  }
-
-  .app-shell .main-panel {
-    padding: 20px 18px 28px 32px;
   }
 }
 
@@ -309,7 +255,7 @@ body {
   min-width: 0;
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 900px) {
   .token-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
