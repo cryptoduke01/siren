@@ -4,32 +4,26 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Star, Wallet, Sun, Moon, Rocket, TrendingUp, ClipboardList } from "lucide-react";
+import { Menu, X, Star, Sun, Moon, Rocket, TrendingUp, User } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
-import { WaitlistHeader } from "./WaitlistHeader";
-import { usePrivy } from "@privy-io/react-auth";
-import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useSignals } from "@/hooks/useSignals";
 
 const NAV = [
   { href: "/", label: "Terminal", icon: Rocket },
   { href: "/trending", label: "Trending", icon: TrendingUp },
-  { href: "/waitlist", label: "Waitlist", icon: ClipboardList },
 ];
 const LIVE_SIGNAL_WINDOW_MS = 30 * 60 * 1000;
 
 export function TopBar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useThemeStore();
-  const { authenticated } = usePrivy();
-  const { connected } = useSirenWallet();
   const showSignalSummary = pathname === "/";
   const { signals } = useSignals({ enabled: showSignalSummary });
   const [menuOpen, setMenuOpen] = useState(false);
-  const navItems = authenticated || connected ? NAV.filter((item) => item.href !== "/waitlist") : NAV;
+  const navItems = NAV;
   const liveSignals = signals.filter((signal) => Date.now() - Date.parse(signal.timestamp) <= LIVE_SIGNAL_WINDOW_MS);
   const kalshiCount = liveSignals.filter((signal) => signal.source === "kalshi").length;
   const polymarketCount = liveSignals.filter((signal) => signal.source === "polymarket").length;
@@ -42,10 +36,6 @@ export function TopBar() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);
-
-  if (pathname === "/waitlist") {
-    return <WaitlistHeader />;
-  }
 
   return (
     <>
@@ -97,9 +87,9 @@ export function TopBar() {
             </span>
             <span style={{ color: "var(--text-3)" }}>—</span>
             <span>
-              <span style={{ color: "#00B2FF" }}>{kalshiCount} Kalshi</span>
+              <span style={{ color: "#00C853" }}>{kalshiCount} Kalshi</span>
               {" · "}
-              <span style={{ color: "#6B3FDB" }}>{polymarketCount} Polymarket</span>
+              <span style={{ color: "#5B8AFF" }}>{polymarketCount} Polymarket</span>
             </span>
           </div>
         )}
@@ -117,11 +107,17 @@ export function TopBar() {
           <Link
             href="/portfolio"
             onClick={() => hapticLight()}
-            className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-all hover:bg-[var(--bg-hover)] active:scale-95"
-            style={{ color: pathname === "/portfolio" ? "var(--accent)" : "var(--text-2)" }}
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:ring-2 hover:ring-[var(--accent)]/30 active:scale-95"
+            style={{
+              background: pathname === "/portfolio"
+                ? "linear-gradient(135deg, var(--accent), #00C853)"
+                : "var(--bg-elevated)",
+              color: pathname === "/portfolio" ? "var(--bg-base)" : "var(--text-2)",
+              border: "1px solid var(--border-subtle)",
+            }}
             aria-label="Portfolio"
           >
-            <Wallet className="w-4 h-4" />
+            <User className="w-3.5 h-3.5" />
           </Link>
           <button
             type="button"

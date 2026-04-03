@@ -993,6 +993,40 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  // ─── Real trending tokens (DexScreener top boosted) ──────────
+  app.get("/api/trending", async (_req, reply) => {
+    try {
+      const { getTopBoostedTokens, getTokenPairs } = await import("./services/dexscreener.js");
+      const boosted = await withTimeout(getTopBoostedTokens(), 8_000, "trending-boosted");
+      const top = boosted.slice(0, 20);
+      const enriched = await Promise.allSettled(
+        top.map(async (t) => {
+          const pairs = await getTokenPairs(t.tokenAddress).catch(() => []);
+          const best = pairs.sort((a, b) => (b.volume?.h24 ?? 0) - (a.volume?.h24 ?? 0))[0];
+          return {
+            mint: t.tokenAddress,
+            symbol: best?.baseToken?.symbol ?? t.symbol ?? "???",
+            name: best?.baseToken?.name ?? t.name ?? "Unknown",
+            imageUrl: t.icon ?? best?.info?.imageUrl ?? undefined,
+            priceUsd: best?.priceUsd ? parseFloat(best.priceUsd) : undefined,
+            volume24h: best?.volume?.h24 ?? undefined,
+            marketCap: best?.marketCap ?? best?.fdv ?? undefined,
+            liquidity: best?.liquidity?.usd ?? undefined,
+            dexUrl: t.url ?? undefined,
+          };
+        })
+      );
+      const data = enriched
+        .filter((r): r is PromiseFulfilledResult<ReturnType<typeof Object>> => r.status === "fulfilled")
+        .map((r) => r.value)
+        .filter((t) => t.priceUsd);
+      return reply.send({ success: true, data });
+    } catch (e) {
+      _req.log.error(e);
+      return reply.send({ success: true, data: [] });
+    }
+  });
+
   app.get<{ Querystring: { mint: string } }>("/api/token-info", async (req, reply) => {
     const { mint } = req.query;
     if (!mint?.trim()) {
@@ -1132,7 +1166,7 @@ export function registerRoutes(app: FastifyInstance) {
 
         const { data: existing, error: selectError } = await supabase
           .from("users")
-          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country")
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
           .or(filters.join(","))
           .limit(1)
           .maybeSingle();
@@ -1157,7 +1191,7 @@ export function registerRoutes(app: FastifyInstance) {
           const { data: inserted, error: insertError } = await supabase
             .from("users")
             .insert(insertPayload)
-            .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country")
+            .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
             .single();
 
           if (insertError) {
@@ -1180,7 +1214,7 @@ export function registerRoutes(app: FastifyInstance) {
           .from("users")
           .update(updatePayload)
           .eq("id", existing.id)
-          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country")
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
           .single();
 
         if (updateError) {
@@ -1192,6 +1226,79 @@ export function registerRoutes(app: FastifyInstance) {
       } catch (e) {
         app.log.error(e);
         return reply.status(500).send({ success: false, error: "User tracking failed" });
+      }
+    }
+  );
+
+  // ─── Username Profile ───────────────────────────────────────
+  app.post<{ Body: { wallet: string; username: string } }>(
+    "/api/users/username",
+    async (req, reply) => {
+      const { wallet, username } = req.body || {};
+      if (!wallet || typeof wallet !== "string" || wallet.trim().length < 20) {
+        return reply.status(400).send({ success: false, error: "Valid wallet address required" });
+      }
+      if (!username || typeof username !== "string") {
+        return reply.status(400).send({ success: false, error: "Username required" });
+      }
+      const clean = username.trim().slice(0, 20).replace(/[^a-zA-Z0-9_.\-]/g, "");
+      if (clean.length < 2) {
+        return reply.status(400).send({ success: false, error: "Username must be 2–20 chars (letters, numbers, _ . -)." });
+      }
+      try {
+        const supabase = getSupabaseAdminClient();
+        const { data: dup } = await supabase
+          .from("users")
+          .select("id")
+          .eq("username", clean.toLowerCase())
+          .neq("wallet", wallet.trim().toLowerCase())
+          .maybeSingle();
+        if (dup) {
+          return reply.status(409).send({ success: false, error: "Username already taken" });
+        }
+        const { data, error } = await supabase
+          .from("users")
+          .update({ username: clean.toLowerCase(), display_name: clean })
+          .eq("wallet", wallet.trim().toLowerCase())
+          .select("id,wallet,username,display_name")
+          .single();
+        if (error) {
+          if (error.code === "PGRST116") {
+            return reply.status(404).send({ success: false, error: "Wallet not found. Connect your wallet first." });
+          }
+          req.log.error({ err: error }, "username update failed");
+          return reply.status(503).send({ success: false, error: "Failed to update username" });
+        }
+        return reply.send({ success: true, data });
+      } catch (e) {
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: "Server error" });
+      }
+    }
+  );
+
+  app.get<{ Querystring: { wallet: string } }>(
+    "/api/users/profile",
+    async (req, reply) => {
+      const wallet = (req.query.wallet || "").trim().toLowerCase();
+      if (!wallet || wallet.length < 20) {
+        return reply.status(400).send({ success: false, error: "wallet query param required" });
+      }
+      try {
+        const supabase = getSupabaseAdminClient();
+        const { data, error } = await supabase
+          .from("users")
+          .select("id,wallet,username,display_name,created_at,country")
+          .eq("wallet", wallet)
+          .maybeSingle();
+        if (error && error.code !== "PGRST116") {
+          req.log.error({ err: error }, "profile lookup failed");
+          return reply.status(503).send({ success: false, error: "Lookup failed" });
+        }
+        return reply.send({ success: true, data: data ?? null });
+      } catch (e) {
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: "Server error" });
       }
     }
   );

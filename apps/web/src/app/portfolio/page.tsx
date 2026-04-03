@@ -8,7 +8,7 @@ import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
-  ChevronDown, ArrowUpRight, ArrowDownLeft, CreditCard,
+  ChevronDown, ArrowUpRight, ArrowDownLeft, CreditCard, Pencil,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
@@ -218,14 +218,56 @@ export default function PortfolioPage() {
   const { fundWallet } = useSolanaFundWallet();
   const addToast = useToastStore((s) => s.addToast);
 
+  const queryClient = useQueryClient();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
   const [positionTab, setPositionTab] = useState<"open" | "settled">("open");
   const [proofLoading, setProofLoading] = useState(false);
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameSaving, setUsernameSaving] = useState(false);
 
   const walletKey = publicKey?.toBase58() ?? null;
+
+  // ── Username / Profile ──────────────────────────────────────
+  const { data: profile } = useQuery({
+    queryKey: ["user-profile", walletKey],
+    queryFn: async () => {
+      if (!walletKey) return null;
+      const res = await fetch(`${API_URL}/api/users/profile?wallet=${encodeURIComponent(walletKey)}`, { credentials: "omit" });
+      if (!res.ok) return null;
+      const payload = await res.json().catch(() => ({}));
+      return (payload?.data ?? null) as { username?: string; display_name?: string } | null;
+    },
+    enabled: !!walletKey,
+    staleTime: 60_000,
+  });
+
+  const saveUsername = useCallback(async () => {
+    if (!walletKey || !usernameInput.trim()) return;
+    setUsernameSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/users/username`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: walletKey, username: usernameInput.trim() }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(payload?.error || "Failed to save username", "error");
+        return;
+      }
+      addToast("Username saved", "success");
+      setEditingUsername(false);
+      queryClient.invalidateQueries({ queryKey: ["user-profile", walletKey] });
+    } catch {
+      addToast("Network error saving username", "error");
+    } finally {
+      setUsernameSaving(false);
+    }
+  }, [walletKey, usernameInput, addToast, queryClient]);
 
   // ── Balances ──────────────────────────────────────────────────
 
@@ -430,6 +472,53 @@ export default function PortfolioPage() {
             <TokenRow symbol="USDT" balance={usdt} usdValue={usdt} />
           </div>
         </div>
+
+        {/* ── Username ──────────────────────────────────────── */}
+        {connected && (
+          <div className="mt-4 flex items-center justify-between rounded-xl border px-4 py-3"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+            {editingUsername ? (
+              <div className="flex flex-1 items-center gap-2">
+                <input
+                  type="text"
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_.\-]/g, "").slice(0, 20))}
+                  placeholder="Pick a username"
+                  autoFocus
+                  maxLength={20}
+                  className="flex-1 rounded-md border bg-transparent px-3 py-1.5 font-body text-sm outline-none"
+                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveUsername(); if (e.key === "Escape") setEditingUsername(false); }}
+                />
+                <button type="button" onClick={saveUsername} disabled={usernameSaving || usernameInput.trim().length < 2}
+                  className="rounded-md px-3 py-1.5 font-heading text-xs font-semibold disabled:opacity-40"
+                  style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
+                  {usernameSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full"
+                    style={{ background: "linear-gradient(135deg, var(--accent), #00C853)" }}>
+                    <span className="font-heading text-xs font-bold" style={{ color: "var(--bg-base)" }}>
+                      {(profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <span className="font-heading text-sm font-medium" style={{ color: "var(--text-1)" }}>
+                    {profile?.display_name || profile?.username || "Set username"}
+                  </span>
+                </div>
+                <button type="button"
+                  onClick={() => { hapticLight(); setUsernameInput(profile?.username || ""); setEditingUsername(true); }}
+                  className="rounded-md p-1.5 hover:bg-[var(--bg-elevated)]"
+                  style={{ color: "var(--text-3)" }}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── Jupiter Swap ──────────────────────────────────── */}
         <div className="mt-4 overflow-hidden rounded-xl border"

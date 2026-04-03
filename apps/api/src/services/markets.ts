@@ -429,11 +429,36 @@ export async function getMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
         throw new Error(reasons.join(" | ") || "No markets available");
       }
 
-      const sorted = combined.sort((a, b) => {
-        const velocityDiff = Math.abs(b.velocity_1h) - Math.abs(a.velocity_1h);
-        if (velocityDiff !== 0) return velocityDiff;
-        return (b.volume ?? 0) - (a.volume ?? 0);
+      const highVelocity = combined.filter((m) => Math.abs(m.velocity_1h) >= 0.5);
+      const rest = combined.filter((m) => Math.abs(m.velocity_1h) < 0.5);
+
+      highVelocity.sort((a, b) => Math.abs(b.velocity_1h) - Math.abs(a.velocity_1h));
+
+      for (let i = rest.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rest[i], rest[j]] = [rest[j], rest[i]];
+      }
+
+      rest.sort((a, b) => {
+        const aScore = (a.volume ?? 0) + (a.volume_24h ?? 0) * 0.5 + (a.open_interest ?? 0) * 0.3;
+        const bScore = (b.volume ?? 0) + (b.volume_24h ?? 0) * 0.5 + (b.open_interest ?? 0) * 0.3;
+        const diff = bScore - aScore;
+        return diff + (Math.random() - 0.5) * Math.max(aScore, bScore) * 0.3;
       });
+
+      const interleaved: MarketWithVelocity[] = [];
+      let kalshiIdx = 0;
+      let polyIdx = 0;
+      const kalshiRest = rest.filter((m) => m.source === "kalshi");
+      const polyRest = rest.filter((m) => m.source === "polymarket");
+
+      interleaved.push(...highVelocity);
+      while (kalshiIdx < kalshiRest.length || polyIdx < polyRest.length) {
+        if (kalshiIdx < kalshiRest.length) interleaved.push(kalshiRest[kalshiIdx++]);
+        if (polyIdx < polyRest.length) interleaved.push(polyRest[polyIdx++]);
+      }
+
+      const sorted = interleaved;
 
       marketsCache = {
         expiresAt: Date.now() + MARKETS_CACHE_MS,

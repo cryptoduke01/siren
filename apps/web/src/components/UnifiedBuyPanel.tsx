@@ -528,7 +528,19 @@ export function UnifiedBuyPanel() {
 
   useEffect(() => {
     const identity = publicKey?.toBase58() ?? evmAddress ?? null;
-    setCardDisplayName(formatProfileName(readProfileName(identity)));
+    const local = readProfileName(identity);
+    if (local) {
+      setCardDisplayName(formatProfileName(local));
+    }
+    if (publicKey) {
+      fetch(`${API_URL}/api/users/profile?wallet=${encodeURIComponent(publicKey.toBase58())}`, { credentials: "omit" })
+        .then((r) => r.json())
+        .then((j) => {
+          const serverName = j?.data?.display_name || j?.data?.username;
+          if (serverName) setCardDisplayName(`@${serverName}`);
+        })
+        .catch(() => {});
+    }
   }, [publicKey?.toBase58(), evmAddress]);
 
   useEffect(() => {
@@ -986,7 +998,7 @@ export function UnifiedBuyPanel() {
   const openPolymarketFundingFlow = async () => {
     hapticLight();
     if (!evmAddress) {
-      const message = "Log in with Privy to prepare your EVM wallet first.";
+      const message = "Sign in to set up your Polygon wallet for Polymarket trading.";
       setError(message);
       addToast(message, "error");
       return;
@@ -1019,7 +1031,7 @@ export function UnifiedBuyPanel() {
       return;
     }
     if (!evmAddress) {
-      setError("Log in with Privy to provision your EVM wallet for Polymarket.");
+      setError("Sign in first — your Polygon wallet is needed for Polymarket trades.");
       return;
     }
     if (!selectedPolymarketTokenId) {
@@ -1039,7 +1051,7 @@ export function UnifiedBuyPanel() {
 
     try {
       if (!switchEvmChain || !getEvmProvider) {
-        throw new Error("EVM wallet is not ready yet. Sign in with Privy first.");
+        throw new Error("Wallet not ready. Sign in first to enable Polymarket trading.");
       }
       await switchEvmChain(POLYGON_CHAIN_ID);
       const provider = (await getEvmProvider()) as {
@@ -1129,7 +1141,7 @@ export function UnifiedBuyPanel() {
       setResultModal({
         type: "success",
         title: "Polymarket order sent",
-        message: `Bought ${marketSide.toUpperCase()} for ${formatUsd(amountNum, 2)} from your embedded EVM wallet.`,
+        message: `Bought ${marketSide.toUpperCase()} for ${formatUsd(amountNum, 2)} via Polygon.`,
         txSignature,
         actionLabel: "Open market page",
         actionHref: selectedMarket.market_url,
@@ -1361,7 +1373,7 @@ export function UnifiedBuyPanel() {
                     <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-3">{selectedMarket.title}</p>
                     <p className="font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
-                        ? "Pick YES or NO, enter a USDC amount, and Siren will route the order through your embedded EVM wallet."
+                        ? "Pick YES or NO, enter a USDC amount, and Siren will route through your Polygon wallet."
                         : "Pick YES or NO, enter Solana USDC, and Siren will build the order for you."}
                     </p>
 
@@ -1590,7 +1602,7 @@ export function UnifiedBuyPanel() {
                             Polymarket wallet
                           </p>
                           <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Siren uses your embedded EVM wallet for Polymarket orders. Fund it with Polygon USDC here, or deposit from Solana or Base and let the venue convert it for trading.
+                            Polymarket trades use your Polygon wallet. Fund it with USDC on Polygon, or bridge from Solana.
                           </p>
                           <button
                             type="button"
@@ -1603,7 +1615,7 @@ export function UnifiedBuyPanel() {
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
                           <p className="mt-2 text-[10px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                            Proof is only needed for Kalshi. Polymarket trades settle from the same EVM wallet.
+                            DFlow proof is only needed for Kalshi/DFlow markets. Polymarket uses your Polygon wallet.
                           </p>
                         </>
                       )}

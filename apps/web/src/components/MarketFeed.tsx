@@ -41,19 +41,37 @@ function VelocityBadge({ v }: { v: number }) {
   );
 }
 
+function PolymarketIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M200 0L400 200L200 400L0 200L200 0Z" fill="#2E5CFF" />
+      <path d="M100 200L200 100L300 200L200 300L100 200Z" fill="white" />
+    </svg>
+  );
+}
+
+function KalshiIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100" rx="16" fill="#00C853" />
+      <text x="50" y="68" textAnchor="middle" fontFamily="system-ui" fontWeight="800" fontSize="48" fill="white">K</text>
+    </svg>
+  );
+}
+
 function SourceBadge({ source }: { source?: string }) {
   if (source === "polymarket") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(107,63,219,0.15)" }}>
-        <img src="https://polymarket.com/icons/favicon-32x32.png" alt="" className="h-3 w-3 rounded-sm" />
-        <span className="font-body text-[9px] font-bold" style={{ color: "#9B7FE6" }}>Poly</span>
+      <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(46,92,255,0.12)" }}>
+        <PolymarketIcon size={11} />
+        <span className="font-body text-[9px] font-bold" style={{ color: "#5B8AFF" }}>Poly</span>
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(0,178,255,0.12)" }}>
-      <img src="https://kalshi.com/favicon.ico" alt="" className="h-3 w-3 rounded-sm" />
-      <span className="font-body text-[9px] font-bold" style={{ color: "#00B2FF" }}>Kalshi</span>
+    <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: "rgba(0,200,83,0.10)" }}>
+      <KalshiIcon size={11} />
+      <span className="font-body text-[9px] font-bold" style={{ color: "#00C853" }}>Kalshi</span>
     </span>
   );
 }

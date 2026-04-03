@@ -54,16 +54,6 @@ export function Footer() {
           >
             Privacy
           </Link>
-          {!connected && (
-            <Link
-              href="/waitlist"
-              onClick={() => hapticLight()}
-              className="font-body text-xs underline"
-              style={{ color: "var(--text-2)" }}
-            >
-              Waitlist
-            </Link>
-          )}
         </div>
       </div>
     </footer>

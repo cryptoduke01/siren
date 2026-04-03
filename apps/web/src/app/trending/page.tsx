@@ -5,146 +5,145 @@ import { motion } from "framer-motion";
 import { TopBar } from "@/components/TopBar";
 import { useSirenStore } from "@/store/useSirenStore";
 import { StarButton } from "@/components/StarButton";
-import { LaunchpadBadge } from "@/components/LaunchpadBadge";
-import type { SurfacedToken } from "@siren/shared";
 import { API_URL } from "@/lib/apiUrl";
 
-function formatCompactNumber(value?: number, digits = 1): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    notation: "compact",
-    maximumFractionDigits: digits,
-  }).format(value);
+interface TrendingToken {
+  mint: string;
+  symbol: string;
+  name: string;
+  imageUrl?: string;
+  priceUsd?: number;
+  volume24h?: number;
+  marketCap?: number;
+  liquidity?: number;
+  dexUrl?: string;
 }
 
-function fetchTrendingTokens(): Promise<SurfacedToken[]> {
-  return fetch(`${API_URL}/api/tokens`, { credentials: "omit" })
-    .then((r) => {
-      if (!r.ok) throw new Error(`Tokens API error: ${r.status}`);
-      return r.json();
-    })
-    .then((j) => j.data ?? []);
+function formatCompact(value?: number, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: digits }).format(value);
+}
+
+function formatPrice(price?: number): string {
+  if (price == null || !Number.isFinite(price)) return "—";
+  if (price < 0.001) return `$${price.toExponential(2)}`;
+  if (price < 1) return `$${price.toFixed(4)}`;
+  return `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+async function fetchTrending(): Promise<TrendingToken[]> {
+  const res = await fetch(`${API_URL}/api/trending`, { credentials: "omit" });
+  if (!res.ok) throw new Error(`Trending API error: ${res.status}`);
+  const json = await res.json();
+  return (json.data ?? []) as TrendingToken[];
 }
 
 export default function TrendingPage() {
   const { setSelectedToken } = useSirenStore();
   const { data: tokens = [], isLoading, isError } = useQuery({
-    queryKey: ["trending-tokens"],
-    queryFn: fetchTrendingTokens,
+    queryKey: ["trending-tokens-real"],
+    queryFn: fetchTrending,
     retry: 2,
     refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
       <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full">
-        <h1 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "var(--accent)" }}>
+        <h1 className="font-heading font-bold text-2xl md:text-3xl mb-1" style={{ color: "var(--accent)" }}>
           Trending
         </h1>
         <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
-          Hot Solana tokens from DexScreener (refreshes every 60s).
+          Top Solana tokens right now via DexScreener.
         </p>
+
         {isError ? (
-          <div
-            className="rounded-[6px] border p-4 text-sm"
-            style={{ borderColor: "var(--down)", background: "var(--bg-surface)", color: "var(--down)" }}
-          >
-            Failed to load tokens.
+          <div className="rounded-lg border p-4 text-sm"
+            style={{ borderColor: "var(--down)", background: "var(--bg-surface)", color: "var(--down)" }}>
+            Failed to load trending tokens.
           </div>
         ) : isLoading ? (
           <div className="token-grid">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="skeleton-card" />
             ))}
           </div>
+        ) : tokens.length === 0 ? (
+          <p className="text-center font-body text-sm py-12" style={{ color: "var(--text-3)" }}>
+            No trending tokens available right now.
+          </p>
         ) : (
           <div className="token-grid">
             {tokens.map((t, i) => (
               <motion.div
                 key={t.mint}
-                initial={{ opacity: 0, transform: "translateY(6px)" }}
-                animate={{ opacity: 1, transform: "translateY(0)" }}
-                transition={{ duration: 0.18, delay: i * 0.04, ease: "easeOut" }}
-                className="rounded-[8px] p-3.5 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)]"
-                style={{
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border-subtle)",
-                  borderTop: "2px solid var(--border-subtle)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = "0 0 0 1px var(--border-active)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = "none";
-                }}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.15, delay: i * 0.03 }}
+                className="group rounded-xl p-4 cursor-pointer transition-all hover:ring-1 hover:ring-[var(--accent)]/20"
+                style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
                 onClick={() =>
                   setSelectedToken({
                     mint: t.mint,
                     name: t.name,
                     symbol: t.symbol,
-                    price: t.price,
+                    price: t.priceUsd,
                     volume24h: t.volume24h,
-                    liquidityUsd: t.liquidityUsd,
-                    fdvUsd: t.fdvUsd,
-                    holders: t.holders,
-                    bondingCurveStatus: t.bondingCurveStatus,
-                    rugcheckScore: t.rugcheckScore,
-                    safe: t.safe,
-                    ctMentions: t.ctMentions,
+                    liquidityUsd: t.liquidity,
+                    fdvUsd: t.marketCap,
                   })
                 }
               >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {t.imageUrl && <img src={t.imageUrl} alt="" className="w-7 h-7 rounded-full object-cover" />}
-                    <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
-                      ${t.symbol}
-                    </p>
-                    <LaunchpadBadge launchpad={t.launchpad} />
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {t.imageUrl ? (
+                      <img src={t.imageUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center"
+                        style={{ background: "var(--bg-elevated)" }}>
+                        <span className="font-heading text-xs font-bold" style={{ color: "var(--accent)" }}>
+                          {t.symbol.slice(0, 2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
+                        ${t.symbol}
+                      </p>
+                      <p className="font-body text-[11px] truncate" style={{ color: "var(--text-3)" }}>
+                        {t.name}
+                      </p>
+                    </div>
                   </div>
                   <StarButton type="token" id={t.mint} />
                 </div>
-                <p className="font-body text-[11px] truncate mb-2" style={{ color: "var(--text-2)" }}>
-                  {t.name}
+
+                {/* Price */}
+                <p className="font-mono text-lg font-bold tabular-nums mb-3" style={{ color: "var(--text-1)" }}>
+                  {formatPrice(t.priceUsd)}
                 </p>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
-                    24h Vol
-                  </span>
-                  <span className="font-body text-xs tabular-nums">
-                    <span style={{ color: "var(--text-1)" }}>{t.volume24h?.toLocaleString() ?? "-"}</span>
-                    <span style={{ color: "var(--text-3)" }}> USD</span>
-                  </span>
+
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="rounded-lg px-2.5 py-1.5" style={{ background: "var(--bg-base)" }}>
+                    <p className="font-body text-[9px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>Volume 24h</p>
+                    <p className="font-mono text-xs font-medium" style={{ color: "var(--text-1)" }}>${formatCompact(t.volume24h)}</p>
+                  </div>
+                  <div className="rounded-lg px-2.5 py-1.5" style={{ background: "var(--bg-base)" }}>
+                    <p className="font-body text-[9px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>Mkt Cap</p>
+                    <p className="font-mono text-xs font-medium" style={{ color: "var(--text-1)" }}>${formatCompact(t.marketCap)}</p>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="font-body font-medium text-[10px] uppercase" style={{ color: "var(--text-3)" }}>
-                    CT mentions
-                  </span>
-                  <span className="font-body text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
-                    {t.ctMentions ?? "-"}
-                  </span>
+
+                <div className="rounded-lg px-2.5 py-1.5 mb-3" style={{ background: "var(--bg-base)" }}>
+                  <p className="font-body text-[9px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>Liquidity</p>
+                  <p className="font-mono text-xs font-medium" style={{ color: "var(--text-1)" }}>${formatCompact(t.liquidity)}</p>
                 </div>
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
-                    {t.bondingCurveStatus === "bonded" ? "Bonded" : t.bondingCurveStatus === "bonding" ? "Curve" : "Status —"}
-                  </span>
-                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
-                    Holders {formatCompactNumber(t.holders, 0)}
-                  </span>
-                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-body" style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
-                    Liq ${formatCompactNumber(t.liquidityUsd)}
-                  </span>
-                  <span
-                    className="rounded-full border px-2 py-0.5 text-[10px] font-body"
-                    style={{
-                      borderColor: t.safe === false ? "color-mix(in srgb, var(--down) 35%, var(--border-subtle))" : "var(--border-subtle)",
-                      color: t.safe === false ? "var(--down)" : "var(--bags)",
-                    }}
-                  >
-                    {t.rugcheckScore != null ? `Rug ${t.rugcheckScore}` : t.safe === false ? "Watch" : "Safe"}
-                  </span>
-                </div>
+
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -152,25 +151,16 @@ export default function TrendingPage() {
                       mint: t.mint,
                       name: t.name,
                       symbol: t.symbol,
-                      price: t.price,
+                      price: t.priceUsd,
                       volume24h: t.volume24h,
-                      liquidityUsd: t.liquidityUsd,
-                      fdvUsd: t.fdvUsd,
-                      holders: t.holders,
-                      bondingCurveStatus: t.bondingCurveStatus,
-                      rugcheckScore: t.rugcheckScore,
-                      safe: t.safe,
-                      ctMentions: t.ctMentions,
+                      liquidityUsd: t.liquidity,
+                      fdvUsd: t.marketCap,
                     });
                   }}
-                  className="w-full h-8 rounded-[6px] font-heading font-bold text-xs uppercase transition-all duration-[80ms] ease hover:brightness-[1.08]"
-                  style={{
-                    background: "var(--bags)",
-                    color: "var(--accent-text)",
-                    letterSpacing: "0.06em",
-                  }}
+                  className="w-full rounded-lg py-2 font-heading text-xs font-bold uppercase tracking-wide transition-all hover:brightness-110"
+                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                 >
-                  Buy
+                  Trade
                 </button>
               </motion.div>
             ))}
