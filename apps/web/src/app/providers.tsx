@@ -15,7 +15,7 @@ import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { PrivyWalletBridge } from "@/contexts/SirenWalletContext";
 
 const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
+const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl("mainnet-beta");
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
@@ -53,7 +53,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
               createOnLogin: "all-users",
             },
           },
-          // Wallet Standard + detected Solana wallets (Phantom, etc.). Embedded wallet remains primary after login.
           externalWallets: {
             solana: {
               connectors: toSolanaWalletConnectors({ shouldAutoConnect: false }),

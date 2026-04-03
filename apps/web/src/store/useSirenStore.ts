@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { PredictionSignal, SignalSource } from "@siren/shared";
+import type { PredictionSignal, SignalSource, MarketOutcome } from "@siren/shared";
 
 export interface SelectedMarket {
   source: SignalSource;
@@ -26,6 +26,7 @@ export interface SelectedMarket {
   yes_token_id?: string;
   no_token_id?: string;
   kalshi_url?: string;
+  outcomes?: MarketOutcome[];
 }
 
 export interface SelectedToken {

@@ -6,6 +6,7 @@ export interface PolymarketGammaMarketResponse {
   volume?: string | number;
   liquidity?: string | number;
   outcomePrices?: string | string[];
+  outcomes?: string | string[];
   clobTokenIds?: string | string[];
   startDate?: string;
   endDate?: string;
@@ -15,6 +16,7 @@ export interface PolymarketGammaMarketResponse {
   active?: boolean;
   closed?: boolean;
   acceptingOrders?: boolean;
+  groupItemTitle?: string;
 }
 
 export interface PolymarketMarket {
@@ -25,12 +27,14 @@ export interface PolymarketMarket {
   volume: number;
   liquidity: number;
   outcomePrices: number[];
+  outcomeLabels: string[];
   clobTokenIds: string[];
   startDate?: string;
   endDate?: string;
   lastTradePrice?: number;
   bestBid?: number;
   bestAsk?: number;
+  groupItemTitle?: string;
 }
 
 export interface PolymarketOrderBookLevel {

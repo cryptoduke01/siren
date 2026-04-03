@@ -15,6 +15,16 @@ export interface KalshiMarket {
   open_time?: number;
 }
 
+export interface MarketOutcome {
+  label: string;
+  probability: number;
+  ticker?: string;
+  yes_mint?: string;
+  no_mint?: string;
+  yes_token_id?: string;
+  no_token_id?: string;
+}
+
 export interface MarketWithVelocity extends KalshiMarket {
   velocity_1h: number;
   probability: number;
@@ -32,6 +42,7 @@ export interface MarketWithVelocity extends KalshiMarket {
   no_token_id?: string;
   condition_id?: string;
   market_slug?: string;
+  outcomes?: MarketOutcome[];
 }
 
 export interface BagsToken {

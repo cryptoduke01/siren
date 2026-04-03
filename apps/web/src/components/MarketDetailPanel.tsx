@@ -5,6 +5,7 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { ExternalLink } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
+import type { MarketOutcome } from "@siren/shared";
 
 function VelocityBadge({ v }: { v: number }) {
   const abs = Math.abs(v);
@@ -75,19 +76,44 @@ export function MarketDetailPanel() {
                 <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>{selectedMarket.subtitle}</p>
               )}
 
-              <div>
-                <p className="font-body text-xs mb-2" style={{ color: "var(--text-3)" }}>Probability</p>
-                <div className="w-full h-[3px] rounded-[2px] flex overflow-hidden" style={{ background: "var(--border-subtle)" }}>
-                  <div
-                    className="h-full rounded-l-[2px] shrink-0"
-                    style={{ width: `${yesPct}%`, background: "var(--accent)" }}
-                  />
+              {/* Outcomes */}
+              {selectedMarket.outcomes && selectedMarket.outcomes.length > 2 ? (
+                <div>
+                  <p className="font-body text-xs mb-2" style={{ color: "var(--text-3)" }}>Outcomes</p>
+                  <div className="space-y-1.5">
+                    {(selectedMarket.outcomes as MarketOutcome[])
+                      .sort((a, b) => b.probability - a.probability)
+                      .map((outcome, idx) => (
+                        <div
+                          key={outcome.ticker ?? idx}
+                          className="flex items-center justify-between rounded-md border px-3 py-2"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                        >
+                          <span className="font-body text-xs" style={{ color: "var(--text-1)" }}>
+                            {outcome.label}
+                          </span>
+                          <span className="font-mono text-xs font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                            {outcome.probability.toFixed(1)}%
+                          </span>
+                        </div>
+                      ))}
+                  </div>
                 </div>
-                <div className="flex justify-between mt-2 text-sm">
-                  <span className="font-mono tabular-nums" style={{ color: "var(--kalshi)" }}>{yesPct.toFixed(1)}% YES</span>
-                  <span className="font-mono tabular-nums" style={{ color: "var(--text-3)" }}>{noPct.toFixed(1)}% NO</span>
+              ) : (
+                <div>
+                  <p className="font-body text-xs mb-2" style={{ color: "var(--text-3)" }}>Probability</p>
+                  <div className="w-full h-[3px] rounded-[2px] flex overflow-hidden" style={{ background: "var(--border-subtle)" }}>
+                    <div
+                      className="h-full rounded-l-[2px] shrink-0"
+                      style={{ width: `${yesPct}%`, background: "var(--accent)" }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-2 text-sm">
+                    <span className="font-mono tabular-nums" style={{ color: "var(--kalshi)" }}>{yesPct.toFixed(1)}% YES</span>
+                    <span className="font-mono tabular-nums" style={{ color: "var(--text-3)" }}>{noPct.toFixed(1)}% NO</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>

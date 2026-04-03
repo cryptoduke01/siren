@@ -1,4 +1,4 @@
-import type { MarketTradeActivity, MarketWithVelocity } from "@siren/shared";
+import type { MarketTradeActivity, MarketWithVelocity, MarketOutcome } from "@siren/shared";
 import { getActiveMarkets } from "../lib/polymarket.js";
 
 const DFLOW_METADATA_URL =
@@ -267,8 +267,27 @@ async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
   for (const event of events) {
     const eventMarkets = event.markets ?? [];
     const seriesTicker = event.seriesTicker ?? event.ticker?.split("-").slice(0, -1).join("-") ?? "";
-    for (const m of eventMarkets) {
-      if (m.status !== "active" || (m.volume ?? 0) <= 0) continue;
+    const activeMarkets = eventMarkets.filter((m) => m.status === "active" && (m.volume ?? 0) > 0);
+    if (activeMarkets.length === 0) continue;
+
+    const isMultiOutcome = activeMarkets.length > 1;
+    const outcomes: MarketOutcome[] = isMultiOutcome
+      ? activeMarkets.map((m) => {
+          const yesBid = m.yesBid ? parseFloat(m.yesBid) : undefined;
+          const yesAsk = m.yesAsk ? parseFloat(m.yesAsk) : undefined;
+          const accountValues = m.accounts ? Object.values(m.accounts) : [];
+          const firstAccount = accountValues.find((a) => a.yesMint && a.noMint);
+          return {
+            label: m.title,
+            probability: clampProbability((yesBid ?? yesAsk ?? 0.5) * 100),
+            ticker: m.ticker,
+            yes_mint: firstAccount?.yesMint,
+            no_mint: firstAccount?.noMint,
+          };
+        })
+      : [];
+
+    for (const m of activeMarkets) {
       const yesBid = m.yesBid ? parseFloat(m.yesBid) : undefined;
       const yesAsk = m.yesAsk ? parseFloat(m.yesAsk) : undefined;
       const prob = (yesBid ?? yesAsk ?? 0.5) * 100;
@@ -297,7 +316,7 @@ async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
         ticker: m.ticker,
         event_ticker: m.eventTicker,
         series_ticker: seriesTicker,
-        title: m.title,
+        title: isMultiOutcome ? `${event.title}: ${m.title}` : m.title,
         subtitle: m.subtitle,
         status: "open",
         yes_bid: yesBid,
@@ -313,6 +332,7 @@ async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
         yes_mint,
         no_mint,
         kalshi_url,
+        outcomes: isMultiOutcome ? outcomes : undefined,
       });
     }
   }
@@ -341,6 +361,15 @@ async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]>
       const marketUrl = market.slug ? `https://polymarket.com/event/${market.slug}` : "https://polymarket.com";
       const probability = clampProbability((market.outcomePrices[0] ?? 0.5) * 100);
 
+      const isMultiOutcome = market.outcomePrices.length > 2 || (market.outcomeLabels.length > 2);
+      const outcomes: MarketOutcome[] | undefined = isMultiOutcome
+        ? market.outcomePrices.map((price, idx) => ({
+            label: market.outcomeLabels[idx] ?? `Option ${idx + 1}`,
+            probability: clampProbability(price * 100),
+            yes_token_id: market.clobTokenIds[idx],
+          }))
+        : undefined;
+
       return {
         source: "polymarket",
         platform_id: market.id,
@@ -350,7 +379,7 @@ async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]>
         ticker: `POLY-${market.id}`,
         event_ticker: market.slug?.toUpperCase() ?? `POLY-${market.id}`,
         series_ticker: "POLYMARKET",
-        title: market.question,
+        title: market.groupItemTitle || market.question,
         subtitle: "Polymarket live market",
         status: "open",
         yes_bid: market.bestBid,
@@ -365,6 +394,7 @@ async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]>
         velocity_1h: 0,
         yes_token_id: market.clobTokenIds[0],
         no_token_id: market.clobTokenIds[1],
+        outcomes,
       };
     });
 }

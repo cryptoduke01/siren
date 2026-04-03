@@ -45,6 +45,7 @@ function clampProbability(value: number): number {
 }
 
 function normalizeMarket(raw: PolymarketGammaMarketResponse): PolymarketMarket {
+  const outcomeLabels = parseListField(raw.outcomes);
   return {
     id: String(raw.id),
     conditionId: raw.conditionId,
@@ -53,11 +54,13 @@ function normalizeMarket(raw: PolymarketGammaMarketResponse): PolymarketMarket {
     volume: parseFiniteNumber(raw.volume),
     liquidity: parseFiniteNumber(raw.liquidity),
     outcomePrices: parseOutcomePrices(raw.outcomePrices),
+    outcomeLabels: outcomeLabels.length > 0 ? outcomeLabels : ["Yes", "No"],
     clobTokenIds: parseListField(raw.clobTokenIds),
     startDate: raw.startDate,
     endDate: raw.endDate,
     lastTradePrice: parseFiniteNumber(raw.lastTradePrice) || undefined,
     bestBid: parseFiniteNumber(raw.bestBid) || undefined,
+    groupItemTitle: raw.groupItemTitle,
     bestAsk: parseFiniteNumber(raw.bestAsk) || undefined,
   };
 }

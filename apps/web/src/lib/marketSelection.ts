@@ -121,5 +121,6 @@ export function toSelectedMarket(market: MarketWithVelocity): SelectedMarket {
     condition_id: market.condition_id,
     market_slug: market.market_slug,
     kalshi_url: market.kalshi_url,
+    outcomes: market.outcomes,
   };
 }

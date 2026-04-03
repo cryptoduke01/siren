@@ -1,481 +1,440 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToastStore } from "@/store/useToastStore";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useMarkets } from "@/hooks/useMarkets";
 import { useSignals } from "@/hooks/useSignals";
 import { MarketDetailPanel } from "./MarketDetailPanel";
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import type { MarketWithVelocity, PredictionSignal, SignalSource } from "@siren/shared";
 import { toSelectedMarket } from "@/lib/marketSelection";
 
-const INITIAL_SHOWN = 16;
-const CATEGORIES = ["All", "Politics", "Crypto", "Sports", "Business", "Entertainment"];
+const INITIAL_SHOWN = 20;
 const LIVE_SIGNAL_WINDOW_MS = 30 * 60 * 1000;
 
-type SortMode = "default" | "volume" | "open_interest" | "ending_soon" | "hot";
-type SignalFilter = "all" | "kalshi" | "polymarket";
+type SourceFilter = "all" | "kalshi" | "polymarket";
+type SortMode = "hot" | "volume" | "newest" | "ending_soon";
 
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  All: [],
-  Politics: ["trump", "biden", "election", "senate", "congress", "vote", "democrat", "republican", "president", "governor", "primaries", "electoral"],
-  Crypto: ["bitcoin", "btc", "eth", "sol", "solana", "sec", "ethereum", "crypto", "token", "jpow", "fed", "rates"],
-  Sports: ["world", "cup", "ufc", "nba", "nfl", "super bowl", "championship", "georgia", "purdue", "icc", "t20", "soccer", "football", "basketball"],
-  Business: ["fed", "rates", "cpi", "inflation", "gdp", "earnings", "stock", "nasdaq", "market cap"],
-  Entertainment: ["oscar", "grammy", "emmy", "golden globes", "award", "movie", "album"],
-};
+const SORT_OPTIONS: { id: SortMode; label: string }[] = [
+  { id: "hot", label: "Trending" },
+  { id: "volume", label: "Volume" },
+  { id: "newest", label: "Newest" },
+  { id: "ending_soon", label: "Ending soon" },
+];
+
+function formatCompact(value?: number): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
 
 function VelocityBadge({ v }: { v: number }) {
-  const abs = Math.abs(v);
-  const dir = v > 0 ? "+" : "";
+  if (Math.abs(v) < 0.1) return null;
   const color = v > 0 ? "var(--up)" : "var(--down)";
   const arrow = v > 0 ? "▲" : "▼";
   return (
-    <span className="font-body text-[11px] tabular-nums" style={{ color }}>
-      {arrow} {dir}{abs.toFixed(1)}%/hr
+    <span className="font-body text-[10px] tabular-nums font-semibold" style={{ color }}>
+      {arrow} {v > 0 ? "+" : ""}{Math.abs(v).toFixed(1)}%
     </span>
   );
 }
 
-function marketAvatar(title: string): string {
-  const letter = (title?.trim()?.[0] || "M").toUpperCase();
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(letter)}&background=0b1220&color=e5e7eb&size=64`;
-}
-
-function formatCompactStat(value?: number): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value);
-}
-
-function formatSignalTimestamp(timestamp: string): string {
-  const parsed = Date.parse(timestamp);
-  if (!Number.isFinite(parsed)) return "";
-  const deltaMinutes = Math.max(0, Math.round((Date.now() - parsed) / 60_000));
-  if (deltaMinutes < 1) return "just now";
-  if (deltaMinutes === 1) return "1 min ago";
-  if (deltaMinutes < 60) return `${deltaMinutes} mins ago`;
-  const deltaHours = Math.round(deltaMinutes / 60);
-  return `${deltaHours}h ago`;
-}
-
-function formatSignalVolume(volume: number): string {
-  return new Intl.NumberFormat("en-US", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(volume);
-}
-
-function SourceBadge({ source }: { source: PredictionSignal["source"] }) {
-  const badge =
-    source === "kalshi"
-      ? { label: "KALSHI", background: "#00B2FF" }
-      : { label: "POLYMARKET", background: "#6B3FDB" };
-
+function SourceDot({ source }: { source?: string }) {
+  const bg = source === "polymarket" ? "#6B3FDB" : "#00B2FF";
+  const label = source === "polymarket" ? "PM" : "K";
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
-      style={{ background: badge.background, color: "#FFFFFF" }}
+      className="inline-flex items-center justify-center rounded-[4px] px-1.5 py-0.5 font-body text-[9px] font-bold uppercase tracking-wider"
+      style={{ background: bg, color: "#fff" }}
     >
-      {badge.label}
+      {label}
     </span>
   );
 }
 
 export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: MarketWithVelocity) => void } = {}) {
-  const { selectedMarket, selectedSignal, setSelectedMarket, setSelectedSignal } = useSirenStore();
+  const { selectedMarket, setSelectedMarket, setSelectedSignal } = useSirenStore();
   const [shownCount, setShownCount] = useState(INITIAL_SHOWN);
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [marketSearchQuery, setMarketSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("hot");
-  const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
 
   const addToast = useToastStore((s) => s.addToast);
-  const { data: markets = [], isLoading, isError, error, refetch } = useMarkets();
-  const {
-    signals,
-    status: signalStatus,
-    isError: isSignalError,
-    error: signalError,
-    refetch: refetchSignals,
-  } = useSignals();
+  const { data: markets = [], isLoading, isError, refetch } = useMarkets();
+  const { signals, status: signalStatus } = useSignals();
 
   useEffect(() => {
-    if (isError && error) addToast("Unable to load markets. Please try again in a moment.", "error");
-  }, [isError, error, addToast]);
-
-  useEffect(() => {
-    if (isSignalError && signalError) {
-      addToast("Unable to load live signals. Market browsing is still available.", "error");
+    function handleClickOutside(e: MouseEvent) {
+      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+        setFiltersOpen(false);
+      }
     }
-  }, [isSignalError, signalError, addToast]);
+    if (filtersOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [filtersOpen]);
 
   const liveSignals = useMemo(
-    () => signals.filter((signal) => Date.now() - Date.parse(signal.timestamp) <= LIVE_SIGNAL_WINDOW_MS),
+    () => signals.filter((s) => Date.now() - Date.parse(s.timestamp) <= LIVE_SIGNAL_WINDOW_MS),
     [signals]
   );
-  const filteredSignals = useMemo(() => {
-    const sourceFiltered =
-      signalFilter === "all" ? liveSignals : liveSignals.filter((signal) => signal.source === signalFilter);
-    return [...sourceFiltered].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-  }, [liveSignals, signalFilter]);
 
-  const categoryFiltered =
-    activeCategory === "All"
-      ? markets
-      : markets.filter((m) => {
-          const kw = CATEGORY_KEYWORDS[activeCategory];
-          if (!kw?.length) return true;
-          const lower = `${m.title ?? ""} ${m.ticker ?? ""} ${m.subtitle ?? ""}`.toLowerCase();
-          return kw.some((k) => lower.includes(k));
-        });
+  const hotSignalTickers = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of liveSignals) {
+      if (Math.abs(s.delta) >= 3) set.add(s.marketId);
+    }
+    return set;
+  }, [liveSignals]);
 
-  const filteredMarkets = useMemo(() => {
-    if (!marketSearchQuery.trim()) return categoryFiltered;
-    const q = marketSearchQuery.trim().toLowerCase();
-    const normalized = q.replace(/^https?:\/\//, "");
-    return categoryFiltered.filter(
-      (m) =>
-        (m.title && m.title.toLowerCase().includes(q)) ||
-        (m.ticker && m.ticker.toLowerCase().includes(q)) ||
-        (m.source && m.source.toLowerCase().includes(q)) ||
-        (m.subtitle && m.subtitle.toLowerCase().includes(q)) ||
-        (m.event_ticker && m.event_ticker.toLowerCase().includes(q)) ||
-        ((m.market_url || m.kalshi_url) &&
-          ((m.market_url || m.kalshi_url)!.toLowerCase().includes(q) ||
-            (m.market_url || m.kalshi_url)!.toLowerCase().includes(normalized)))
-    );
-  }, [categoryFiltered, marketSearchQuery]);
+  const filtered = useMemo(() => {
+    let list = markets;
 
-  const sortedMarkets = useMemo(() => {
-    const base = [...filteredMarkets];
+    if (sourceFilter !== "all") {
+      list = list.filter((m) => m.source === sourceFilter);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (m) =>
+          m.title?.toLowerCase().includes(q) ||
+          m.ticker?.toLowerCase().includes(q) ||
+          m.subtitle?.toLowerCase().includes(q)
+      );
+    }
+
+    const sorted = [...list];
     switch (sortMode) {
       case "volume":
-        return base.sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0));
-      case "open_interest":
-        return base.sort((a, b) => (b.open_interest ?? 0) - (a.open_interest ?? 0));
-      case "hot":
-        return base.sort((a, b) => Math.abs(b.velocity_1h) - Math.abs(a.velocity_1h));
+        sorted.sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0));
+        break;
+      case "newest":
+        sorted.sort((a, b) => (b.open_time ?? 0) - (a.open_time ?? 0));
+        break;
       case "ending_soon":
-        return base.sort((a, b) => {
-          const aClose = a.close_time ?? Number.POSITIVE_INFINITY;
-          const bClose = b.close_time ?? Number.POSITIVE_INFINITY;
-          if (aClose === bClose) return 0;
-          return aClose - bClose;
+        sorted.sort((a, b) => {
+          const ac = a.close_time ?? Number.MAX_SAFE_INTEGER;
+          const bc = b.close_time ?? Number.MAX_SAFE_INTEGER;
+          return ac - bc;
         });
-      case "default":
+        break;
+      case "hot":
       default:
-        return base;
+        sorted.sort((a, b) => {
+          const aHot = hotSignalTickers.has(a.platform_id ?? a.ticker) ? 1 : 0;
+          const bHot = hotSignalTickers.has(b.platform_id ?? b.ticker) ? 1 : 0;
+          if (bHot !== aHot) return bHot - aHot;
+          const velDiff = Math.abs(b.velocity_1h) - Math.abs(a.velocity_1h);
+          if (Math.abs(velDiff) > 0.5) return velDiff;
+          return (b.volume ?? 0) - (a.volume ?? 0);
+        });
+        break;
     }
-  }, [filteredMarkets, sortMode]);
+    return sorted;
+  }, [markets, sourceFilter, searchQuery, sortMode, hotSignalTickers]);
+
+  const handleSelectMarket = (m: MarketWithVelocity) => {
+    hapticLight();
+    setSelectedMarket(toSelectedMarket(m));
+    onAfterSelectMarket?.(m);
+  };
 
   const handleSelectSignal = (signal: PredictionSignal) => {
     hapticLight();
-    const linkedMarket = markets.find(
-      (market) =>
-        market.source === signal.source &&
-        (market.platform_id === signal.marketId || market.ticker === signal.marketId)
+    const linked = markets.find(
+      (m) => m.source === signal.source && (m.platform_id === signal.marketId || m.ticker === signal.marketId)
     );
-    if (linkedMarket) {
-      setSelectedMarket(toSelectedMarket(linkedMarket));
-      onAfterSelectMarket?.(linkedMarket);
-      return;
+    if (linked) {
+      setSelectedMarket(toSelectedMarket(linked));
+      onAfterSelectMarket?.(linked);
+    } else {
+      setSelectedSignal(signal);
     }
-    setSelectedSignal(signal);
   };
 
+  const signalCount = liveSignals.length;
+  const kalshiUp = signalStatus.find((s) => s.source === "kalshi")?.connected;
+  const polyUp = signalStatus.find((s) => s.source === "polymarket")?.connected;
+
   return (
-    <div
-      className="h-full flex flex-col overflow-hidden min-h-0"
-      style={{
-        background: "var(--bg-base)",
-        borderRight: "1px solid var(--border-subtle)",
-      }}
-    >
-      <div className="flex-shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {signalStatus.map((status) => (
-              <div
-                key={status.source}
-                className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.12em]"
-                style={{
-                  borderColor: "var(--border-subtle)",
-                  background: "var(--bg-surface)",
-                  color: "var(--text-2)",
-                }}
-              >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: status.connected ? "var(--up)" : "var(--down)" }}
-                />
-                {status.source === "kalshi" ? "Kalshi" : "Polymarket"}
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              refetchSignals();
-            }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border px-3 font-body text-[11px]"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+    <div className="h-full flex flex-col overflow-hidden min-h-0" style={{ background: "var(--bg-base)" }}>
+      {/* Header: search + filter */}
+      <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2">
+        <div className="flex items-center gap-2">
+          <div
+            className="flex-1 flex items-center gap-2 h-8 px-2.5 rounded-lg border"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
-        </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto scrollbar-hidden">
-          {[
-            { id: "all", label: "ALL" },
-            { id: "kalshi", label: "KALSHI" },
-            { id: "polymarket", label: "POLYMARKET" },
-          ].map((filter) => (
+            <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-3)" }} />
+            <input
+              type="text"
+              placeholder="Search markets..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent font-body text-[11px] outline-none placeholder:text-[var(--text-3)]"
+              style={{ color: "var(--text-1)" }}
+            />
+            {searchQuery && (
+              <button type="button" onClick={() => setSearchQuery("")}>
+                <X className="w-3 h-3" style={{ color: "var(--text-3)" }} />
+              </button>
+            )}
+          </div>
+          <div className="relative" ref={filtersRef}>
             <button
-              key={filter.id}
               type="button"
-              onClick={() => {
-                hapticLight();
-                setSignalFilter(filter.id as SignalFilter);
-              }}
-              className="rounded-[8px] border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
+              onClick={() => { hapticLight(); setFiltersOpen(!filtersOpen); }}
+              className="h-8 px-2.5 rounded-lg border flex items-center gap-1.5"
               style={{
-                background: signalFilter === filter.id ? "var(--bg-elevated)" : "transparent",
-                borderColor: signalFilter === filter.id ? "var(--border-active)" : "var(--border-subtle)",
-                color: signalFilter === filter.id ? "var(--text-1)" : "var(--text-3)",
+                background: filtersOpen ? "var(--bg-elevated)" : "var(--bg-surface)",
+                borderColor: filtersOpen ? "var(--border-active)" : "var(--border-subtle)",
+                color: "var(--text-2)",
               }}
             >
-              {filter.label}
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <ChevronDown className={`w-3 h-3 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
+            </button>
+            <AnimatePresence>
+              {filtersOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute right-0 top-10 z-50 w-48 rounded-xl border p-2 shadow-xl"
+                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}
+                >
+                  <p className="px-2 py-1 font-body text-[9px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
+                    Sort by
+                  </p>
+                  {SORT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => { hapticLight(); setSortMode(opt.id); setFiltersOpen(false); }}
+                      className="w-full text-left px-2 py-1.5 rounded-md font-body text-[11px] hover:bg-[var(--bg-surface)]"
+                      style={{ color: sortMode === opt.id ? "var(--accent)" : "var(--text-1)" }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  <div className="my-1.5 h-px" style={{ background: "var(--border-subtle)" }} />
+                  <p className="px-2 py-1 font-body text-[9px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
+                    Source
+                  </p>
+                  {(["all", "kalshi", "polymarket"] as SourceFilter[]).map((src) => (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => { hapticLight(); setSourceFilter(src); setFiltersOpen(false); }}
+                      className="w-full text-left px-2 py-1.5 rounded-md font-body text-[11px] capitalize hover:bg-[var(--bg-surface)]"
+                      style={{ color: sourceFilter === src ? "var(--accent)" : "var(--text-1)" }}
+                    >
+                      {src === "all" ? "All sources" : src}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Source tabs + connection status */}
+        <div className="flex items-center gap-1.5">
+          {(["all", "kalshi", "polymarket"] as SourceFilter[]).map((src) => (
+            <button
+              key={src}
+              type="button"
+              onClick={() => { hapticLight(); setSourceFilter(src); }}
+              className="rounded-md px-2.5 py-1 font-body text-[10px] font-semibold uppercase tracking-wider border"
+              style={{
+                background: sourceFilter === src ? "var(--bg-elevated)" : "transparent",
+                borderColor: sourceFilter === src ? "var(--border-active)" : "var(--border-subtle)",
+                color: sourceFilter === src ? "var(--text-1)" : "var(--text-3)",
+              }}
+            >
+              {src === "all" ? "All" : src === "kalshi" ? "Kalshi" : "Poly"}
             </button>
           ))}
+          <div className="ml-auto flex items-center gap-2">
+            {kalshiUp != null && (
+              <span className="flex items-center gap-1 font-body text-[9px]" style={{ color: "var(--text-3)" }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: kalshiUp ? "var(--up)" : "var(--down)" }} />
+                K
+              </span>
+            )}
+            {polyUp != null && (
+              <span className="flex items-center gap-1 font-body text-[9px]" style={{ color: "var(--text-3)" }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: polyUp ? "var(--up)" : "var(--down)" }} />
+                PM
+              </span>
+            )}
+            {signalCount > 0 && (
+              <span className="font-body text-[9px] tabular-nums" style={{ color: "var(--up)" }}>
+                {signalCount} live
+              </span>
+            )}
+          </div>
         </div>
-        <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1 scrollbar-hidden">
-          {filteredSignals.length > 0 ? (
-            filteredSignals.map((signal) => {
-              const isSelected =
-                selectedSignal?.id === signal.id ||
-                (selectedMarket?.source === signal.source &&
-                  (selectedMarket.platform_id === signal.marketId || selectedMarket.ticker === signal.marketId));
-              return (
+      </div>
+
+      {/* Live signals strip — compact, only when signals exist */}
+      {liveSignals.length > 0 && (
+        <div className="flex-shrink-0 px-3 pb-2">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hidden">
+            {liveSignals
+              .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+              .slice(0, 5)
+              .map((sig) => (
                 <button
-                  key={signal.id}
+                  key={sig.id}
                   type="button"
-                  onClick={() => handleSelectSignal(signal)}
-                  className="w-full rounded-[14px] border p-3 text-left transition-all duration-[120ms] ease hover:bg-[var(--bg-elevated)]"
+                  onClick={() => handleSelectSignal(sig)}
+                  className="shrink-0 rounded-lg border px-2.5 py-1.5 text-left hover:border-[var(--border-active)]"
                   style={{
-                    background: isSelected ? "var(--bg-elevated)" : "var(--bg-surface)",
-                    borderColor: isSelected ? "var(--border-active)" : "var(--border-subtle)",
+                    background: "var(--bg-surface)",
+                    borderColor: "var(--border-subtle)",
+                    minWidth: 160,
+                    maxWidth: 200,
                   }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <SourceBadge source={signal.source} />
-                        <span className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>
-                          {formatSignalTimestamp(signal.timestamp)}
-                        </span>
-                      </div>
-                      <p className="mt-2 font-heading text-[13px] font-semibold leading-tight" style={{ color: "var(--text-1)" }}>
-                        {signal.question}
-                      </p>
-                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                        {signal.matchedTokens.length} matched tokens · Vol {formatSignalVolume(signal.volume)}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p
-                        className="font-mono text-sm font-semibold tabular-nums"
-                        style={{ color: signal.delta >= 0 ? "var(--up)" : "var(--down)" }}
-                      >
-                        {signal.delta >= 0 ? "+" : ""}
-                        {signal.delta.toFixed(1)}%
-                      </p>
-                      <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-                        YES {signal.currentProb.toFixed(1)}%
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <SourceDot source={sig.source} />
+                    <span
+                      className="font-mono text-[11px] font-bold tabular-nums"
+                      style={{ color: sig.delta >= 0 ? "var(--up)" : "var(--down)" }}
+                    >
+                      {sig.delta >= 0 ? "+" : ""}{sig.delta.toFixed(1)}%
+                    </span>
                   </div>
+                  <p
+                    className="mt-0.5 font-body text-[10px] leading-tight line-clamp-1"
+                    style={{ color: "var(--text-2)" }}
+                  >
+                    {sig.question}
+                  </p>
                 </button>
-              );
-            })
-          ) : (
-            <div
-              className="rounded-[14px] border border-dashed p-4"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
-            >
-              <p className="font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-                No big live moves yet. When Kalshi or Polymarket starts moving, the strongest signals will show up here.
-              </p>
-            </div>
-          )}
+              ))}
+          </div>
         </div>
-      </div>
-      <div className="flex-shrink-0 px-4 pt-3 pb-2">
-        <button
-          type="button"
-          className="w-full h-8 rounded-[8px] border px-3 text-[11px] font-body flex items-center justify-between"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
-        >
-          Market Filters
-          <ChevronDown className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <div className="flex-shrink-0 px-4 pb-2">
-        <input
-          type="text"
-          placeholder="Search markets..."
-          value={marketSearchQuery}
-          onChange={(e) => setMarketSearchQuery(e.target.value)}
-          className="w-full font-body text-[11px] h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
-          style={{
-            background: "var(--bg-surface)",
-            borderColor: "var(--border-subtle)",
-            color: "var(--text-1)",
-          }}
-        />
-      </div>
-      <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden flex-shrink-0 px-4 pb-2">
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => { hapticLight(); setActiveCategory(cat); }}
-            className="font-body text-[10px] uppercase whitespace-nowrap rounded-[6px] px-2 py-1 border"
-            style={{
-              color: activeCategory === cat ? "var(--text-1)" : "var(--text-3)",
-              background: activeCategory === cat ? "var(--bg-elevated)" : "transparent",
-              borderColor: activeCategory === cat ? "var(--border-active)" : "var(--border-subtle)",
-            }}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+      )}
+
+      {/* Market list */}
       {isError ? (
-        <div
-          className="mx-2 rounded-[6px] border p-6 text-center flex flex-col items-center gap-3"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-        >
-          <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-            Unable to load markets at the moment.
-          </p>
+        <div className="mx-3 rounded-lg border p-6 text-center" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+          <p className="font-body text-sm mb-3" style={{ color: "var(--text-2)" }}>Unable to load markets.</p>
           <button
             type="button"
             onClick={() => { hapticLight(); refetch(); }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] font-body font-medium text-sm border transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
-            style={{ background: "var(--bg-elevated)", borderColor: "var(--border-default)", color: "var(--text-1)" }}
+            className="px-4 py-2 rounded-lg font-body text-xs font-medium border hover:border-[var(--border-active)]"
+            style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
           >
-            <RefreshCw className="w-4 h-4" />
             Try again
           </button>
         </div>
       ) : isLoading ? (
-        <div className="flex flex-col gap-[6px] px-2">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="skeleton-card" style={{ height: 120 }} />
+        <div className="flex flex-col gap-1.5 px-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="skeleton-card" style={{ height: 72 }} />
           ))}
         </div>
       ) : (
-        <ul className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hidden px-2 pb-4">
+        <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 pb-4 space-y-1.5">
           <AnimatePresence mode="popLayout">
-            {sortedMarkets.slice(0, shownCount).map((m, i) => {
+            {filtered.slice(0, shownCount).map((m, i) => {
               const isSelected = selectedMarket?.ticker === m.ticker;
               const yesPct = Math.min(100, Math.max(0, m.probability));
-              const isHot = Math.abs(m.velocity_1h) >= 1;
-              const signalStrength = Math.min(100, Math.max(0, 50 + m.velocity_1h * 10));
-              const signalColor = m.velocity_1h > 0 ? "var(--up)" : m.velocity_1h < 0 ? "var(--down)" : "var(--border-subtle)";
+              const isHot = hotSignalTickers.has(m.platform_id ?? m.ticker);
               return (
                 <motion.li
                   key={m.ticker}
                   layout
-                  initial={{ opacity: 0, transform: "translateY(6px)" }}
-                  animate={{
-                    opacity: 1,
-                    transform: "translateY(0)",
-                    boxShadow: isHot ? "0 0 0 1px color-mix(in srgb, var(--up) 20%, transparent)" : undefined,
-                  }}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, delay: Math.min(i * 0.03, 0.2), ease: "easeOut" }}
-                  className={`cursor-pointer rounded-[14px] p-3 mb-2 transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative overflow-hidden ${isHot ? "pulse-hot" : ""}`}
+                  transition={{ duration: 0.15, delay: Math.min(i * 0.02, 0.15) }}
+                  className="cursor-pointer rounded-xl border p-3 transition-colors hover:bg-[var(--bg-elevated)]"
                   style={{
                     background: isSelected ? "var(--bg-elevated)" : "var(--bg-surface)",
-                    border: "1px solid var(--border-subtle)",
-                    borderLeft: isSelected ? "3px solid var(--accent)" : "1px solid var(--border-subtle)",
+                    borderColor: isSelected ? "var(--accent)" : "var(--border-subtle)",
+                    borderLeftWidth: isSelected ? 3 : 1,
                   }}
-                  onClick={() => {
-                    hapticLight();
-                    setSelectedMarket(toSelectedMarket(m));
-                    onAfterSelectMarket?.(m);
-                  }}
+                  onClick={() => handleSelectMarket(m)}
                 >
-                  <div className="mb-2 flex items-center gap-2 min-w-0">
-                    <img src={marketAvatar(m.title)} alt="" className="w-6 h-6 rounded-md object-cover shrink-0" />
-                    <SourceBadge source={(m.source as SignalSource) ?? "kalshi"} />
-                    <p
-                      className="min-w-0 flex-1 font-heading text-[13px] font-bold leading-tight line-clamp-1"
-                      style={{ color: "var(--text-1)" }}
-                    >
-                      {m.title}
-                    </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <SourceDot source={m.source} />
+                        {isHot && (
+                          <span className="font-body text-[9px] font-bold uppercase" style={{ color: "var(--up)" }}>
+                            MOVING
+                          </span>
+                        )}
+                        {m.outcomes && m.outcomes.length > 2 && (
+                          <span className="font-body text-[9px] px-1.5 py-0.5 rounded-sm border" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+                            {m.outcomes.length} options
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-heading text-[12px] font-semibold leading-snug line-clamp-2" style={{ color: "var(--text-1)" }}>
+                        {m.title}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="font-mono text-lg font-bold tabular-nums" style={{ color: "var(--accent)" }}>
+                        {yesPct.toFixed(0)}%
+                      </span>
+                      <VelocityBadge v={m.velocity_1h} />
+                    </div>
                   </div>
-                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                    <span
-                      className="font-body text-[20px] font-semibold tabular-nums"
-                      style={{ color: "var(--accent)" }}
-                    >
-                      {yesPct.toFixed(0)}%
-                    </span>
-                    <VelocityBadge v={m.velocity_1h} />
-                  </div>
-                  <div
-                    className="w-full h-[2px] rounded-full mb-2 flex overflow-hidden"
-                    style={{ background: "var(--border-subtle)" }}
-                  >
-                    <div
-                      className="h-full rounded-full shrink-0 transition-all duration-300"
-                      style={{
-                        width: `${Math.max(4, signalStrength)}%`,
-                        background: signalColor,
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>
-                      24h {formatCompactStat(m.volume_24h)} · OI {formatCompactStat(m.open_interest)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        hapticLight();
-                        setSelectedMarket(toSelectedMarket(m));
-                        onAfterSelectMarket?.(m);
-                      }}
-                      className="font-body text-[10px] font-medium hover:underline"
-                      style={{ color: "var(--accent)" }}
-                    >
-                      {m.source === "polymarket" ? "Open Poly + tokens" : "Open market + tokens"}
-                    </button>
-                  </div>
+                  {m.outcomes && m.outcomes.length > 2 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {m.outcomes
+                        .sort((a, b) => b.probability - a.probability)
+                        .slice(0, 3)
+                        .map((o, idx) => (
+                          <span key={o.ticker ?? idx} className="font-body text-[9px] px-1.5 py-0.5 rounded-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
+                            {o.label.length > 18 ? `${o.label.slice(0, 18)}…` : o.label} {o.probability.toFixed(0)}%
+                          </span>
+                        ))}
+                      {m.outcomes.length > 3 && (
+                        <span className="font-body text-[9px] px-1 py-0.5" style={{ color: "var(--text-3)" }}>
+                          +{m.outcomes.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <span className="font-body text-[10px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                        Vol {formatCompact(m.volume)}
+                        {m.close_time ? ` · Ends ${new Date(m.close_time).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                      </span>
+                    </div>
+                  )}
                 </motion.li>
               );
             })}
           </AnimatePresence>
-          {filteredMarkets.length > shownCount && (
+          {filtered.length > shownCount && (
             <button
               type="button"
-              onClick={() => { hapticLight(); setShownCount((c) => c + 8); }}
-              className="w-full py-2.5 rounded-[6px] font-body font-medium text-xs border transition-all duration-[120ms] ease hover:border-[var(--border-active)]"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)", marginTop: 4 }}
+              onClick={() => { hapticLight(); setShownCount((c) => c + 12); }}
+              className="w-full py-2 rounded-lg font-body text-xs font-medium border hover:border-[var(--border-active)]"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
             >
-              Show more ({filteredMarkets.length - shownCount} left)
+              Show more ({filtered.length - shownCount})
             </button>
+          )}
+          {filtered.length === 0 && !isLoading && (
+            <div className="rounded-lg border border-dashed p-6 text-center" style={{ borderColor: "var(--border-subtle)" }}>
+              <p className="font-body text-xs" style={{ color: "var(--text-3)" }}>
+                No markets match your filters.
+              </p>
+            </div>
           )}
         </ul>
       )}
