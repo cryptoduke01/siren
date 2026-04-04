@@ -9,7 +9,7 @@ import { useSignals } from "@/hooks/useSignals";
 import { MarketDetailPanel } from "./MarketDetailPanel";
 import { MarketFilterSheet, type MarketFeedSortMode } from "./MarketFilterSheet";
 import { ImmersiveMarketCard } from "./ImmersiveMarketCard";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Search, SlidersHorizontal, X } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
 import type { MarketWithVelocity, PredictionSignal } from "@siren/shared";
@@ -68,7 +68,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
     }
   }, [filterOpen]);
 
-  const { data: serverSearchResults = [] } = useQuery({
+  const { data: serverSearchResults = [], isFetching: isSearchingServer } = useQuery({
     queryKey: ["market-search", debouncedQuery],
     queryFn: async (): Promise<MarketWithVelocity[]> => {
       if (!debouncedQuery || debouncedQuery.length < 2) return [];
@@ -192,12 +192,15 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             <Search className="w-4 h-4 shrink-0" style={{ color: "var(--text-3)" }} />
             <input
               type="text"
-              placeholder="Search markets, tickers…"
+              placeholder="Search markets or tickers"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 bg-transparent font-body text-xs outline-none placeholder:text-[var(--text-3)]"
               style={{ color: "var(--text-1)" }}
             />
+            {isSearchingServer && debouncedQuery.length >= 2 && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--text-3)" }} />
+            )}
             {searchQuery && (
               <button type="button" onClick={() => setSearchQuery("")} aria-label="Clear search">
                 <X className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
@@ -213,7 +216,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             className="relative h-10 px-3 rounded-2xl border flex items-center gap-2 shrink-0 transition-colors"
             style={{
               background: "var(--bg-surface)",
-              borderColor: filterActive ? "#ff7a18" : "var(--border-subtle)",
+              borderColor: filterActive ? "var(--accent)" : "var(--border-subtle)",
               color: "var(--text-2)",
             }}
           >
@@ -221,7 +224,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             {filterActive > 0 && (
               <span
                 className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full font-mono text-[10px] font-bold flex items-center justify-center"
-                style={{ background: "#ff7a18", color: "#0a0a0a" }}
+                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
               >
                 {filterActive}
               </span>
@@ -231,24 +234,24 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
 
         <div className="flex items-center justify-between gap-2 px-0.5">
           <p className="font-body text-[10px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Scroll the feed — pick a side on any card. Multi-outcome events show every price inline.
+            Scroll the feed, tap a card, and trade without jumping around.
           </p>
           <div className="flex items-center gap-1.5 shrink-0">
             {kalshiUp != null && (
               <span className="flex items-center gap-1 font-body text-[9px]" style={{ color: "var(--text-3)" }}>
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: kalshiUp ? "var(--up)" : "var(--down)" }} />
-                K
+                <img src="/brand/kalshi/logo-green.svg" alt="" className="h-2.5 w-auto opacity-80" />
               </span>
             )}
             {polyUp != null && (
               <span className="flex items-center gap-1 font-body text-[9px]" style={{ color: "var(--text-3)" }}>
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: polyUp ? "var(--up)" : "var(--down)" }} />
-                PM
+                <img src="/brand/polymarket/icon-white.svg" alt="" className="h-2.5 w-2.5 opacity-75" />
               </span>
             )}
             {signalCount > 0 && (
               <span className="font-body text-[9px] tabular-nums font-semibold" style={{ color: "var(--up)" }}>
-                {signalCount} live
+                {signalCount} moving
               </span>
             )}
           </div>
@@ -358,7 +361,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           {filtered.length === 0 && !isLoading && (
             <li className="rounded-2xl border border-dashed p-10 text-center" style={{ borderColor: "var(--border-subtle)" }}>
               <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-                Nothing matches these filters. Open filters and widen time or category.
+                Nothing matched that search yet. Try fewer filters.
               </p>
             </li>
           )}

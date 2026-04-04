@@ -1238,7 +1238,7 @@ export default function PortfolioPage() {
                 <button type="button" onClick={openVerify} disabled={proofLoading}
                   className="flex items-center gap-1 font-body text-[11px] font-medium disabled:opacity-50"
                   style={{ color: "var(--accent)" }}>
-                  {proofLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verify"}
+                  {proofLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verify identity"}
                 </button>
               )}
             </div>
@@ -1276,7 +1276,7 @@ export default function PortfolioPage() {
               Recent activity
             </h2>
             <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Swaps, token buys, and prediction orders from the terminal — saved on this device only. Updates as soon as a trade is logged.
+              Your recent swaps, token buys, and market trades. Saved on this device only.
             </p>
             {localActivity.length === 0 ? (
               <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
@@ -1321,7 +1321,7 @@ export default function PortfolioPage() {
             )}
           </div>
           <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Open Kalshi-linked positions poll about every 15 seconds while this page is open so marks move with the market.
+            Open positions refresh while this page is open so prices stay current.
           </p>
 
           <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>

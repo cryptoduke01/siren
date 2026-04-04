@@ -863,7 +863,7 @@ export default function AdminPage() {
               </div>
               <h1 className="font-heading text-[30px] leading-none tracking-[-0.04em] md:text-[42px]">Siren Admin</h1>
               <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                Waitlist, user metrics, platform volume, and product email dispatch in one place.
+                See signups, active users, volume, and email tools in one place.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -903,10 +903,10 @@ export default function AdminPage() {
                   Dashboard overview
                 </div>
                 <h2 className="font-heading text-2xl tracking-[-0.04em] md:text-[34px]" style={{ color: "var(--text-1)" }}>
-                  Usage, volume, and waitlist at a glance.
+                  The important numbers, all in one view.
                 </h2>
                 <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                  Snapshot of signups, retention, and on-chain volume. Export the board as PNG for internal updates.
+                  Quick view of signups, returning users, and trading volume. Export it as an image when you need to share an update.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

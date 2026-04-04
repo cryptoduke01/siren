@@ -90,9 +90,9 @@ export function MarketBottomSheet({
                     }}
                     className="snap-start shrink-0 rounded-full px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-wide transition-all"
                     style={{
-                      color: cat === c ? "#0a0a0a" : "var(--text-3)",
-                      background: cat === c ? "#ff7a18" : "var(--bg-surface)",
-                      border: `1px solid ${cat === c ? "#ff7a18" : "var(--border-subtle)"}`,
+                      color: cat === c ? "var(--accent-text)" : "var(--text-3)",
+                      background: cat === c ? "var(--accent)" : "var(--bg-surface)",
+                      border: `1px solid ${cat === c ? "var(--accent)" : "var(--border-subtle)"}`,
                     }}
                   >
                     {CATEGORY_TAB_LABEL[c]}

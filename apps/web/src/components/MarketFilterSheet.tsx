@@ -32,12 +32,10 @@ const CATEGORY_OPTIONS: { id: MarketCategoryId; label: string; emoji: string }[]
 ];
 
 const SOURCE_OPTIONS: { id: MarketSourceFilter; label: string }[] = [
-  { id: "all", label: "All venues" },
+  { id: "all", label: "All sources" },
   { id: "kalshi", label: "Kalshi" },
   { id: "polymarket", label: "Polymarket" },
 ];
-
-const ACCENT_ORANGE = "#ff7a18";
 
 export function MarketFilterSheet({
   open,
@@ -123,9 +121,9 @@ export function MarketFilterSheet({
                         }}
                         className="rounded-xl py-3 px-2 font-heading text-[11px] font-bold uppercase tracking-wide transition-all"
                         style={{
-                          background: active ? ACCENT_ORANGE : "var(--bg-elevated)",
-                          color: active ? "#0a0a0a" : "var(--text-2)",
-                          border: `1px solid ${active ? ACCENT_ORANGE : "var(--border-subtle)"}`,
+                          background: active ? "var(--accent)" : "var(--bg-elevated)",
+                          color: active ? "var(--accent-text)" : "var(--text-2)",
+                          border: `1px solid ${active ? "var(--accent)" : "var(--border-subtle)"}`,
                         }}
                       >
                         {opt.label}
@@ -205,7 +203,7 @@ export function MarketFilterSheet({
 
               <section>
                 <p className="font-heading text-[10px] font-bold uppercase tracking-[0.2em] mb-3" style={{ color: "var(--text-3)" }}>
-                  Venue
+                  Source
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {SOURCE_OPTIONS.map((opt) => {
@@ -220,9 +218,9 @@ export function MarketFilterSheet({
                         }}
                         className="rounded-full px-4 py-2 font-body text-xs font-semibold capitalize transition-all"
                         style={{
-                          background: active ? ACCENT_ORANGE : "var(--bg-elevated)",
-                          color: active ? "#0a0a0a" : "var(--text-2)",
-                          border: `1px solid ${active ? ACCENT_ORANGE : "var(--border-subtle)"}`,
+                          background: active ? "var(--accent)" : "var(--bg-elevated)",
+                          color: active ? "var(--accent-text)" : "var(--text-2)",
+                          border: `1px solid ${active ? "var(--accent)" : "var(--border-subtle)"}`,
                         }}
                       >
                         {opt.label}
@@ -241,7 +239,7 @@ export function MarketFilterSheet({
                   onClose();
                 }}
                 className="w-full py-3.5 rounded-2xl font-heading text-sm font-black uppercase tracking-[0.08em]"
-                style={{ background: ACCENT_ORANGE, color: "#0a0a0a" }}
+                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
               >
                 Done
               </button>

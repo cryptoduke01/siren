@@ -9,9 +9,6 @@ import {
   tickerHue,
 } from "@/lib/marketFeedFilters";
 
-const CTA_ORANGE = "#ff7a18";
-const CTA_TEXT = "#0a0a0a";
-
 function formatCompact(value?: number): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
@@ -26,13 +23,21 @@ function formatCloseLine(m: MarketWithVelocity): string {
 function SourceMini({ source }: { source?: string }) {
   if (source === "polymarket") {
     return (
-      <span className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-body text-[9px] font-bold uppercase tracking-wider" style={{ background: "rgba(91,138,255,0.2)", color: "#93c5fd" }}>
-        Poly
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-body text-[9px] font-semibold tracking-[0.12em]"
+        style={{ background: "rgba(91,138,255,0.14)", color: "#a8c3ff" }}
+      >
+        <img src="/brand/polymarket/icon-white.svg" alt="" className="h-2.5 w-2.5 opacity-90" />
+        Polymarket
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-body text-[9px] font-bold uppercase tracking-wider" style={{ background: "rgba(0,199,106,0.2)", color: "#86efac" }}>
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-body text-[9px] font-semibold tracking-[0.12em]"
+      style={{ background: "rgba(0,199,106,0.14)", color: "#98f5c9" }}
+    >
+      <img src="/brand/kalshi/logo-green.svg" alt="" className="h-2.5 w-auto" />
       Kalshi
     </span>
   );
@@ -60,7 +65,7 @@ export function ImmersiveMarketCard({
     : [];
   const hue = tickerHue(m.ticker);
   const cat = inferMarketCategory(m);
-  const pad = layout === "sheet" ? "p-3" : "p-4";
+  const pad = layout === "sheet" ? "p-3" : "p-3.5 sm:p-4";
 
   return (
     <article
@@ -128,7 +133,8 @@ export function ImmersiveMarketCard({
 
         <div>
           <h3
-            className={`font-heading font-extrabold uppercase tracking-tight leading-[1.15] text-white ${layout === "sheet" ? "text-[12px] line-clamp-2" : "text-[13px] sm:text-sm line-clamp-3"}`}
+            className={`font-heading font-bold leading-[1.08] text-white ${layout === "sheet" ? "text-[13px] line-clamp-2" : "text-[15px] sm:text-base line-clamp-3"}`}
+            style={{ letterSpacing: "-0.035em" }}
           >
             {m.title}
           </h3>
@@ -200,13 +206,17 @@ export function ImmersiveMarketCard({
         <button
           type="button"
           className={`w-full rounded-2xl font-heading font-black uppercase tracking-[0.06em] transition-transform hover:brightness-105 ${layout === "sheet" ? "py-2.5 text-[11px]" : "py-3 text-xs sm:text-[13px]"}`}
-          style={{ background: CTA_ORANGE, color: CTA_TEXT, boxShadow: `0 10px 28px -12px ${CTA_ORANGE}` }}
+          style={{
+            background: "var(--accent)",
+            color: "var(--accent-text)",
+            boxShadow: "0 10px 28px -14px color-mix(in srgb, var(--accent) 65%, transparent)",
+          }}
           onClick={(e) => {
             e.stopPropagation();
             onSelect();
           }}
         >
-          Pick a side
+          Trade
         </button>
       </div>
     </article>

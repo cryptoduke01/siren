@@ -1162,7 +1162,7 @@ export function UnifiedBuyPanel() {
         message: `Bought ${marketSide.toUpperCase()} for ${formatUsd(amountNum, 2)} via Polygon.`,
         txSignature,
         txExplorer: "polygon",
-        actionLabel: "Open market page",
+        actionLabel: "Open source page",
         actionHref: selectedMarket.market_url,
         sharePnL: {
           token: {
@@ -1631,7 +1631,7 @@ export function UnifiedBuyPanel() {
                       className="mt-3 w-full py-2.5 rounded-md font-body font-medium text-[13px] transition-all duration-100 hover:brightness-110 flex items-center justify-center gap-2 border"
                       style={{ background: "var(--bg-surface)", color: "var(--text-2)", borderColor: "var(--border-subtle)" }}
                     >
-                      Open market page
+                      Open source page
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
 
@@ -1646,8 +1646,8 @@ export function UnifiedBuyPanel() {
                           </p>
                           <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
                             {proofVerified
-                              ? "Your wallet passed the DFlow Proof check. You can submit Kalshi orders from Siren."
-                              : "Kalshi orders on DFlow need a one-time wallet verification before the first trade can go through."}
+                              ? "Your wallet is verified. You can place Kalshi orders from Siren."
+                              : "Kalshi orders need a one-time wallet check before your first trade can go through."}
                           </p>
                           {!proofVerified && (
                             <button
@@ -1656,7 +1656,7 @@ export function UnifiedBuyPanel() {
                               className="mt-2 inline-flex items-center gap-2 text-xs font-medium"
                               style={{ color: "var(--accent)" }}
                             >
-                              {dflowProofFetching ? "Checking wallet..." : "Verify wallet on DFlow"}
+                              {dflowProofFetching ? "Checking wallet..." : "Verify identity"}
                               <ExternalLink className="w-3.5 h-3.5" />
                             </button>
                           )}
@@ -1688,8 +1688,8 @@ export function UnifiedBuyPanel() {
 
                     <p className="text-[11px] mt-3 leading-relaxed" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
-                        ? "Orders can take a few seconds while Siren signs, posts, and waits for the venue response."
-                        : "Orders can take a few seconds to finish after your wallet confirms."}
+                        ? "This can take a few seconds while your wallet signs and the order lands."
+                        : "This can take a few seconds after your wallet confirms."}
                     </p>
                   </div>
                 )}
@@ -2152,7 +2152,7 @@ export function UnifiedBuyPanel() {
                   className="mt-3 inline-flex items-center gap-2 text-sm font-medium"
                   style={{ color: "var(--accent)" }}
                 >
-                  Verify wallet on DFlow
+                  Verify identity
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}

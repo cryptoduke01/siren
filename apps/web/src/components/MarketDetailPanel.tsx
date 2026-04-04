@@ -28,8 +28,9 @@ export function MarketDetailPanel() {
 
   const yesPct = Math.min(100, Math.max(0, selectedMarket.probability));
   const noPct = 100 - yesPct;
-  const canTradeInApp = selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
-  const venueLabel = selectedMarket.source === "kalshi" ? "Kalshi" : "Polymarket";
+  const canTradeInApp = selectedMarket.source === "kalshi"
+    ? !!(selectedMarket.yes_mint || selectedMarket.no_mint)
+    : !!(selectedMarket.yes_token_id || selectedMarket.no_token_id);
   const marketUrl =
     selectedMarket.market_url ||
     selectedMarket.kalshi_url ||
@@ -158,7 +159,7 @@ export function MarketDetailPanel() {
                     className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    Trade In Siren
+                    Trade here
                   </button>
                   <a
                     href={marketUrl}
@@ -172,11 +173,11 @@ export function MarketDetailPanel() {
                       borderColor: "var(--border-subtle)",
                     }}
                   >
-                    View market page
+                    Open source page
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs" style={{ color: "var(--text-3)" }}>
-                    Market trades route through DFlow and may settle a little later than the token side.
+                    Orders can take a few seconds to finish after your wallet confirms.
                   </p>
                 </>
               ) : (
@@ -189,13 +190,13 @@ export function MarketDetailPanel() {
                     className="flex items-center justify-center gap-2 w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
-                    View market page
+                    Open source page
                     <ExternalLink className="w-4 h-4" />
                   </a>
                   <p className="text-center font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
                     {selectedMarket.source === "kalshi"
-                      ? "This market is not available for in-app order entry right now."
-                      : "Polymarket market data is live here. Direct Polymarket trading inside Siren is still being added."}
+                      ? "This market is not ready to trade inside Siren yet."
+                      : "This market is not ready to trade inside Siren yet."}
                   </p>
                 </>
               )}

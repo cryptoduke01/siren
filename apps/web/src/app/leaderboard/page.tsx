@@ -158,9 +158,7 @@ export default function LeaderboardPage() {
           </h1>
         </div>
         <p className="font-sub text-sm mb-6 leading-relaxed" style={{ color: "var(--text-3)" }}>
-          Prediction markets only — Kalshi and Polymarket-style trades logged through Siren. Rankings use{" "}
-          <strong style={{ color: "var(--text-2)" }}>notional volume</strong> (stake × price) and{" "}
-          <strong style={{ color: "var(--text-2)" }}>win rate</strong> from realized closes. Meme-token swaps are not counted.
+          See who is trading best in Siren. Only market trades count here. Token swaps do not.
         </p>
 
         <div className="flex flex-wrap gap-2 mb-3">

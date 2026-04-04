@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, Star, Sun, Moon, Rocket, TrendingUp, User, Settings, Trophy } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 import { useSignals } from "@/hooks/useSignals";
@@ -254,6 +255,7 @@ export function TopBar() {
           </>
         )}
       </AnimatePresence>
+      <MobileBottomNav />
     </>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { toPng } from "html-to-image";
+import { getFontEmbedCSS, toPng } from "html-to-image";
 import { Copy, Check, ArrowUpRight, ExternalLink, Share2, Download, Loader2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
@@ -109,12 +109,14 @@ function SignalSourcePill({ source }: { source: PredictionSignal["source"] }) {
   );
 }
 
-function getSelectedMarketVenueLabel(market: SelectedMarket): string {
+function getSelectedMarketSourceLabel(market: SelectedMarket): string {
   return market.source === "kalshi" ? "Kalshi" : "Polymarket";
 }
 
-function getSelectedMarketSourceLabel(market: SelectedMarket): string {
-  return market.source === "kalshi" ? "Kalshi" : "Polymarket";
+function looksLikeSolanaContract(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length < 32 || trimmed.length > 44) return false;
+  return /^[1-9A-HJ-NP-Za-km-z]+$/.test(trimmed);
 }
 
 function canTradeSelectedMarketInSiren(market: SelectedMarket): boolean {
@@ -198,7 +200,7 @@ function MarketShareExportCard({
       </h2>
 
       <p className="mt-5 max-w-[40ch] font-body text-lg leading-relaxed" style={{ color: "var(--text-2)" }}>
-        Trade it inside Siren, then use the matched token list if you want extra exposure.
+        Trade this market in Siren, or use the linked tokens below if you want more exposure.
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-3">
@@ -294,7 +296,7 @@ function PredictionMarketFocusPanel({
                 style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
               >
                 {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                Download
+                Save
               </button>
             </div>
           </div>
@@ -307,7 +309,7 @@ function PredictionMarketFocusPanel({
           </h2>
 
           <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Trade it inside Siren, then use the matched token list below if you want extra exposure.
+            Trade this market here, then check the linked tokens below if you want more ways to play it.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -333,10 +335,10 @@ function PredictionMarketFocusPanel({
           }}
         >
           <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-            Quick actions
+            Actions
           </p>
           <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Shared as {displayName}. Venue page stays optional.
+            Shared as {displayName}. Save the card, trade here, or open the source market if you need more detail.
           </p>
 
           <div className="mt-4 space-y-2">
@@ -346,7 +348,7 @@ function PredictionMarketFocusPanel({
               className="inline-flex w-full items-center justify-center rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
               style={{ background: "var(--accent)", color: "var(--accent-text)" }}
             >
-              {canTradeInSiren ? "Trade in Siren" : "View matched tokens"}
+              {canTradeInSiren ? "Trade now" : "View linked tokens"}
             </button>
             <button
               type="button"
@@ -354,7 +356,7 @@ function PredictionMarketFocusPanel({
               className="inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
             >
-              Matched tokens
+              Linked tokens
             </button>
             <button
               type="button"
@@ -362,7 +364,7 @@ function PredictionMarketFocusPanel({
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
               style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
             >
-              Venue page
+              Open source page
               <ExternalLink className="h-4 w-4" />
             </button>
           </div>
@@ -405,7 +407,7 @@ function SignalNarrativePanel({
               {signal.question}
             </h2>
             <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-              Siren matched this {platformLabel} move to related Solana tokens below so you can react without jumping around the app.
+              Siren matched this {platformLabel} move to related Solana tokens below, so you can react from one place.
             </p>
           </div>
 
@@ -426,12 +428,12 @@ function SignalNarrativePanel({
                   hapticLight();
                   window.open(signal.marketUrl, "_blank", "noopener,noreferrer");
                 }}
-                className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
-                style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
-              >
-                View market page
-                <ExternalLink className="h-4 w-4" />
-              </button>
+                  className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
+                  style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+                >
+                  Open source page
+                  <ExternalLink className="h-4 w-4" />
+                </button>
             )}
           </div>
         </div>
@@ -489,7 +491,7 @@ function SignalNarrativePanel({
             {formatCompactNumber(signal.volume, 1)}
           </p>
           <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Venue-reported market volume
+            Reported market volume
           </p>
         </div>
 
@@ -523,7 +525,7 @@ function SignalNarrativePanel({
   );
 }
 
-export function TokenSurface() {
+export function TokenSurface({ compactMode = false }: { compactMode?: boolean } = {}) {
   const { selectedMarket, selectedSignal, setBuyPanelOpen } = useSirenStore();
   const { publicKey, evmAddress } = useSirenWallet();
   const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
@@ -535,15 +537,18 @@ export function TokenSurface() {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
   const tokenSectionRef = useRef<HTMLDivElement | null>(null);
+  const fontEmbedCssRef = useRef<string | null>(null);
 
   const searchQuery = searchInput.trim();
+  const directMintSearch = useMemo(() => looksLikeSolanaContract(searchQuery), [searchQuery]);
   const keywordsForApi = useMemo(() => (searchQuery ? [searchQuery] : selectedMarket?.keywords ?? []), [searchQuery, selectedMarket?.keywords]);
   const tokenQueryEnabled = !selectedSignal;
+  const tokenMarketId = directMintSearch ? undefined : selectedMarket?.ticker;
 
   const addToast = useToastStore((s) => s.addToast);
-  const { data: tokens = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["tokens", selectedMarket?.ticker, selectedSignal?.id, keywordsForApi.join(",")],
-    queryFn: () => fetchTokens(selectedMarket?.ticker, undefined, keywordsForApi.length ? keywordsForApi : undefined),
+  const { data: tokens = [], isLoading, isFetching, isError, error, refetch } = useQuery({
+    queryKey: ["tokens", tokenMarketId, selectedSignal?.id, keywordsForApi.join(","), directMintSearch ? "mint" : "market"],
+    queryFn: () => fetchTokens(tokenMarketId, undefined, keywordsForApi.length ? keywordsForApi : undefined),
     enabled: tokenQueryEnabled,
     retry: 2,
     refetchInterval: tokenQueryEnabled && !searchQuery ? 60_000 : false,
@@ -608,12 +613,16 @@ export function TokenSurface() {
       setExportingCard(true);
       await document.fonts.ready;
       await new Promise((resolve) => setTimeout(resolve, 120));
+      if (!fontEmbedCssRef.current) {
+        fontEmbedCssRef.current = await getFontEmbedCSS(cardNode);
+      }
 
       const dataUrl = await toPng(cardNode, {
         cacheBust: true,
         pixelRatio: 2,
         backgroundColor: "#050508",
         skipFonts: false,
+        fontEmbedCSS: fontEmbedCssRef.current ?? undefined,
         filter: (node) => {
           if (!(node instanceof HTMLElement)) return true;
           return node.dataset.exportIgnore !== "true";
@@ -668,7 +677,7 @@ export function TokenSurface() {
         </div>
       )}
       <AnimatePresence mode="wait" initial={false}>
-        {selectedMarket ? (
+        {selectedMarket && !compactMode ? (
           <motion.div
             key={`m-${selectedMarket.ticker}`}
             className="mb-4"
@@ -718,7 +727,7 @@ export function TokenSurface() {
               }}
             />
           </motion.div>
-        ) : (
+        ) : !selectedMarket ? (
           <motion.div
             key="surface-empty"
             className="mb-4 rounded-xl border px-4 py-3"
@@ -735,17 +744,13 @@ export function TokenSurface() {
               Select an event from the left panel.
             </p>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
       <div className="mb-3">
         <input
           type="text"
-          placeholder={
-            selectedMarket || selectedSignal
-              ? "Name, symbol, or paste Solana contract (CA)"
-              : "Name, symbol, or paste Solana contract (CA)"
-          }
+          placeholder="Search tokens or paste a Solana CA"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           className="w-full font-body text-xs h-[36px] px-4 rounded-[6px] border transition-all duration-[120ms] ease focus:border-[var(--border-active)] focus:outline-none focus:ring-0"
@@ -755,9 +760,17 @@ export function TokenSurface() {
             color: "var(--text-1)",
           }}
         />
-        <p className="font-body font-normal text-[11px] mt-1.5" style={{ color: "var(--text-3)" }}>
-          DexScreener (Solana). Pasting a full mint address jumps straight to that token.
-        </p>
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p className="font-body font-normal text-[11px]" style={{ color: "var(--text-3)" }}>
+            Paste a full Solana contract address to jump straight to that token.
+          </p>
+          {isFetching && (
+            <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--text-3)" }}>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading
+            </span>
+          )}
+        </div>
       </div>
       <div
         className="mb-3 flex flex-col gap-2 rounded-[10px] border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
@@ -809,7 +822,7 @@ export function TokenSurface() {
           className="font-heading text-sm font-semibold"
           style={{ color: "var(--text-2)" }}
         >
-          {selectedMarket ? "Tokens exposed to this market" : selectedSignal ? "Tokens linked to this signal" : "Surfaced tokens"}
+          {selectedMarket ? "Tokens linked to this market" : selectedSignal ? "Tokens linked to this move" : "Tokens"}
         </h2>
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
           {selectedMarket && (
@@ -852,10 +865,10 @@ export function TokenSurface() {
       {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
       <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
-          ? "These tokens are ranked by how closely they match the selected market."
+          ? "These tokens are ranked by how closely they match this market."
           : selectedSignal
-            ? "These tokens were matched from the signal text and surfaced from the live feed."
-          : "Browse tokens from Siren search, Bags launches, and DexScreener results."}
+            ? "These tokens came from the live move you picked."
+          : "Search tokens, recent launches, and DexScreener results."}
       </p>
       {riskyTokens.length > 0 && (
         <div

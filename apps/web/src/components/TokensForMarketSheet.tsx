@@ -14,8 +14,12 @@ export function TokensForMarketSheet({
   onClose: () => void;
 }) {
   const { selectedMarket, setBuyPanelOpen } = useSirenStore();
-  const canTradeInSiren = !!selectedMarket && selectedMarket.source === "kalshi" && !!(selectedMarket.yes_mint || selectedMarket.no_mint);
-  const venueLabel = selectedMarket?.source === "kalshi" ? "Kalshi" : "Polymarket";
+  const canTradeInSiren = !!selectedMarket && (
+    selectedMarket.source === "kalshi"
+      ? !!(selectedMarket.yes_mint || selectedMarket.no_mint)
+      : !!(selectedMarket.yes_token_id || selectedMarket.no_token_id)
+  );
+  const sourceLabel = selectedMarket?.source === "kalshi" ? "Kalshi" : "Polymarket";
   const marketUrl = selectedMarket
     ? selectedMarket.market_url ||
       selectedMarket.kalshi_url ||
@@ -87,44 +91,27 @@ export function TokensForMarketSheet({
                     </p>
                     <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
                       {canTradeInSiren
-                        ? "Trade the market here or buy linked tokens below."
-                        : `Use the matched token list below, or open ${venueLabel} if you want to view the market page.`}
+                        ? "Trade here, or scroll for the linked tokens."
+                        : `Scroll for linked tokens, or open the ${sourceLabel} page.`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {canTradeInSiren ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            hapticLight();
-                            setBuyPanelOpen(true, "market");
-                          }}
-                          className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
-                          style={{
-                            background: "var(--accent)",
-                            borderColor: "var(--accent)",
-                            color: "var(--accent-text)",
-                          }}
-                        >
-                          Trade market
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            hapticLight();
-                            window.open(marketUrl, "_blank", "noopener,noreferrer");
-                          }}
-                          className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
-                          style={{
-                            background: "var(--bg-elevated)",
-                            borderColor: "var(--border-default)",
-                            color: "var(--text-1)",
-                          }}
-                        >
-                          View market
-                        </button>
-                      </>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          setBuyPanelOpen(true, "market");
+                        }}
+                        className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                        style={{
+                          background: "var(--accent)",
+                          borderColor: "var(--accent)",
+                          color: "var(--accent-text)",
+                        }}
+                      >
+                        Trade
+                      </button>
                     ) : (
                       <button
                         type="button"
@@ -139,7 +126,7 @@ export function TokensForMarketSheet({
                           color: "var(--text-1)",
                         }}
                         >
-                        View market
+                        Open page
                       </button>
                     )}
                   </div>
@@ -147,7 +134,7 @@ export function TokensForMarketSheet({
               )}
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-              <TokenSurface />
+              <TokenSurface compactMode />
             </div>
           </motion.div>
         </>
