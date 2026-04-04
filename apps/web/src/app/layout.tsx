@@ -5,8 +5,9 @@ import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://onsiren.xyz";
-const ogImage = new URL("/opengraph-image", siteUrl).toString();
-const twitterImage = new URL("/twitter-image", siteUrl).toString();
+const socialPreviewVersion = "2026-04-04";
+const ogImage = new URL(`/opengraph-image?v=${socialPreviewVersion}`, siteUrl).toString();
+const twitterImage = new URL(`/twitter-image?v=${socialPreviewVersion}`, siteUrl).toString();
 
 export const metadata: Metadata = {
   title: "Siren | Prediction Markets x Meme Tokens",
