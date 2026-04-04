@@ -87,6 +87,55 @@ export interface DFlowOrderStatusResult {
   error?: string;
 }
 
+/** USDC — common settlement for Kalshi outcome sells. */
+const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+/** CASH — alternate DFlow settlement mint (see DFlow `route_not_found` / settlement docs). */
+const DFLOW_CASH_SETTLEMENT_MINT = "CASHx9KJUStyftLFWGvEVf59SGeG9sh5FfcnZMVPCASH";
+
+function shouldRetryOutcomeSellWithCashSettlement(lastError: string): boolean {
+  const e = lastError.toLowerCase();
+  return (
+    e.includes("route_not_found") ||
+    e.includes("route not found") ||
+    e.includes("no route") ||
+    e.includes("no viable route") ||
+    e.includes("could not find") ||
+    e.includes("settlement")
+  );
+}
+
+/**
+ * Same as getDflowOrder, but when selling an outcome token for USDC and DFlow returns a route
+ * error, retries once with the CASH settlement mint (per DFlow prediction-market trading docs).
+ */
+export async function getDflowOrderWithSettlementFallback(
+  params: DFlowOrderParams & { retryCashSettlementOnRouteError?: boolean },
+): Promise<DFlowOrderResult> {
+  const { retryCashSettlementOnRouteError, ...rest } = params;
+  const first = await getDflowOrder(rest);
+  if (first.transaction) return first;
+  if (
+    retryCashSettlementOnRouteError &&
+    rest.outputMint === SOLANA_USDC_MINT &&
+    rest.inputMint !== SOLANA_USDC_MINT &&
+    shouldRetryOutcomeSellWithCashSettlement(first.error || "")
+  ) {
+    const second = await getDflowOrder({
+      ...rest,
+      outputMint: DFLOW_CASH_SETTLEMENT_MINT,
+    });
+    if (second.transaction) return second;
+    return {
+      transaction: "",
+      error:
+        second.error ||
+        first.error ||
+        "No route to sell this position right now (liquidity or settlement). Try again shortly.",
+    };
+  }
+  return first;
+}
+
 export async function getDflowOrder(params: DFlowOrderParams): Promise<DFlowOrderResult> {
   const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, predictionMarketSlippageBps = 500 } = params;
   const { url: baseUrl, key } = getConfig();
@@ -122,6 +171,16 @@ export async function getDflowOrder(params: DFlowOrderParams): Promise<DFlowOrde
     const msg = formatDflowError(data) || rawText.trim() || `DFlow API error: ${res.status}`;
     if (process.env.NODE_ENV !== "production") {
       console.warn("[DFlow] Order failed:", { status: res.status, body: data ?? rawText, outputMint: outputMint.slice(0, 8) });
+    } else {
+      console.warn(
+        "[DFlow] Order failed:",
+        JSON.stringify({
+          status: res.status,
+          err: String(msg).slice(0, 240),
+          in: inputMint.slice(0, 12),
+          out: outputMint.slice(0, 12),
+        }),
+      );
     }
     return { error: String(msg) };
   }

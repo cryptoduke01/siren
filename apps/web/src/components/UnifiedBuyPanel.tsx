@@ -793,7 +793,8 @@ export function UnifiedBuyPanel() {
           setLoading(false);
           return;
         }
-        const decimals = await getMintDecimals(connection, selectedToken.mint);
+        // DFlow Kalshi outcome tokens use 6 decimals; parsed mint fetch can miss Token-2022 edge cases.
+        const decimals = isPredictionToken ? 6 : await getMintDecimals(connection, selectedToken.mint);
         amount = parseUnitsToBigInt(amountStr, decimals).toString();
         inputMint = selectedToken.mint;
         outputMint = SOLANA_USDC_MINT;

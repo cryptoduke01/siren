@@ -104,7 +104,9 @@ function getTradeErrorStatus(error?: string | null): number {
     lower.includes("validation error") ||
     lower.includes("insufficient") ||
     lower.includes("slippage") ||
-    lower.includes("400")
+    lower.includes("400") ||
+    lower.includes("route_not_found") ||
+    lower.includes("route not found")
   ) {
     return 400;
   }
@@ -1882,7 +1884,8 @@ export function registerRoutes(app: FastifyInstance) {
         return reply.status(getTradeErrorStatus(msg)).send({ success: false, error: msg });
       }
       let txBase64 = result.transaction;
-      if (result.provider === "bags" || result.provider === "dflow") {
+      // Bags returns base58-encoded raw tx bytes. DFlow /order returns base64 (see pond.dflow.net trading API).
+      if (result.provider === "bags") {
         try {
           const buf = Buffer.from(bs58.decode(result.transaction));
           txBase64 = buf.toString("base64");

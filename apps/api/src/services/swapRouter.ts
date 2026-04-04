@@ -7,13 +7,14 @@
 
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { getDflowOrder } from "./dflow.js";
+import { getDflowOrderWithSettlementFallback } from "./dflow.js";
 import { getMarketsWithVelocity } from "./markets.js";
 import { shouldBlockByCountry } from "../lib/geo-fence.js";
 import { getBagsTradeQuote, createBagsSwapTransaction } from "./bags.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 function isBagsMint(mint: string): boolean {
   return mint.endsWith("BAGS");
@@ -95,13 +96,17 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
       };
     }
 
-    const dflow = await getDflowOrder({
+    const sellingOutcomeForUsdc =
+      outputMint === SOLANA_USDC_MINT && inputMint !== SOLANA_USDC_MINT && inputMint !== SOL_MINT;
+
+    const dflow = await getDflowOrderWithSettlementFallback({
       inputMint,
       outputMint,
       amount,
       userPublicKey,
       slippageBps,
       predictionMarketSlippageBps: 500,
+      retryCashSettlementOnRouteError: sellingOutcomeForUsdc,
     });
     if (dflow.transaction) {
       return {
