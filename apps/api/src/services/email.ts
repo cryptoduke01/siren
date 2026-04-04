@@ -524,3 +524,159 @@ export async function sendTradingLiveAnnouncementEmail(params: {
     text,
   });
 }
+
+const LEADERBOARD_URL = `${APP_URL}/leaderboard`;
+
+/** Announcement: public prediction-market leaderboard + weekly / monthly spotlight program. */
+export async function sendLeaderboardSpotlightEmail(params: {
+  to: string;
+  name?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!resend) return { ok: false, error: "Email not configured" };
+
+  const greeting = params.name ? `Hi ${params.name}` : "Hi there";
+  const logoUrl = `${APP_URL}/brand/mark.svg`;
+  const subject = "The Siren leaderboard is live — climb it this week";
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Prediction leaderboard &amp; trader spotlight</title>
+</head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Rankings for Kalshi &amp; Polymarket-style trades only. Weekly and monthly top 3 get the spotlight. ${LEADERBOARD_URL.replace(/^https?:\/\//, "")}
+  </div>
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#0f1411" style="background-color:#0f1411;">
+    <tr>
+      <td align="center" style="padding:28px 14px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#121a15" style="max-width:600px;border-radius:24px;overflow:hidden;border:1px solid #1f2e24;background-color:#121a15;">
+          <tr>
+            <td style="padding:0;border-top:4px solid #00c76a;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#0c1812" style="background-color:#0c1812;border-bottom:1px solid #1f2e24;">
+                <tr>
+                  <td style="padding:32px 28px 26px;">
+                    <img src="${logoUrl}" alt="Siren" width="112" height="30" style="display:block;height:30px;width:auto;border:0;" />
+                    <p style="margin:22px 0 0;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#5ee9a8;font-weight:800;">
+                      Leaderboard
+                    </p>
+                    <h1 style="margin:10px 0 0;font-size:30px;line-height:1.12;font-weight:800;letter-spacing:-0.03em;color:#f8fafc;">
+                      Prediction traders, this scoreboard is yours.
+                    </h1>
+                    <p style="margin:18px 0 0;font-size:17px;line-height:1.65;color:#cbd5e1;">
+                      ${greeting}, we just flipped on the <strong style="color:#f8fafc;">public leaderboard</strong> inside Siren. It ranks <strong style="color:#f8fafc;">wallets</strong> by how much prediction-market notional they push and how often their realized closes land green — not meme-coin noise, not random mints. If you have been trading Kalshi- and Polymarket-linked outcomes through the terminal, your volume finally has a place to flex.
+                    </p>
+                    <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#cbd5e1;">
+                      Open the board, pick <strong style="color:#f8fafc;">7 days</strong>, <strong style="color:#f8fafc;">30 days</strong>, or <strong style="color:#f8fafc;">all time</strong>, then toggle <strong style="color:#f8fafc;">sort by volume</strong> versus <strong style="color:#f8fafc;">sort by win rate</strong>. Same names, two stories: who is size, and who is sharp.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 28px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#052e1f" style="background-color:#052e1f;border:1px solid #0d5c3d;border-radius:18px;">
+                <tr>
+                  <td style="padding:22px 24px;">
+                    <p style="margin:0 0 10px;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#5ee9a8;font-weight:800;">
+                      Weekly &amp; monthly spotlight
+                    </p>
+                    <p style="margin:0;font-size:16px;line-height:1.65;color:#d1fae5;">
+                      Every <strong style="color:#ecfdf5;">week</strong> and every <strong style="color:#ecfdf5;">month</strong>, we put the <strong style="color:#ecfdf5;">top three</strong> prediction traders on blast: featured on <a href="${X_URL}" style="color:#a7f3d0;font-weight:700;">X</a>, shout-outs in-product, and a rotating mix of <strong style="color:#ecfdf5;">rewards</strong> worth showing up for (think credits, merch, and partner drops — full prize table posts with each season on <a href="${X_URL}" style="color:#a7f3d0;font-weight:700;">@sirentracker</a>).
+                    </p>
+                    <p style="margin:14px 0 0;font-size:15px;line-height:1.6;color:#86efac;">
+                      No pay-to-win: ranks come from logged prediction-market trades only. Bring size, bring win rate, or bring both.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 20px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#1e293b" style="background-color:#1e293b;border:1px solid #334155;border-radius:18px;">
+                <tr>
+                  <td style="padding:20px 22px;">
+                    <p style="margin:0 0 12px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#94a3b8;font-weight:800;">
+                      Before you scroll the feed
+                    </p>
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#e2e8f0;">
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Hit the leaderboard and sanity-check your window — momentum traders love 7d, builders love 30d.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#e2e8f0;">
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">2.</span> Log another prediction trade through Siren so your wallet does not ghost the rankings.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-size:15px;line-height:1.7;color:#e2e8f0;">
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Screenshot your spot, share the PnL card, and tag <a href="${X_URL}" style="color:#f8fafc;font-weight:700;">@sirentracker</a> — we are watching for early legends.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:4px 28px 28px;" align="center">
+              <a href="${LEADERBOARD_URL}" style="display:inline-block;background:#00c76a;color:#ffffff;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;">
+                View the leaderboard
+              </a>
+              <p style="margin:20px 0 0;font-size:14px;line-height:1.6;color:#94a3b8;">
+                Terminal: <a href="${APP_URL}" style="color:#e2e8f0;font-weight:600;">${APP_URL.replace(/^https?:\/\//, "")}</a>
+                &nbsp;·&nbsp;
+                Docs: <a href="${DOCS_URL}" style="color:#e2e8f0;font-weight:600;">docs.onsiren.xyz</a>
+              </p>
+              <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:#64748b;">
+                Questions or press? Reply to this email — a human reads it.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#0a120e" style="padding:18px 28px 22px;border-top:1px solid #1f2e24;background-color:#0a120e;">
+              <p style="margin:0 0 8px;font-size:12px;line-height:1.5;color:#64748b;">
+                You are receiving this because you joined the Siren waitlist or shared your email with us.
+              </p>
+              <p style="margin:0;font-size:12px;color:#475569;">
+                (c) ${new Date().getFullYear()} Siren · Event-driven prediction &amp; meme terminal
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`.trim();
+
+  const text = [
+    subject,
+    "",
+    `${greeting},`,
+    "The Siren leaderboard is live at " + LEADERBOARD_URL,
+    "It ranks prediction-market traders (Kalshi / Polymarket-style trades through Siren) by notional volume and by win rate. Meme-token swaps are excluded.",
+    "Every week and every month we spotlight the top three traders on X (@sirentracker) with rewards and partner drops — details post with each season.",
+    "",
+    `Open: ${APP_URL}`,
+    `Docs: ${DOCS_URL}`,
+  ].join("\n");
+
+  return sendEmailWithRetry({
+    to: params.to,
+    subject,
+    html,
+    text,
+  });
+}

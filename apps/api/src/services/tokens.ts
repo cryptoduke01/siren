@@ -352,6 +352,13 @@ function parseKeywordsParam(param?: string): string[] {
   return param.split(/[\s,]+/).filter((k) => k.length >= 2).slice(0, 5);
 }
 
+/** Solana address length (base58); used to route CA paste to direct pair lookup. */
+function looksLikeSolanaMint(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 32 || t.length > 44) return false;
+  return /^[1-9A-HJ-NP-Za-km-z]+$/.test(t);
+}
+
 function buildSurfacedTokensCacheKey(marketId?: string, categoryId?: string, keywordsParam?: string): string {
   return JSON.stringify({
     marketId: marketId?.trim() || "",
@@ -403,16 +410,67 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
   if (inFlight) return inFlight;
 
   const promise = (async () => {
+    const parsedKw = parseKeywordsParam(keywordsParam);
     const keywords =
-      parseKeywordsParam(keywordsParam).length > 0 ? parseKeywordsParam(keywordsParam)
-      : categoryId ? getKeywordsForCategory(categoryId)
-      : [];
+      parsedKw.length > 0 ? parsedKw : categoryId ? getKeywordsForCategory(categoryId) : [];
     const isDefaultDiscovery = !marketId && !categoryId && keywords.length === 0;
+    const directMint =
+      !marketId && !categoryId && keywords.length === 1 && looksLikeSolanaMint(keywords[0])
+        ? keywords[0].trim()
+        : null;
 
     const allPairs: DexPair[] = [];
     const seenMints = new Set<string>();
 
     try {
+      if (directMint) {
+        try {
+          const pairs = await getTokenPairs(directMint);
+          const best = pickBestPair(pairs);
+          if (best) {
+            const map = buildBestPairByMint([best]);
+            let surfaced = pairsToSurfacedTokens(map, [directMint]);
+            surfaced = surfaced.map((t) => applyInlineRisk(t, best));
+            const hydrated = await hydrateSurfacedTokens(surfaced, map);
+            surfacedTokensCache.set(cacheKey, {
+              expiresAt: Date.now() + TOKENS_CACHE_MS,
+              value: hydrated,
+            });
+            evictMapByExpiry(surfacedTokensCache, MAX_SURFACED_CACHE);
+            return hydrated;
+          }
+          const infoOnly = await getTokenInfoByMint(directMint);
+          if (infoOnly) {
+            const fallback: SurfacedToken = {
+              mint: infoOnly.mint,
+              name: infoOnly.name,
+              symbol: infoOnly.symbol,
+              price: infoOnly.priceUsd,
+              volume24h: infoOnly.volume24h,
+              imageUrl: infoOnly.imageUrl,
+              liquidityUsd: infoOnly.liquidityUsd,
+              fdvUsd: infoOnly.fdvUsd,
+              relevanceScore: 1,
+              matchType: "name",
+              launchpad: getLaunchpadFromMint(directMint),
+              riskScore: infoOnly.riskScore,
+              riskLabel: infoOnly.riskLabel,
+              riskReasons: infoOnly.riskReasons,
+              riskBlocked: false,
+              safe: infoOnly.safe,
+            };
+            surfacedTokensCache.set(cacheKey, {
+              expiresAt: Date.now() + TOKENS_CACHE_MS,
+              value: [fallback],
+            });
+            evictMapByExpiry(surfacedTokensCache, MAX_SURFACED_CACHE);
+            return [fallback];
+          }
+        } catch (e) {
+          console.warn("[tokens] direct CA lookup failed:", e);
+        }
+      }
+
       if (process.env.BAGS_API_KEY && !isDefaultDiscovery) {
         try {
           const pools = await getBagsPools();

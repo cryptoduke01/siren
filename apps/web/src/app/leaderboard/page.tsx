@@ -32,12 +32,10 @@ function PodiumCard({
   entry,
   place,
   metric,
-  showWinRate,
 }: {
   entry: LeaderboardEntry | undefined;
   place: 1 | 2 | 3;
   metric: "volume" | "winRate";
-  showWinRate: boolean;
 }) {
   const border =
     place === 1 ? "#d4a20d" : place === 2 ? "#9ca3af" : "#b45309";
@@ -54,12 +52,18 @@ function PodiumCard({
   }
 
   const main =
-    metric === "winRate" && showWinRate
+    metric === "winRate"
       ? entry.winRate != null
         ? `${entry.winRate.toFixed(0)}%`
         : "—"
       : fmtVol(entry.volumeUsd);
-  const sub = `${entry.tradeCount} trades`;
+  const subSecondary =
+    metric === "winRate"
+      ? fmtVol(entry.volumeUsd)
+      : entry.winRate != null
+        ? `${entry.winRate.toFixed(0)}% win rate`
+        : "Win rate —";
+  const sub = `${subSecondary} · ${entry.tradeCount} trades`;
 
   return (
     <div
@@ -95,19 +99,15 @@ function PodiumCard({
 }
 
 export default function LeaderboardPage() {
-  const [scope, setScope] = useState<"users" | "markets" | "tokens">("users");
   const [windowKey, setWindowKey] = useState<"7d" | "30d" | "all">("7d");
   const [metric, setMetric] = useState<"volume" | "winRate">("volume");
 
-  const effectiveMetric = scope === "users" ? metric : "volume";
-
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["leaderboard", scope, windowKey, effectiveMetric],
+    queryKey: ["leaderboard", windowKey, metric],
     queryFn: async () => {
       const qs = new URLSearchParams({
-        scope,
         window: windowKey === "all" ? "all" : windowKey,
-        metric: effectiveMetric,
+        metric,
       });
       const res = await fetch(`${API_URL}/api/leaderboard?${qs}`, { credentials: "omit" });
       const payload = await res.json().catch(() => ({}));
@@ -121,6 +121,7 @@ export default function LeaderboardPage() {
           emptyReason?: string;
           metric: string;
           truncated?: boolean;
+          scope?: string;
         };
       };
     },
@@ -136,8 +137,6 @@ export default function LeaderboardPage() {
     const c = entries[2];
     return { first: a, second: b, third: c, rest: entries.slice(3) };
   }, [entries]);
-
-  const showWinRateCol = scope === "users";
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-base)" }}>
@@ -158,31 +157,11 @@ export default function LeaderboardPage() {
             Leaderboard
           </h1>
         </div>
-        <p className="font-sub text-sm mb-8 leading-relaxed" style={{ color: "var(--text-3)" }}>
-          Who is moving the most volume, and who is winning more than they lose. Pick a timeframe below.
+        <p className="font-sub text-sm mb-6 leading-relaxed" style={{ color: "var(--text-3)" }}>
+          Prediction markets only — Kalshi and Polymarket-style trades logged through Siren. Rankings use{" "}
+          <strong style={{ color: "var(--text-2)" }}>notional volume</strong> (stake × price) and{" "}
+          <strong style={{ color: "var(--text-2)" }}>win rate</strong> from realized closes. Meme-token swaps are not counted.
         </p>
-
-        <div className="flex rounded-lg border p-0.5 mb-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-          {(["users", "markets", "tokens"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => {
-                hapticLight();
-                setScope(s);
-                if (s !== "users") setMetric("volume");
-              }}
-              className="flex-1 rounded-md py-2 font-heading text-[10px] font-semibold uppercase tracking-wider transition-colors"
-              style={{
-                background: scope === s ? "var(--bg-surface)" : "transparent",
-                color: scope === s ? "var(--accent)" : "var(--text-3)",
-                boxShadow: scope === s ? "0 1px 2px rgba(0,0,0,0.2)" : "none",
-              }}
-            >
-              {s === "users" ? "Traders" : s === "markets" ? "Markets" : "Tokens"}
-            </button>
-          ))}
-        </div>
 
         <div className="flex flex-wrap gap-2 mb-3">
           <button
@@ -229,43 +208,41 @@ export default function LeaderboardPage() {
           </button>
         </div>
 
-        {showWinRateCol && (
-          <div
-            className="flex rounded-lg border p-0.5 mb-6"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+        <div
+          className="flex rounded-lg border p-0.5 mb-6"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              hapticLight();
+              setMetric("winRate");
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 font-heading text-[11px] font-semibold"
+            style={{
+              background: metric === "winRate" ? "var(--bg-surface)" : "transparent",
+              color: metric === "winRate" ? "var(--accent)" : "var(--text-3)",
+            }}
           >
-            <button
-              type="button"
-              onClick={() => {
-                hapticLight();
-                setMetric("winRate");
-              }}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 font-heading text-[11px] font-semibold"
-              style={{
-                background: metric === "winRate" ? "var(--bg-surface)" : "transparent",
-                color: metric === "winRate" ? "var(--accent)" : "var(--text-3)",
-              }}
-            >
-              <Target className="h-3.5 w-3.5" />
-              Win rate
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                hapticLight();
-                setMetric("volume");
-              }}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 font-heading text-[11px] font-semibold"
-              style={{
-                background: metric === "volume" ? "var(--bg-surface)" : "transparent",
-                color: metric === "volume" ? "var(--accent)" : "var(--text-3)",
-              }}
-            >
-              <DollarSign className="h-3.5 w-3.5" />
-              Volume
-            </button>
-          </div>
-        )}
+            <Target className="h-3.5 w-3.5" />
+            Sort by win rate
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              hapticLight();
+              setMetric("volume");
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 font-heading text-[11px] font-semibold"
+            style={{
+              background: metric === "volume" ? "var(--bg-surface)" : "transparent",
+              color: metric === "volume" ? "var(--accent)" : "var(--text-3)",
+            }}
+          >
+            <DollarSign className="h-3.5 w-3.5" />
+            Sort by volume
+          </button>
+        </div>
 
         {isLoading && (
           <div className="flex justify-center py-16">
@@ -276,6 +253,12 @@ export default function LeaderboardPage() {
         {isError && (
           <p className="font-body text-sm py-8 text-center" style={{ color: "var(--down)" }}>
             {error instanceof Error ? error.message : "Could not load leaderboard"}
+          </p>
+        )}
+
+        {!isLoading && !isError && data?.data?.truncated && (
+          <p className="font-sub text-[11px] mb-4 leading-relaxed rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-elevated)" }}>
+            All-time rankings use the latest slice of trade history (performance cap). Use 7d or 30d for a complete window.
           </p>
         )}
 
@@ -291,9 +274,9 @@ export default function LeaderboardPage() {
               Top 3
             </p>
             <div className="flex items-end justify-center gap-2 md:gap-4 mb-8 px-1">
-              <PodiumCard entry={podium.second} place={2} metric={effectiveMetric} showWinRate={showWinRateCol} />
-              <PodiumCard entry={podium.first} place={1} metric={effectiveMetric} showWinRate={showWinRateCol} />
-              <PodiumCard entry={podium.third} place={3} metric={effectiveMetric} showWinRate={showWinRateCol} />
+              <PodiumCard entry={podium.second} place={2} metric={metric} />
+              <PodiumCard entry={podium.first} place={1} metric={metric} />
+              <PodiumCard entry={podium.third} place={3} metric={metric} />
             </div>
 
             {podium.rest.length > 0 && (
@@ -326,25 +309,30 @@ export default function LeaderboardPage() {
                           {e.label}
                         </p>
                         <p className="font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
-                          {e.tradeCount} trades
-                          {showWinRateCol && e.winRate != null && (
+                          {fmtVol(e.volumeUsd)} volume
+                          {e.winRate != null && (
                             <span>
                               {" · "}
-                              {e.wins}W / {e.losses}L
+                              {e.winRate.toFixed(0)}% ({e.wins}W / {e.losses}L)
                             </span>
                           )}
+                          {" · "}
+                          {e.tradeCount} trades
                         </p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-money text-base font-bold tabular-nums" style={{ color: "var(--accent)" }}>
-                          {effectiveMetric === "winRate"
+                          {metric === "winRate"
                             ? e.winRate != null
                               ? `${e.winRate.toFixed(0)}%`
                               : "—"
                             : fmtVol(e.volumeUsd)}
                         </p>
                         <p className="font-sub text-[9px]" style={{ color: "var(--text-3)" }}>
-                          {effectiveMetric === "winRate" ? "win rate" : "volume"}
+                          {metric === "winRate" ? "win rate (sorted)" : "volume (sorted)"}
+                        </p>
+                        <p className="font-sub text-[9px] mt-0.5 tabular-nums" style={{ color: "var(--text-3)" }}>
+                          {metric === "winRate" ? fmtVol(e.volumeUsd) : e.winRate != null ? `${e.winRate.toFixed(0)}% WR` : "—"}
                         </p>
                       </div>
                     </li>

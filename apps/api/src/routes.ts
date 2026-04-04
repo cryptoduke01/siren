@@ -14,6 +14,7 @@ import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
   sendTradingLiveAnnouncementEmail,
+  sendLeaderboardSpotlightEmail,
   canSendEmail,
 } from "./services/email.js";
 import { getInMemorySignalFeedSnapshot, getSignalFeedSnapshot } from "./services/signalState.js";
@@ -733,6 +734,109 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to send trading-live emails (manual)" });
+    }
+  });
+
+  /** Admin: send leaderboard spotlight announcement to all waitlist emails. */
+  app.post("/api/admin/waitlist/send-leaderboard-spotlight-email", async (_req, reply) => {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase
+        .from("waitlist_signups")
+        .select("email,name")
+        .not("email", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(1000);
+      if (listError) return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      const entries = rows ?? [];
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+      for (const row of entries) {
+        if (!row.email?.trim()) {
+          skipped++;
+          skippedEmails.push(row.email || "");
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped++;
+          skippedEmails.push(row.email);
+          continue;
+        }
+        const result = await sendLeaderboardSpotlightEmail({ to: row.email, name: row.name });
+        if (result.ok) sent++;
+        else {
+          failed++;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send leaderboard spotlight email");
+        }
+      }
+      return reply.send({ success: true, sent, failed, skipped, total: entries.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send leaderboard spotlight emails" });
+    }
+  });
+
+  /** Admin: send leaderboard spotlight to pasted emails (must exist on waitlist). */
+  app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-leaderboard-spotlight-email-by-email", async (req, reply) => {
+    try {
+      const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
+      const normalized = Array.from(
+        new Set(
+          raw
+            .map((e) => (typeof e === "string" ? e.trim().toLowerCase() : ""))
+            .filter((e) => e.length > 0)
+        )
+      );
+      if (normalized.length === 0) {
+        return reply.status(400).send({ success: false, error: "No valid emails provided" });
+      }
+
+      const supabase = getSupabaseAdminClient();
+      const { data: rows, error: listError } = await supabase.from("waitlist_signups").select("email,name").in("email", normalized);
+      if (listError) {
+        return reply.status(503).send({ success: false, error: listError.message || "Query failed" });
+      }
+
+      const byEmail = new Map<string, (typeof rows)[number]>();
+      for (const row of rows ?? []) {
+        if (row.email) byEmail.set(row.email.toLowerCase(), row as any);
+      }
+
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+
+      for (const email of normalized) {
+        const row = byEmail.get(email);
+        if (!row || !row.email?.trim()) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped++;
+          skippedEmails.push(email);
+          continue;
+        }
+        const result = await sendLeaderboardSpotlightEmail({ to: row.email, name: row.name });
+        if (result.ok) sent++;
+        else {
+          failed++;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send leaderboard spotlight email (manual)");
+        }
+      }
+
+      return reply.send({ success: true, sent, failed, skipped, total: normalized.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send leaderboard spotlight emails (manual)" });
     }
   });
 
@@ -1770,37 +1874,31 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Public leaderboard from `siren_trades` (volume) + FIFO-based sell PnL for trader win rate.
-   * Query: scope=users|tokens|markets, window=7d|30d|all|alltime, metric=volume|winRate (winRate applies to users only).
-   * All-time uses the most recent 25k rows (then sorted for FIFO) so the route stays bounded.
+   * Public leaderboard: **prediction-market traders only** (Kalshi / Polymarket-style logged trades).
+   * Query: window=7d|30d|all|alltime, metric=volume|winRate.
+   * All-time uses the most recent 25k rows (FIFO win rate) so the route stays bounded.
    */
-  app.get<{ Querystring: { scope?: string; window?: string; metric?: string } }>(
+  app.get<{ Querystring: { window?: string; metric?: string } }>(
     "/api/leaderboard",
     async (req, reply) => {
-      const scopeRaw = (req.query.scope || "users").toLowerCase();
-      const scope = scopeRaw === "tokens" || scopeRaw === "markets" ? scopeRaw : "users";
       const win = (req.query.window || "7d").toLowerCase();
       const window =
         win === "30d" ? "30d" : win === "all" || win === "alltime" ? "all" : "7d";
       const metricRaw = (req.query.metric || "volume").toLowerCase().replace(/_/g, "");
       const metric = metricRaw === "winrate" ? "winRate" : "volume";
-      const effectiveMetric = scope === "users" ? metric : "volume";
       try {
         const client = getSupabaseAdminClient();
         const built = await buildLeaderboard({
           client,
-          scope,
           window,
-          metric: effectiveMetric,
+          metric,
           limit: 50,
         });
         let { entries, ...meta } = built;
-        if (scope === "users") {
-          entries = await enrichUsersWithProfiles(client, entries);
-        }
+        entries = await enrichUsersWithProfiles(client, entries);
         return reply.send({
           success: true,
-          data: { ...meta, metric: effectiveMetric, entries },
+          data: { ...meta, metric, entries },
         });
       } catch (e) {
         const msg = (e as Error).message || "Leaderboard failed";

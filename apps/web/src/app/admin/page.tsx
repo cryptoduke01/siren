@@ -18,6 +18,7 @@ import {
   Rocket,
   Sparkles,
   TrendingUp,
+  Trophy,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -330,6 +331,9 @@ export default function AdminPage() {
   const [volumeLoading, setVolumeLoading] = useState(false);
   const [productEmailInput, setProductEmailInput] = useState("");
   const [productEmailResult, setProductEmailResult] = useState<DispatchResult | null>(null);
+  const [leaderboardEmailLoading, setLeaderboardEmailLoading] = useState(false);
+  const [leaderboardEmailInput, setLeaderboardEmailInput] = useState("");
+  const [leaderboardEmailResult, setLeaderboardEmailResult] = useState<DispatchResult | null>(null);
   const [waitlistPage, setWaitlistPage] = useState(1);
   const [appUsersPage, setAppUsersPage] = useState(1);
   const [volumePage, setVolumePage] = useState(1);
@@ -695,6 +699,64 @@ export default function AdminPage() {
       setError(e instanceof Error ? e.message : "Failed to send product announcement emails");
     } finally {
       setProductEmailLoading(false);
+    }
+  };
+
+  const handleSendLeaderboardSpotlightEmail = async () => {
+    hapticLight();
+    setLeaderboardEmailResult(null);
+    setLeaderboardEmailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-leaderboard-spotlight-email`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send leaderboard spotlight emails");
+      setLeaderboardEmailResult({
+        sent: data.sent,
+        failed: data.failed,
+        skipped: data.skipped,
+        total: data.total,
+        failedEmails: data.failedEmails ?? [],
+        skippedEmails: data.skippedEmails ?? [],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send leaderboard spotlight emails");
+    } finally {
+      setLeaderboardEmailLoading(false);
+    }
+  };
+
+  const handleSendLeaderboardSpotlightEmailManual = async () => {
+    hapticLight();
+    const raw = leaderboardEmailInput
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (raw.length === 0) {
+      setError("Paste one or more emails first.");
+      return;
+    }
+    setLeaderboardEmailResult(null);
+    setLeaderboardEmailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-leaderboard-spotlight-email-by-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: raw }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send leaderboard spotlight emails");
+      setLeaderboardEmailResult({
+        sent: data.sent,
+        failed: data.failed,
+        skipped: data.skipped,
+        total: data.total,
+        failedEmails: data.failedEmails ?? [],
+        skippedEmails: data.skippedEmails ?? [],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send leaderboard spotlight emails");
+    } finally {
+      setLeaderboardEmailLoading(false);
     }
   };
 
@@ -1219,6 +1281,50 @@ export default function AdminPage() {
                   </div>
 
                   <DispatchSummary result={productEmailResult} accentLabel="Trading live email" />
+
+                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      Leaderboard spotlight
+                    </p>
+                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+                      Announce rankings + weekly / monthly top 3
+                    </h3>
+                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
+                      Sends the dark-theme campaign: prediction-only leaderboard, volume and win rate, spotlight program for top traders. Same waitlist rules as other blasts.
+                    </p>
+                    <textarea
+                      value={leaderboardEmailInput}
+                      onChange={(e) => setLeaderboardEmailInput(e.target.value)}
+                      className="mt-4 min-h-[100px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
+                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
+                      placeholder={"optional: one@example.com per line"}
+                    />
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={handleSendLeaderboardSpotlightEmail}
+                        disabled={leaderboardEmailLoading || waitlistRows.length === 0}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
+                      >
+                        {leaderboardEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Trophy className="h-4 w-4" />}
+                        {leaderboardEmailLoading ? "Sending…" : "Send to all waitlist"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSendLeaderboardSpotlightEmailManual}
+                        disabled={leaderboardEmailLoading}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                        style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                      >
+                        {leaderboardEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
+                        Send to pasted only
+                      </button>
+                    </div>
+                    <InlineDispatchStatus result={leaderboardEmailResult} label="Leaderboard email result" />
+                  </div>
+
+                  <DispatchSummary result={leaderboardEmailResult} accentLabel="Leaderboard spotlight email" />
 
                   <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
                     <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>

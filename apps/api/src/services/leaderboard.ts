@@ -1,6 +1,8 @@
 /**
- * Builds leaderboards from `siren_trades` (Supabase). Volume = sum(token_amount * price_usd).
- * Win rate (traders only): FIFO cost basis per wallet+mint; each sell matched to prior buys → win if realized PnL > 0.
+ * Builds trader leaderboards from `siren_trades` (Supabase), **prediction markets only**
+ * (Kalshi-style tickers, Polymarket rows, etc.). Meme-token swaps are excluded.
+ * Volume = sum(token_amount * price_usd).
+ * Win rate: FIFO cost basis per wallet+mint; each sell matched to prior buys → win if realized PnL > 0.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -166,21 +168,6 @@ function processTraderStats(trades: SirenTradeRow[]): Map<
   return byWallet;
 }
 
-function aggregateByMint(trades: SirenTradeRow[]): Map<string, { volumeUsd: number; tradeCount: number; label: string }> {
-  const m = new Map<string, { volumeUsd: number; tradeCount: number; label: string }>();
-  for (const t of trades) {
-    const mint = (t.mint || "").trim();
-    if (!mint) continue;
-    const vol = notional(t);
-    const cur = m.get(mint) ?? { volumeUsd: 0, tradeCount: 0, label: t.token_symbol?.trim() || mint.slice(0, 8) + "…" };
-    cur.volumeUsd += vol;
-    cur.tradeCount += 1;
-    if (t.token_symbol?.trim()) cur.label = t.token_symbol.trim();
-    m.set(mint, cur);
-  }
-  return m;
-}
-
 /** Kalshi-style tickers often start with KX and contain hyphens. */
 function isLikelyMarketTicker(symbol: string | null | undefined): boolean {
   const s = (symbol || "").trim();
@@ -190,19 +177,15 @@ function isLikelyMarketTicker(symbol: string | null | undefined): boolean {
   return false;
 }
 
-function aggregateByMarketSymbol(trades: SirenTradeRow[]): Map<string, { volumeUsd: number; tradeCount: number; label: string }> {
-  const m = new Map<string, { volumeUsd: number; tradeCount: number; label: string }>();
-  for (const t of trades) {
-    const sym = (t.token_symbol || "").trim();
-    if (!isLikelyMarketTicker(sym)) continue;
-    const vol = notional(t);
-    const cur = m.get(sym) ?? { volumeUsd: 0, tradeCount: 0, label: sym };
-    cur.volumeUsd += vol;
-    cur.tradeCount += 1;
-    if (t.token_name?.trim()) cur.label = t.token_name.trim();
-    m.set(sym, cur);
-  }
-  return m;
+/** Logged trades that count as prediction-market activity (not SPL meme swaps). */
+export function isPredictionMarketTrade(t: SirenTradeRow): boolean {
+  const sym = (t.token_symbol || "").trim();
+  if (isLikelyMarketTicker(sym)) return true;
+  if (/^POLY-/i.test(sym)) return true;
+  if (/\b(YES|NO)\s+POLY-/i.test(sym)) return true;
+  const name = (t.token_name || "").trim();
+  if (name.includes("·") && /\b(YES|NO)\b/i.test(name)) return true;
+  return false;
 }
 
 function sortAndRank(
@@ -244,20 +227,20 @@ function sortAndRank(
 
 export async function buildLeaderboard(params: {
   client: SupabaseClient;
-  scope: "users" | "tokens" | "markets";
   window: "7d" | "30d" | "all";
   metric: "volume" | "winRate";
   limit?: number;
 }): Promise<{
   window: string;
-  scope: string;
+  scope: "prediction_traders";
   metric: string;
   entries: LeaderboardRow[];
   emptyReason?: string;
   truncated?: boolean;
 }> {
-  const { client, scope, window, metric, limit = 50 } = params;
+  const { client, window, metric, limit = 50 } = params;
   const sinceIso = windowStartIso(window);
+  const scope = "prediction_traders" as const;
 
   let trades: SirenTradeRow[];
   let truncated = false;
@@ -302,84 +285,42 @@ export async function buildLeaderboard(params: {
       scope,
       metric,
       entries: [],
-      emptyReason: "No trades in this period yet. Trade from the terminal and they will show up here.",
+      emptyReason: "No trades in this period yet. Trade prediction markets from the terminal to appear here.",
     };
   }
 
-  if (scope === "users") {
-    const stats = processTraderStats(trades);
-    const entries = [...stats.entries()].map(([wallet, s]) => {
-      const decided = s.wins + s.losses;
-      const winRate = decided > 0 ? (s.wins / decided) * 100 : null;
-      return {
-        id: wallet,
-        label: wallet.slice(0, 4) + "…" + wallet.slice(-4),
-        subtitle: `${s.tradeCount} trades`,
-        volumeUsd: s.volumeUsd,
-        tradeCount: s.tradeCount,
-        wins: s.wins,
-        losses: s.losses,
-        winRate,
-      };
-    });
+  const predictionTrades = trades.filter(isPredictionMarketTrade);
+  if (predictionTrades.length === 0) {
     return {
       window,
       scope,
       metric,
-      entries: sortAndRank(entries, metric, limit),
-      ...(truncated ? { truncated: true } : {}),
+      entries: [],
+      emptyReason:
+        "No prediction market volume in this window yet. Trade Kalshi or Polymarket events from Siren — meme-token swaps are not ranked here.",
     };
   }
 
-  if (scope === "tokens") {
-    const agg = aggregateByMint(trades);
-    const entries = [...agg.entries()].map(([mint, s]) => ({
-      id: mint,
-      label: s.label,
-      subtitle: mint.slice(0, 6) + "…" + mint.slice(-4),
+  const stats = processTraderStats(predictionTrades);
+  const entries = [...stats.entries()].map(([wallet, s]) => {
+    const decided = s.wins + s.losses;
+    const winRate = decided > 0 ? (s.wins / decided) * 100 : null;
+    return {
+      id: wallet,
+      label: wallet.slice(0, 4) + "…" + wallet.slice(-4),
+      subtitle: `${s.tradeCount} trades`,
       volumeUsd: s.volumeUsd,
       tradeCount: s.tradeCount,
-      wins: 0,
-      losses: 0,
-      winRate: null as number | null,
-    }));
-    return {
-      window,
-      scope,
-      metric: "volume",
-      entries: sortAndRank(entries, "volume", limit),
-      ...(truncated ? { truncated: true } : {}),
+      wins: s.wins,
+      losses: s.losses,
+      winRate,
     };
-  }
-
-  // markets
-  const agg = aggregateByMarketSymbol(trades);
-  const entries = [...agg.entries()].map(([sym, s]) => ({
-    id: sym,
-    label: s.label.length > 48 ? s.label.slice(0, 45) + "…" : s.label,
-    subtitle: sym,
-    volumeUsd: s.volumeUsd,
-    tradeCount: s.tradeCount,
-    wins: 0,
-    losses: 0,
-    winRate: null as number | null,
-  }));
-
-  if (entries.length === 0) {
-    return {
-      window,
-      scope,
-      metric: "volume",
-      entries: [],
-      emptyReason: "No prediction-market style trades (KX tickers) in this window. Meme token volume is under Tokens.",
-    };
-  }
-
+  });
   return {
     window,
     scope,
-    metric: "volume",
-    entries: sortAndRank(entries, "volume", limit),
+    metric,
+    entries: sortAndRank(entries, metric, limit),
     ...(truncated ? { truncated: true } : {}),
   };
 }
