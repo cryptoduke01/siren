@@ -29,7 +29,7 @@ export function HomeInner() {
   const { setSelectedMarket, setSelectedToken, setBuyPanelOpen } = useSirenStore();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tokensSheetOpen, setTokensSheetOpen] = useState(false);
-  const [mobileCategory, setMobileCategory] = useState("All");
+  const [mobileCategory, setMobileCategory] = useState("all");
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
   const isResizing = useRef(false);
   const appliedShareRef = useRef<{ market?: string; token?: string }>({});

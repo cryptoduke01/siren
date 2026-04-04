@@ -1477,7 +1477,7 @@ export function UnifiedBuyPanel() {
                     </div>
 
                     <div className="mt-4">
-                      <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount to spend ({marketSpendAssetLabel})</label>
+                      <label className="text-xs text-[var(--text-secondary)] block mb-1">Stake ({marketSpendAssetLabel})</label>
                       <input
                         type="number"
                         step={isPolymarketTrade ? "0.01" : "0.001"}
@@ -1488,55 +1488,89 @@ export function UnifiedBuyPanel() {
                         className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
                         style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                       />
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {(["5", "10", "25", "50", "100"] as const).map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => {
+                              hapticLight();
+                              setSolAmount(amt);
+                            }}
+                            className="rounded-full px-3 py-1.5 font-mono text-[11px] font-semibold border transition-colors"
+                            style={{
+                              background: solAmount === amt ? "color-mix(in srgb, var(--accent) 14%, var(--bg-elevated))" : "var(--bg-surface)",
+                              borderColor: solAmount === amt ? "var(--accent)" : "var(--border-subtle)",
+                              color: "var(--text-2)",
+                            }}
+                          >
+                            ${amt}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                      <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>Trade preview</p>
+                      <p className="text-[10px] uppercase tracking-wide mb-2 font-semibold" style={{ color: "var(--text-3)" }}>
+                        Payout in plain English
+                      </p>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Current {marketSide.toUpperCase()} price</p>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                            Current price (~¢ / share)
+                          </p>
                           <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--down)" }}>
-                            {formatUsd(selectedMarketPriceUsd, 3)}
+                            {selectedMarketPriceUsd != null ? `${(selectedMarketPriceUsd * 100).toFixed(1)}¢` : "—"}
                           </p>
                         </div>
                         <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>You pay</p>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                            You put in
+                          </p>
                           <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
                             {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
                           </p>
                           <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
                             {parsedBuySolAmount != null
                               ? `${formatTokenAmount(parsedBuySolAmount, isPolymarketTrade ? 2 : 4)} ${marketSpendAssetLabel}`
-                              : `Enter a ${marketSpendAssetLabel} amount`}
+                              : `Enter ${marketSpendAssetLabel}`}
                           </p>
                         </div>
                         <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated {marketSide.toUpperCase()} shares</p>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                            Potential shares
+                          </p>
                           <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
                             {estimatedContracts != null ? formatTokenAmount(estimatedContracts, 2) : "—"}
                           </p>
                         </div>
                         <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Max payout if {marketSide.toUpperCase()}</p>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                            Potential payout if right
+                          </p>
                           <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--up)" }}>
                             {marketMaxPayoutUsd != null ? formatUsd(marketMaxPayoutUsd, 2) : "—"}
                           </p>
                         </div>
                         <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Net if correct</p>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                            Potential profit
+                          </p>
                           <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: marketNetIfCorrectUsd != null && marketNetIfCorrectUsd >= 0 ? "var(--up)" : "var(--down)" }}>
                             {marketNetIfCorrectUsd != null ? formatUsd(marketNetIfCorrectUsd, 2) : "—"}
                           </p>
                         </div>
                         <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Break-even odds</p>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                            Implied break-even
+                          </p>
                           <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
                             {marketBreakEvenPct != null ? `${marketBreakEvenPct.toFixed(1)}%` : "—"}
                           </p>
                         </div>
                       </div>
                       <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                        Approximate preview only. Winning shares settle near $1.00, losing shares settle near $0.00.
+                        Estimates only. If this side wins, shares tend toward $1 each; if not, toward $0. You can lose your whole stake.
                       </p>
                     </div>
 

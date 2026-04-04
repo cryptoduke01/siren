@@ -718,8 +718,8 @@ export function TokenSurface() {
           type="text"
           placeholder={
             selectedMarket || selectedSignal
-              ? "Search linked tokens by name, symbol, or contract address"
-              : "Search tokens by name, symbol, or contract address"
+              ? "Name, symbol, or paste Solana contract (CA)"
+              : "Name, symbol, or paste Solana contract (CA)"
           }
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
@@ -731,7 +731,7 @@ export function TokenSurface() {
           }}
         />
         <p className="font-body font-normal text-[11px] mt-1.5" style={{ color: "var(--text-3)" }}>
-          DexScreener (Solana). Results appear as you type.
+          DexScreener (Solana). Pasting a full mint address jumps straight to that token.
         </p>
       </div>
       <div

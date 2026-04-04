@@ -2,43 +2,22 @@
 
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import { StarButton } from "./StarButton";
+import { HotTakeMarketCard } from "./HotTakeMarketCard";
 import type { MarketWithVelocity } from "@siren/shared";
+import { marketMatchesCategory, type MarketCategoryId } from "@/lib/marketFeedFilters";
 
-const CATEGORIES = ["All", "Politics", "Crypto", "Sports", "Business", "Entertainment"];
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  All: [],
-  Politics: ["trump", "biden", "election", "senate", "congress", "vote", "democrat", "republican", "president", "governor", "primaries", "electoral"],
-  Crypto: ["bitcoin", "btc", "eth", "sol", "solana", "sec", "ethereum", "crypto", "token", "jpow", "fed", "rates"],
-  Sports: ["world", "cup", "ufc", "nba", "nfl", "super bowl", "championship", "georgia", "purdue", "icc", "t20", "soccer", "football", "basketball"],
-  Business: ["fed", "rates", "cpi", "inflation", "gdp", "earnings", "stock", "nasdaq", "market cap"],
-  Entertainment: ["oscar", "grammy", "emmy", "golden globes", "award", "movie", "album"],
+const CATEGORIES: MarketCategoryId[] = ["all", "sports", "politics", "crypto", "finance", "entertainment"];
+
+const CATEGORY_TAB_LABEL: Record<MarketCategoryId, string> = {
+  all: "All",
+  sports: "Sports",
+  politics: "Politics",
+  crypto: "Crypto",
+  finance: "Finance",
+  entertainment: "Fun",
 };
-
-function VelocityBadge({ v }: { v: number }) {
-  const abs = Math.abs(v);
-  const dir = v > 0 ? "+" : "";
-  const color = v > 0 ? "var(--up)" : "var(--down)";
-  const arrow = v > 0 ? "▲" : "▼";
-  return (
-    <span className="font-mono text-[11px] tabular-nums" style={{ color }}>
-      {arrow} {dir}{abs.toFixed(1)}%/hr
-    </span>
-  );
-}
-
-function SourceBadge({ source }: { source: MarketWithVelocity["source"] }) {
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
-      style={{ background: source === "kalshi" ? "#00B2FF" : "#6B3FDB", color: "#FFFFFF" }}
-    >
-      {source === "kalshi" ? "Kalshi" : "Polymarket"}
-    </span>
-  );
-}
 
 export function MarketBottomSheet({
   isOpen,
@@ -59,18 +38,15 @@ export function MarketBottomSheet({
 }) {
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [isOpen]);
 
+  const cat = (CATEGORIES.includes(activeCategory as MarketCategoryId) ? activeCategory : "all") as MarketCategoryId;
+
   const filteredMarkets =
-    activeCategory === "All"
-      ? markets
-      : markets.filter((m) => {
-          const kw = CATEGORY_KEYWORDS[activeCategory];
-          if (!kw?.length) return true;
-          const lower = `${m.title ?? ""} ${m.ticker ?? ""} ${m.subtitle ?? ""}`.toLowerCase();
-          return kw.some((k) => lower.includes(k));
-        });
+    cat === "all" ? markets : markets.filter((m) => marketMatchesCategory(m, cat));
 
   return (
     <AnimatePresence>
@@ -88,112 +64,68 @@ export function MarketBottomSheet({
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="fixed bottom-0 left-0 right-0 z-50 max-h-[70vh] flex flex-col lg:hidden"
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="fixed bottom-0 left-0 right-0 z-50 max-h-[78vh] flex flex-col lg:hidden rounded-t-[24px] border-t"
             style={{
-              background: "var(--bg-surface)",
-              borderTop: "1px solid var(--border-subtle)",
+              background: "var(--bg-base)",
+              borderColor: "var(--border-subtle)",
+              boxShadow: "0 -24px 48px rgba(0,0,0,0.45)",
             }}
           >
-            <div className="flex-shrink-0 p-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full flex justify-center pb-2"
-                aria-label="Close"
-              >
-                <div
-                  className="w-10 h-1 rounded-full"
-                  style={{ background: "var(--text-3)" }}
-                />
+            <div className="flex-shrink-0 p-3 pb-2">
+              <button type="button" onClick={onClose} className="w-full flex justify-center pb-2" aria-label="Close">
+                <div className="w-10 h-1 rounded-full" style={{ background: "var(--text-3)" }} />
               </button>
-              <h2
-                className="font-heading font-semibold text-center text-sm"
-                style={{ color: "var(--text-1)" }}
-              >
-                MARKETS
+              <h2 className="font-heading font-black text-center text-xs uppercase tracking-[0.2em]" style={{ color: "var(--text-1)" }}>
+                Markets
               </h2>
-              <div className="flex gap-2 overflow-x-auto scrollbar-hidden mt-3 pb-2">
-                {CATEGORIES.map((cat) => (
+              <div className="flex gap-2 overflow-x-auto scrollbar-hidden mt-3 pb-1 snap-x">
+                {CATEGORIES.map((c) => (
                   <button
-                    key={cat}
+                    key={c}
                     type="button"
-                    onClick={() => { hapticLight(); setActiveCategory(cat); }}
-                    className="font-body font-medium text-[11px] uppercase whitespace-nowrap rounded-[4px] px-2.5 py-1.5 transition-all duration-[120ms] ease"
+                    onClick={() => {
+                      hapticLight();
+                      setActiveCategory(c);
+                    }}
+                    className="snap-start shrink-0 rounded-full px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-wide transition-all"
                     style={{
-                      color: activeCategory === cat ? "var(--text-1)" : "var(--text-3)",
-                      background: activeCategory === cat ? "var(--bg-elevated)" : "transparent",
-                      border: activeCategory === cat ? "1px solid var(--border-active)" : "1px solid var(--border-subtle)",
+                      color: cat === c ? "#0a0a0a" : "var(--text-3)",
+                      background: cat === c ? "#ff7a18" : "var(--bg-surface)",
+                      border: `1px solid ${cat === c ? "#ff7a18" : "var(--border-subtle)"}`,
                     }}
                   >
-                    {cat}
+                    {CATEGORY_TAB_LABEL[c]}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto scrollbar-hidden p-3 pt-0">
+            <div className="flex-1 overflow-y-auto scrollbar-hidden px-3 pt-0 pb-8 space-y-3">
               {isLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="skeleton-card" style={{ height: 100 }} />
+                <div className="space-y-3">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="skeleton-card rounded-[22px]" style={{ height: 180 }} />
                   ))}
                 </div>
               ) : (
-                <div className="space-y-2 pb-6">
-                  {filteredMarkets.map((m) => {
-                    const yesPct = Math.min(100, Math.max(0, m.probability));
-                    return (
-                      <button
-                        key={m.ticker}
-                        type="button"
-                        onClick={() => {
-                          hapticLight();
-                          onSelectMarket(m);
-                          onClose();
-                        }}
-                        className="w-full text-left rounded-[6px] border p-3 transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative"
-                        style={{
-                          background: "var(--bg-elevated)",
-                          borderColor: "var(--border-subtle)",
-                        }}
-                      >
-                        <div className="absolute top-2 right-2">
-                          <StarButton type="market" id={m.ticker} />
-                        </div>
-                        <div className="mb-2 flex items-center gap-2">
-                          <SourceBadge source={m.source} />
-                        </div>
-                        <div className="flex items-baseline justify-between gap-2 mb-2">
-                          <span
-                            className="font-mono text-lg font-normal tabular-nums"
-                            style={{ color: "var(--accent)" }}
-                          >
-                            {m.probability.toFixed(0)}%
-                          </span>
-                          <VelocityBadge v={m.velocity_1h} />
-                        </div>
-                        <p
-                          className="font-heading font-semibold text-[13px] line-clamp-2"
-                          style={{ color: "var(--text-1)" }}
-                        >
-                          {m.title}
-                        </p>
-                        <div
-                          className="w-full h-[3px] rounded-[2px] mt-2 flex overflow-hidden"
-                          style={{ background: "var(--border-subtle)" }}
-                        >
-                          <div
-                            className="h-full rounded-l-[2px] shrink-0"
-                            style={{
-                              width: `${yesPct}%`,
-                              background: "var(--accent)",
-                            }}
-                          />
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                filteredMarkets.map((m) => (
+                  <div key={m.ticker} className="relative">
+                    <div className="absolute top-3 right-3 z-[2]">
+                      <StarButton type="market" id={m.ticker} />
+                    </div>
+                    <HotTakeMarketCard
+                      market={m}
+                      isSelected={false}
+                      isHot={false}
+                      layout="sheet"
+                      onSelect={() => {
+                        hapticLight();
+                        onSelectMarket(m);
+                        onClose();
+                      }}
+                    />
+                  </div>
+                ))
               )}
             </div>
           </motion.div>
