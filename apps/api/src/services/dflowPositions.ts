@@ -128,6 +128,8 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
     seriesTicker?: string;
     yesBid?: string;
     yesAsk?: string;
+    noBid?: string;
+    noAsk?: string;
     accounts?: Record<string, { yesMint?: string; noMint?: string }>;
   }>;
 
@@ -170,7 +172,16 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
     const { market, side } = mapped;
     const yesBid = market.yesBid ? parseFloat(market.yesBid) : undefined;
     const yesAsk = market.yesAsk ? parseFloat(market.yesAsk) : undefined;
-    const probability = yesBid ?? yesAsk ?? 50;
+    const rawProb = yesBid ?? yesAsk ?? 50;
+    let probPct = Number.isFinite(rawProb) ? rawProb : 50;
+    if (probPct > 0 && probPct <= 1) probPct *= 100;
+    probPct = Math.min(100, Math.max(0, probPct));
+    /** Per-share mark in USD for this outcome (Kalshi-style cents as probability). */
+    const currentPriceUsd =
+      side === "yes" ? probPct / 100 : (100 - probPct) / 100;
+    const qty = token.balance;
+    const marketValueUsd =
+      Number.isFinite(currentPriceUsd) && Number.isFinite(qty) ? qty * currentPriceUsd : undefined;
 
     positions.push({
       mint: token.mint,
@@ -182,7 +193,12 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
       eventTicker: market.eventTicker,
       seriesTicker: market.seriesTicker,
       kalshi_url: kalshiUrlFromMarket(market),
-      probability,
+      probability: probPct as number,
+      yesBid: market.yesBid,
+      yesAsk: market.yesAsk,
+      quantity: qty,
+      currentPriceUsd,
+      marketValueUsd,
       verified: true,
     });
   }

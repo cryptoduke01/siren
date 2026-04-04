@@ -126,8 +126,17 @@ export async function getDflowOrder(params: DFlowOrderParams): Promise<DFlowOrde
     return { error: String(msg) };
   }
 
+  const txRaw = dataRecord.transaction;
+  const transaction = typeof txRaw === "string" ? txRaw.trim() : "";
+  if (!transaction) {
+    return {
+      error:
+        "DFlow returned no transaction. Check wallet verification for prediction trading, region eligibility, and that DFlow services are reachable.",
+    };
+  }
+
   return {
-    transaction: dataRecord.transaction as string,
+    transaction,
     executionMode: dataRecord.executionMode as "sync" | "async" | undefined,
     lastValidBlockHeight: typeof dataRecord.lastValidBlockHeight === "number" ? dataRecord.lastValidBlockHeight : undefined,
     inAmount: typeof dataRecord.inAmount === "string" ? dataRecord.inAmount : undefined,

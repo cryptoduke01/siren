@@ -19,6 +19,9 @@ export interface TradePnLCardProps {
   displayName?: string | null;
   showUSD?: boolean;
   executedAt?: number | null;
+  /** When set with valueUsd, fills Bought / Value instead of deriving from percent. */
+  stakeUsd?: number | null;
+  valueUsd?: number | null;
 }
 
 function formatUsd(value: number) {
@@ -40,6 +43,8 @@ export function TradePnLCard({
   wallet,
   displayName,
   executedAt,
+  stakeUsd: stakeUsdProp,
+  valueUsd: valueUsdProp,
 }: TradePnLCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -49,13 +54,22 @@ export function TradePnLCard({
   const accentRgb = isProfit ? "0,255,133" : "255,69,96";
 
   const { boughtUsd, valueUsd } = useMemo(() => {
+    if (
+      stakeUsdProp != null &&
+      valueUsdProp != null &&
+      Number.isFinite(stakeUsdProp) &&
+      Number.isFinite(valueUsdProp) &&
+      stakeUsdProp > 0
+    ) {
+      return { boughtUsd: stakeUsdProp, valueUsd: valueUsdProp };
+    }
     const safeProfit = Number.isFinite(profitUsd) ? profitUsd : 0;
     const safePercent = Number.isFinite(percent) ? percent : 0;
     if (!safePercent) return { boughtUsd: null as number | null, valueUsd: null as number | null };
     const bought = safeProfit / (safePercent / 100);
     if (!Number.isFinite(bought) || bought <= 0) return { boughtUsd: null, valueUsd: null };
     return { boughtUsd: bought, valueUsd: bought + safeProfit };
-  }, [profitUsd, percent]);
+  }, [profitUsd, percent, stakeUsdProp, valueUsdProp]);
 
   const dateLabel = useMemo(() => {
     if (!executedAt) return "";
@@ -146,7 +160,7 @@ export function TradePnLCard({
               </div>
             </div>
             <div
-              className="rounded-md px-2 py-1 font-mono text-[11px] font-semibold"
+              className="rounded-md px-2 py-1 font-money text-[11px] font-semibold tabular-nums"
               style={{ background: `rgba(${accentRgb},0.12)`, color: accentHex }}
             >
               {percent >= 0 ? "+" : ""}{percent.toFixed(1)}%
@@ -159,7 +173,7 @@ export function TradePnLCard({
               Profit / Loss
             </p>
             <p
-              className="mt-1 font-mono text-3xl font-bold tabular-nums tracking-tight"
+              className="mt-1 font-money text-3xl font-bold tabular-nums tracking-tight"
               style={{ color: accentHex }}
             >
               {profitUsd >= 0 ? "+" : "-"}{formatUsd(profitUsd)}
@@ -185,7 +199,7 @@ export function TradePnLCard({
               <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "#6B6B80" }}>
                 Bought
               </p>
-              <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums" style={{ color: "#B8B8CC" }}>
+              <p className="mt-0.5 font-money text-sm font-semibold tabular-nums" style={{ color: "#B8B8CC" }}>
                 {boughtUsd != null ? formatUsd(boughtUsd) : "—"}
               </p>
             </div>
@@ -193,7 +207,7 @@ export function TradePnLCard({
               <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "#6B6B80" }}>
                 Value
               </p>
-              <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums" style={{ color: accentHex }}>
+              <p className="mt-0.5 font-money text-sm font-semibold tabular-nums" style={{ color: accentHex }}>
                 {valueUsd != null ? formatUsd(valueUsd) : "—"}
               </p>
             </div>
@@ -219,7 +233,7 @@ export function TradePnLCard({
               )}
             </div>
             <span
-              className="rounded-full px-2.5 py-1 font-mono text-[10px] font-medium"
+              className="rounded-full px-2.5 py-1 font-sub text-[10px] font-medium"
               style={{ background: `rgba(${accentRgb},0.1)`, color: accentHex }}
             >
               onsiren.xyz
@@ -253,7 +267,7 @@ export function TradePnLCard({
       </div>
 
       {wallet && (
-        <p className="font-mono text-[10px]" style={{ color: "var(--text-3)" }}>
+        <p className="font-sub text-[10px]" style={{ color: "var(--text-3)" }}>
           {maskWallet(wallet)}
         </p>
       )}

@@ -86,7 +86,7 @@ function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
 
 function getTradeErrorStatus(error?: string | null): number {
   const lower = error?.toLowerCase().trim() ?? "";
-  if (!lower) return 503;
+  if (!lower) return 502;
   if (lower.includes("rate limited") || lower.includes("429")) return 429;
   if (
     lower.includes("wallet must be verified") ||
@@ -106,7 +106,7 @@ function getTradeErrorStatus(error?: string | null): number {
   ) {
     return 400;
   }
-  return 503;
+  return 502;
 }
 
 let signalRouteCache: { expiresAt: number; value: Awaited<ReturnType<typeof getSignalFeedSnapshot>> } | null = null;
@@ -1478,7 +1478,7 @@ export function registerRoutes(app: FastifyInstance) {
         const supabase = getSupabaseAdminClient();
         const { data, error } = await supabase
           .from("users")
-          .select("id,wallet,username,display_name,created_at,country")
+          .select("id,wallet,username,display_name,avatar_url,created_at,country")
           .eq("wallet", wallet)
           .maybeSingle();
         if (error && error.code !== "PGRST116") {
@@ -1491,6 +1491,81 @@ export function registerRoutes(app: FastifyInstance) {
         return reply.status(500).send({ success: false, error: "Server error" });
       }
     }
+  );
+
+  /** Upload profile image to Supabase Storage bucket `avatars` and set users.avatar_url. */
+  app.post<{ Body: { wallet: string; imageBase64: string } }>(
+    "/api/users/avatar",
+    async (req, reply) => {
+      const { wallet, imageBase64 } = req.body || {};
+      if (!wallet || typeof wallet !== "string" || wallet.trim().length < 20) {
+        return reply.status(400).send({ success: false, error: "Valid wallet address required" });
+      }
+      if (!imageBase64 || typeof imageBase64 !== "string") {
+        return reply.status(400).send({ success: false, error: "imageBase64 required" });
+      }
+      let base64 = imageBase64.trim();
+      let mime = "image/jpeg";
+      const dataUrlMatch = /^data:([^;]+);base64,(.+)$/i.exec(base64);
+      if (dataUrlMatch) {
+        mime = dataUrlMatch[1] || mime;
+        base64 = dataUrlMatch[2] || "";
+      }
+      if (base64.length > 2_500_000) {
+        return reply.status(400).send({ success: false, error: "Image too large" });
+      }
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(base64, "base64");
+      } catch {
+        return reply.status(400).send({ success: false, error: "Invalid base64 image" });
+      }
+      if (buffer.length < 24 || buffer.length > 2_000_000) {
+        return reply.status(400).send({ success: false, error: "Invalid image size" });
+      }
+      const w = wallet.trim().toLowerCase();
+      const ext = mime.includes("png") ? "png" : "jpg";
+      const contentType = ext === "png" ? "image/png" : "image/jpeg";
+      const objectPath = `${w.slice(0, 8)}-${w.slice(-6)}.${ext}`;
+
+      try {
+        const supabase = getSupabaseAdminClient();
+        const { error: upErr } = await supabase.storage.from("avatars").upload(objectPath, buffer, {
+          upsert: true,
+          contentType,
+        });
+        if (upErr) {
+          req.log.warn({ err: upErr }, "avatar storage upload failed");
+          return reply.status(503).send({
+            success: false,
+            error:
+              "Avatar storage failed. In Supabase: create a public bucket named avatars (or fix Storage policies).",
+          });
+        }
+        const { data: pub } = supabase.storage.from("avatars").getPublicUrl(objectPath);
+        const publicUrl = pub?.publicUrl;
+        if (!publicUrl) {
+          return reply.status(503).send({ success: false, error: "Could not resolve public URL for avatar" });
+        }
+        const { data, error } = await supabase
+          .from("users")
+          .update({ avatar_url: publicUrl })
+          .eq("wallet", w)
+          .select("id,wallet,avatar_url")
+          .maybeSingle();
+        if (error) {
+          req.log.error({ err: error }, "avatar_url column may be missing");
+          return reply.status(503).send({
+            success: false,
+            error: "Could not save avatar URL. Run: ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;",
+          });
+        }
+        return reply.send({ success: true, data: data ?? { wallet: w, avatar_url: publicUrl } });
+      } catch (e) {
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: "Server error" });
+      }
+    },
   );
 
   // ─── Jupiter Swap V2 Proxy ──────────────────────────────────
@@ -1757,7 +1832,8 @@ export function registerRoutes(app: FastifyInstance) {
         forcePredictionMarket,
       });
       if (result.error || !result.transaction) {
-        return reply.status(getTradeErrorStatus(result.error)).send({ success: false, error: result.error || "Swap failed" });
+        const msg = result.error?.trim() || "Trade could not be built. Check DFlow verification, API keys, and try again.";
+        return reply.status(getTradeErrorStatus(msg)).send({ success: false, error: msg });
       }
       let txBase64 = result.transaction;
       if (result.provider === "bags" || result.provider === "dflow") {

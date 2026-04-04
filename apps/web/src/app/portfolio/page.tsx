@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
@@ -8,7 +8,7 @@ import { PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@so
 import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
-  ChevronDown, ArrowUp, ArrowDown, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2,
+  ChevronDown, ArrowUp, ArrowDown, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2, Settings,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
@@ -23,6 +23,12 @@ import {
 } from "@/lib/dflowProof";
 import { API_URL } from "@/lib/apiUrl";
 import { TradePnLCard } from "@/components/TradePnLCard";
+import {
+  getPositionEntry,
+  setPositionEntry,
+  pnlFromAvgEntry,
+  markCentsForSide,
+} from "@/lib/positionEntryStorage";
 
 const LAMPORTS_PER_SOL = 1e9;
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -42,6 +48,25 @@ interface Position {
   status?: string;
   mint?: string;
   kalshi_url?: string;
+  yesBid?: string;
+  yesAsk?: string;
+  currentPriceUsd?: number;
+  marketValueUsd?: number;
+}
+
+function computePositionPnl(p: Position): { usd: number; pct: number } {
+  const shares = p.quantity ?? p.balance ?? 0;
+  const entry = p.mint ? getPositionEntry(p.mint) : null;
+  if (entry && shares > 0) {
+    const { pnlUsd, pnlPct } = pnlFromAvgEntry({
+      side: p.side,
+      probability: p.probability,
+      shares,
+      avgCents: entry.avgCents,
+    });
+    return { usd: pnlUsd, pct: pnlPct };
+  }
+  return { usd: p.pnlUsd ?? 0, pct: p.pnlPct ?? 0 };
 }
 
 const fmtUsd = (n: number) =>
@@ -342,12 +367,14 @@ function TokenRow({ symbol, balance, usdValue }: {
 
 // ── Position Row ────────────────────────────────────────────────────
 
-function PositionRow({ position: p }: { position: Position }) {
+function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntrySaved: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [avgCentsDraft, setAvgCentsDraft] = useState("");
   const { setSelectedToken } = useSirenStore();
   const { publicKey } = useSirenWallet();
   const walletKey = publicKey?.toBase58() ?? null;
+  const addToast = useToastStore((s) => s.addToast);
 
   const { data: shareProfile } = useQuery({
     queryKey: ["user-profile", walletKey],
@@ -363,14 +390,23 @@ function PositionRow({ position: p }: { position: Position }) {
   });
 
   const settled = p.status === "settled";
-  const pnl = p.pnlUsd ?? 0;
-  const pnlPct = p.pnlPct ?? 0;
+  const { usd: pnl, pct: pnlPct } = computePositionPnl(p);
   const shares = p.quantity ?? p.balance ?? 0;
   const prob = p.probability ?? 0;
   const probPct = prob > 1 ? prob : prob * 100;
   const entry = p.entryPrice ?? 0;
-  const current = p.currentPrice ?? (prob > 1 ? prob / 100 : prob);
+  const current = p.currentPriceUsd ?? p.currentPrice ?? (prob > 1 ? prob / 100 : prob);
   const kalshiUrl = p.kalshi_url || `https://kalshi.com/markets/${p.ticker?.toLowerCase()}`;
+  const markCents = markCentsForSide(p.side, p.probability);
+  const savedEntry = p.mint ? getPositionEntry(p.mint) : null;
+  const stakeForCard =
+    savedEntry && shares > 0 ? (shares * savedEntry.avgCents) / 100 : null;
+  const valueForCard =
+    typeof p.marketValueUsd === "number" && Number.isFinite(p.marketValueUsd)
+      ? p.marketValueUsd
+      : shares > 0
+        ? (shares * markCents) / 100
+        : null;
 
   const handleSell = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -384,7 +420,7 @@ function PositionRow({ position: p }: { position: Position }) {
         mint: p.mint,
         name: p.title || p.ticker,
         symbol: p.ticker,
-        price: current,
+        price: typeof current === "number" ? current : prob > 1 ? prob / 100 : prob,
         assetType: "prediction",
         marketTicker: p.ticker,
         marketTitle: p.title,
@@ -439,7 +475,7 @@ function PositionRow({ position: p }: { position: Position }) {
           <p className="font-money tabular-nums text-sm font-semibold" style={{ color: pnlColor(pnl) }}>
             {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
           </p>
-          {pnlPct !== 0 && (
+          {(pnlPct !== 0 || savedEntry) && (
             <p className="font-money tabular-nums text-[11px] font-medium" style={{ color: pnlColor(pnlPct) }}>
               {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%
             </p>
@@ -454,52 +490,142 @@ function PositionRow({ position: p }: { position: Position }) {
             <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>${fmtUsd(entry)}</span>
           </span>
         )}
-        {current > 0 && (
+        {(typeof current === "number" ? current : 0) > 0 && (
           <span>
-            {settled ? "Final" : "Current"}{" "}
-            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>${fmtUsd(current)}</span>
+            {settled ? "Final" : "Mark"}{" "}
+            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>${fmtUsd(typeof current === "number" ? current : 0)}</span>
           </span>
         )}
         <span>
-          Prob{" "}
+          YES implied{" "}
           <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>{probPct.toFixed(0)}%</span>
         </span>
+        {p.yesBid != null && p.yesAsk != null && (
+          <span className="w-full sm:w-auto">
+            Book{" "}
+            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
+              bid {p.yesBid} / ask {p.yesAsk}
+            </span>
+          </span>
+        )}
       </div>
 
+      {!savedEntry && !settled && (
+        <p className="mt-2 font-sub text-[10px] leading-snug" style={{ color: "var(--text-3)" }}>
+          Set your average buy (¢ per share) below to track unrealized PnL. We do not see your Kalshi fills on-chain.
+        </p>
+      )}
+
       {expanded && (
-        <div className="mt-3 border-t pt-3 flex flex-wrap gap-2" style={{ borderColor: "var(--border-subtle)" }}>
-          <a
-            href={kalshiUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
-            style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-          >
-            View on Kalshi ↗
-          </a>
-          <button
-            type="button"
-            onClick={handleSharePnL}
-            className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
-            style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-          >
-            <Share2 className="h-3 w-3" />
-            Share PnL
-          </button>
+        <div className="mt-3 space-y-3 border-t pt-3" style={{ borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
+          <div>
+            <p className="font-heading text-sm font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
+              {p.title || p.ticker}
+            </p>
+            <p className="mt-1 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+              {p.side.toUpperCase()} · {shares.toFixed(shares >= 1 ? 0 : 2)} shares · Mark{" "}
+              <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
+                {markCents.toFixed(0)}¢
+              </span>
+              {typeof p.marketValueUsd === "number" && (
+                <>
+                  {" "}
+                  · Value{" "}
+                  <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
+                    ${fmtUsd(p.marketValueUsd)}
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
           {!settled && p.mint && (
+            <div className="rounded-lg border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+              <p className="font-sub text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                Avg buy ({p.side.toUpperCase()} ¢ / share)
+              </p>
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={100}
+                  step={1}
+                  placeholder={savedEntry ? String(savedEntry.avgCents) : "e.g. 20"}
+                  value={avgCentsDraft}
+                  onChange={(e) => setAvgCentsDraft(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-24 rounded-md border px-2 py-1.5 font-money text-sm tabular-nums outline-none"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background: "var(--bg-base)",
+                    color: "var(--text-1)",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const n = parseFloat(avgCentsDraft);
+                    if (!p.mint || !Number.isFinite(n) || n < 0 || n > 100) {
+                      addToast("Enter average price in cents (0–100).", "error");
+                      return;
+                    }
+                    setPositionEntry(p.mint, n);
+                    setAvgCentsDraft("");
+                    onEntrySaved();
+                    addToast("Saved average buy for PnL.", "success");
+                    hapticLight();
+                  }}
+                  className="rounded-md px-3 py-1.5 font-heading text-[11px] font-semibold"
+                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={kalshiUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
+              style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+            >
+              Full market on Kalshi ↗
+            </a>
+            <Link
+              href="/"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
+              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+            >
+              Open terminal
+            </Link>
             <button
               type="button"
-              onClick={handleSell}
-              className="rounded-md px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
-              style={{ background: "rgba(239,68,68,0.15)", color: "var(--down)" }}
+              onClick={handleSharePnL}
+              className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
+              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
             >
-              Sell
+              <Share2 className="h-3 w-3" />
+              Share PnL
             </button>
-          )}
-          <span className="font-sub text-[10px] self-center" style={{ color: "var(--text-3)" }}>
-            {p.ticker}
-          </span>
+            {!settled && p.mint && (
+              <button
+                type="button"
+                onClick={handleSell}
+                className="rounded-md px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
+                style={{ background: "rgba(239,68,68,0.15)", color: "var(--down)" }}
+              >
+                Sell
+              </button>
+            )}
+            <span className="font-sub text-[10px] self-center" style={{ color: "var(--text-3)" }}>
+              {p.ticker}
+            </span>
+          </div>
         </div>
       )}
 
@@ -528,6 +654,8 @@ function PositionRow({ position: p }: { position: Position }) {
               kalshiMarket={`${p.side.toUpperCase()} · ${p.title || p.ticker}`}
               wallet={walletKey}
               displayName={shareHandle}
+              stakeUsd={stakeForCard}
+              valueUsd={valueForCard}
             />
             <button
               type="button"
@@ -562,6 +690,7 @@ export default function PortfolioPage() {
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
   const [usernameSaving, setUsernameSaving] = useState(false);
+  const [entryEpoch, setEntryEpoch] = useState(0);
 
   const walletKey = publicKey?.toBase58() ?? null;
 
@@ -573,7 +702,11 @@ export default function PortfolioPage() {
       const res = await fetch(`${API_URL}/api/users/profile?wallet=${encodeURIComponent(walletKey)}`, { credentials: "omit" });
       if (!res.ok) return null;
       const payload = await res.json().catch(() => ({}));
-      return (payload?.data ?? null) as { username?: string; display_name?: string } | null;
+      return (payload?.data ?? null) as {
+        username?: string;
+        display_name?: string;
+        avatar_url?: string | null;
+      } | null;
     },
     enabled: !!walletKey,
     staleTime: 60_000,
@@ -664,7 +797,10 @@ export default function PortfolioPage() {
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");
   const activeTab = positionTab === "open" ? openPositions : settledPositions;
-  const totalPnl = positions.reduce((sum, p) => sum + (p.pnlUsd ?? 0), 0);
+  const totalPnl = useMemo(
+    () => positions.reduce((sum, p) => sum + computePositionPnl(p).usd, 0),
+    [positions, entryEpoch],
+  );
 
   // ── Identity ──────────────────────────────────────────────────
 
@@ -844,23 +980,43 @@ export default function PortfolioPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full"
-                        style={{ background: "linear-gradient(135deg, var(--accent), #00C853)" }}>
-                        <span className="font-heading text-[10px] font-bold" style={{ color: "var(--bg-base)" }}>
-                          {(profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <span className="font-body text-xs font-medium" style={{ color: "var(--text-1)" }}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {profile?.avatar_url ? (
+                        <img
+                          src={profile.avatar_url}
+                          alt=""
+                          className="h-7 w-7 rounded-full object-cover shrink-0 border"
+                          style={{ borderColor: "var(--border-subtle)" }}
+                        />
+                      ) : (
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full shrink-0"
+                          style={{ background: "linear-gradient(135deg, var(--accent), #00C853)" }}>
+                          <span className="font-heading text-[10px] font-bold" style={{ color: "var(--bg-base)" }}>
+                            {(profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <span className="font-body text-xs font-medium truncate" style={{ color: "var(--text-1)" }}>
                         {profile?.display_name || profile?.username || "Set username"}
                       </span>
                     </div>
-                    <button type="button"
-                      onClick={() => { hapticLight(); setUsernameInput(profile?.username || ""); setEditingUsername(true); }}
-                      className="rounded-md p-1 hover:bg-[var(--bg-elevated)]"
-                      style={{ color: "var(--text-3)" }}>
-                      <Pencil className="h-3 w-3" />
-                    </button>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <Link
+                        href="/settings"
+                        onClick={() => hapticLight()}
+                        className="rounded-md p-1 hover:bg-[var(--bg-elevated)]"
+                        style={{ color: "var(--text-3)" }}
+                        aria-label="Settings"
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                      </Link>
+                      <button type="button"
+                        onClick={() => { hapticLight(); setUsernameInput(profile?.username || ""); setEditingUsername(true); }}
+                        className="rounded-md p-1 hover:bg-[var(--bg-elevated)]"
+                        style={{ color: "var(--text-3)" }}>
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -949,7 +1105,13 @@ export default function PortfolioPage() {
                 {positionTab === "open" ? "No open positions yet." : "No settled positions yet."}
               </p>
             ) : (
-              activeTab.map((p, i) => <PositionRow key={`${p.ticker}-${i}`} position={p} />)
+              activeTab.map((p, i) => (
+                <PositionRow
+                  key={`${p.ticker}-${i}`}
+                  position={p}
+                  onEntrySaved={() => setEntryEpoch((n) => n + 1)}
+                />
+              ))
             )}
           </div>
         </div>

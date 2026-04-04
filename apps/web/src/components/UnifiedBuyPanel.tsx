@@ -1985,7 +1985,7 @@ export function UnifiedBuyPanel() {
                           </ResponsiveContainer>
                         </div>
                       )}
-                      <CopyCAButton mint={selectedToken.mint} />
+                      {!isPredictionToken && <CopyCAButton mint={selectedToken.mint} />}
                     </div>
                   </div>
                   {!(isPredictionToken && sellMode) && (

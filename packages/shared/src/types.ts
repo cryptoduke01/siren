@@ -149,6 +149,15 @@ export interface DflowPositionRow {
   kalshi_url?: string;
   /** Kalshi-implied YES probability (0–100) when bid/ask available */
   probability?: number;
+  /** YES bid/ask from metadata when present (0–1 or string from API). */
+  yesBid?: string;
+  yesAsk?: string;
+  /** Share count (same as balance; explicit for clients). */
+  quantity?: number;
+  /** Approximate mark in USD per share for this side (YES: prob/100, NO: (100-prob)/100). */
+  currentPriceUsd?: number;
+  /** Mark-to-market USD: quantity * currentPriceUsd. */
+  marketValueUsd?: number;
   verified: true;
 }
 

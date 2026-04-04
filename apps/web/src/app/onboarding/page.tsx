@@ -1,31 +1,73 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { hapticLight } from "@/lib/haptics";
+import { API_URL } from "@/lib/apiUrl";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
 export default function OnboardingPage() {
-  const { connected, walletSessionStatus } = useSirenWallet();
+  const { connected, walletSessionStatus, publicKey } = useSirenWallet();
   const { login, ready } = usePrivy();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [usernameSaving, setUsernameSaving] = useState(false);
+
+  const walletKey = publicKey?.toBase58() ?? null;
+  const showProfileStep = connected && walletSessionStatus === "ready";
+
+  const finishAndGo = useCallback(() => {
+    try {
+      localStorage.setItem("siren-onboarding-complete", "true");
+    } catch {
+      /* ignore */
+    }
+    router.replace("/");
+  }, [router]);
+
+  const handleSaveUsernameAndContinue = useCallback(async () => {
+    hapticLight();
+    const clean = usernameDraft.trim().replace(/[^a-zA-Z0-9_.\-]/g, "");
+    if (clean.length >= 2 && walletKey) {
+      setUsernameSaving(true);
+      try {
+        const res = await fetch(`${API_URL}/api/users/username`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wallet: walletKey, username: clean }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setLoginError(typeof payload?.error === "string" ? payload.error : "Could not save username.");
+          setUsernameSaving(false);
+          return;
+        }
+      } catch {
+        setLoginError("Network error saving username.");
+        setUsernameSaving(false);
+        return;
+      }
+      setUsernameSaving(false);
+    }
+    finishAndGo();
+  }, [usernameDraft, walletKey, finishAndGo]);
 
   useEffect(() => {
-    if (connected && walletSessionStatus === "ready") {
-      try {
-        localStorage.setItem("siren-onboarding-complete", "true");
-      } catch {
-        /* ignore */
+    if (!showProfileStep) return;
+    try {
+      if (localStorage.getItem("siren-onboarding-complete") === "true") {
+        router.replace("/");
       }
-      router.replace("/");
+    } catch {
+      /* ignore */
     }
-  }, [connected, walletSessionStatus, router]);
+  }, [showProfileStep, router]);
 
   const handleLogin = async () => {
     hapticLight();
@@ -59,63 +101,119 @@ export default function OnboardingPage() {
           className="h-8 w-auto mb-10"
         />
 
-        <h1
-          className="font-heading font-bold tracking-tight mb-3"
-          style={{ color: "var(--text-1)", fontSize: "clamp(1.5rem, 4vw, 2rem)", lineHeight: 1.15 }}
-        >
-          Trade the signal.
-        </h1>
-
-        <p className="font-body text-sm mb-10" style={{ color: "var(--text-3)" }}>
-          Prediction markets + meme tokens. One terminal.
-        </p>
-
-        {PRIVY_APP_ID ? (
+        {!showProfileStep ? (
           <>
-            {isInitializing && (
-              <div
-                className="flex items-center justify-center gap-2 w-full rounded-lg border px-3 py-2.5 mb-4 font-label text-[11px]"
-                style={{
-                  borderColor: "var(--border-subtle)",
-                  background: "var(--bg-elevated)",
-                  color: "var(--text-2)",
-                }}
-              >
-                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: "var(--accent)" }} />
-                {statusLabel}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => void handleLogin()}
-              disabled={!ready || isInitializing}
-              className="w-full py-3.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+            <h1
+              className="font-heading font-bold tracking-tight mb-3"
+              style={{ color: "var(--text-1)", fontSize: "clamp(1.5rem, 4vw, 2rem)", lineHeight: 1.15 }}
             >
-              {!ready ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-                </span>
-              ) : (
-                "Sign in"
-              )}
-            </button>
+              Trade the signal.
+            </h1>
 
+            <p className="font-body text-sm mb-10" style={{ color: "var(--text-3)" }}>
+              Prediction markets + meme tokens. One terminal.
+            </p>
+
+            {PRIVY_APP_ID ? (
+              <>
+                {isInitializing && (
+                  <div
+                    className="flex items-center justify-center gap-2 w-full rounded-lg border px-3 py-2.5 mb-4 font-label text-[11px]"
+                    style={{
+                      borderColor: "var(--border-subtle)",
+                      background: "var(--bg-elevated)",
+                      color: "var(--text-2)",
+                    }}
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: "var(--accent)" }} />
+                    {statusLabel}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void handleLogin()}
+                  disabled={!ready || isInitializing}
+                  className="w-full py-3.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                >
+                  {!ready ? (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+                    </span>
+                  ) : (
+                    "Sign in"
+                  )}
+                </button>
+
+                {loginError && (
+                  <p className="font-body text-xs mt-3" style={{ color: "var(--down)" }}>
+                    {loginError}
+                  </p>
+                )}
+
+                <p className="font-body text-[11px] mt-4 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Email, Google, GitHub, or X. Embedded Solana wallet, no extension needed.
+                </p>
+              </>
+            ) : (
+              <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
+                Privy app ID not configured.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <h1
+              className="font-heading font-bold tracking-tight mb-3"
+              style={{ color: "var(--text-1)", fontSize: "clamp(1.35rem, 4vw, 1.75rem)", lineHeight: 1.15 }}
+            >
+              You are in.
+            </h1>
+            <p className="font-body text-sm mb-6" style={{ color: "var(--text-3)" }}>
+              Username is optional. It shows on share cards and your portfolio. You can add or change it later in portfolio or skip now.
+            </p>
+            <label className="sr-only" htmlFor="onboarding-username">
+              Username (optional)
+            </label>
+            <input
+              id="onboarding-username"
+              type="text"
+              value={usernameDraft}
+              onChange={(e) => setUsernameDraft(e.target.value.replace(/[^a-zA-Z0-9_.\-]/g, "").slice(0, 20))}
+              placeholder="username (optional)"
+              className="w-full rounded-lg border px-3 py-2.5 font-body text-sm text-left outline-none mb-3"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "var(--bg-elevated)",
+                color: "var(--text-1)",
+              }}
+              autoComplete="username"
+            />
             {loginError && (
-              <p className="font-body text-xs mt-3" style={{ color: "var(--down)" }}>
+              <p className="font-body text-xs mb-3 w-full text-left" style={{ color: "var(--down)" }}>
                 {loginError}
               </p>
             )}
-
-            <p className="font-body text-[11px] mt-4 leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Email, Google, GitHub, or X — embedded Solana wallet, no extension needed.
-            </p>
+            <button
+              type="button"
+              disabled={usernameSaving}
+              onClick={() => void handleSaveUsernameAndContinue()}
+              className="w-full py-3.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+            >
+              {usernameSaving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Continue"}
+            </button>
+            <button
+              type="button"
+              disabled={usernameSaving}
+              onClick={() => { hapticLight(); setLoginError(null); finishAndGo(); }}
+              className="mt-3 font-sub text-xs"
+              style={{ color: "var(--text-3)" }}
+            >
+              Skip for now
+            </button>
           </>
-        ) : (
-          <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-            Privy app ID not configured.
-          </p>
         )}
 
         <Link

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Star, Sun, Moon, Rocket, TrendingUp, User } from "lucide-react";
+import { Menu, X, Star, Sun, Moon, Rocket, TrendingUp, User, Settings } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
@@ -122,6 +122,15 @@ export function TopBar() {
           >
             <User className="w-3.5 h-3.5" />
           </Link>
+          <Link
+            href="/settings"
+            onClick={() => hapticLight()}
+            className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-all hover:bg-[var(--bg-hover)] active:scale-95"
+            style={{ color: pathname === "/settings" ? "var(--accent)" : "var(--text-2)" }}
+            aria-label="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </Link>
           <button
             type="button"
             onClick={() => { hapticLight(); toggleTheme(); }}
@@ -216,6 +225,14 @@ export function TopBar() {
                   style={{ color: pathname === "/portfolio" ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
                 >
                   Portfolio
+                </Link>
+                <Link
+                  href="/settings"
+                  onClick={() => { hapticLight(); setMenuOpen(false); }}
+                  className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
+                  style={{ color: pathname === "/settings" ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
+                >
+                  Settings
                 </Link>
                 <div className="flex items-center justify-between py-3 px-3 rounded-[8px] mt-2" style={{ background: "var(--bg-elevated)" }}>
                   <span className="font-body text-sm" style={{ color: "var(--text-2)" }}>Theme</span>
