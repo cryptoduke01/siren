@@ -51,10 +51,22 @@ function windowStartIso(window: "7d" | "30d" | "all"): string | null {
 const MAX_TRADE_ROWS = 25_000;
 const PAGE = 1000;
 
+function isSirenTradesMissingError(err: { message?: string; code?: string } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message || "").toLowerCase();
+  const code = (err.code || "").toLowerCase();
+  return (
+    code === "42p01" ||
+    msg.includes("siren_trades") ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 async function fetchTradesInWindow(
   client: SupabaseClient,
   sinceIso: string | null,
-): Promise<{ rows: SirenTradeRow[]; truncated: boolean }> {
+): Promise<{ rows: SirenTradeRow[]; truncated: boolean; missingTable?: boolean }> {
   const out: SirenTradeRow[] = [];
   let from = 0;
   /** Bounded windows: oldest-first (full window fits in cap). All-time: newest-first pages, then reverse for FIFO. */
@@ -70,7 +82,12 @@ async function fetchTradesInWindow(
     }
     const { data, error } = await q.range(from, from + PAGE - 1);
 
-    if (error) throw new Error(error.message || "siren_trades query failed");
+    if (error) {
+      if (isSirenTradesMissingError(error)) {
+        return { rows: [], truncated: false, missingTable: true };
+      }
+      throw new Error(error.message || "siren_trades query failed");
+    }
     const rows = (data ?? []) as SirenTradeRow[];
     if (rows.length === 0) break;
     out.push(...rows);
@@ -246,15 +263,36 @@ export async function buildLeaderboard(params: {
   let truncated = false;
   try {
     const fetched = await fetchTradesInWindow(client, sinceIso);
+    if (fetched.missingTable) {
+      return {
+        window,
+        scope,
+        metric,
+        entries: [],
+        emptyReason:
+          "Rankings will go live once trade history is connected. Meanwhile, check Activity on Portfolio for this device.",
+      };
+    }
     trades = fetched.rows;
     truncated = fetched.truncated;
   } catch (e) {
+    const msg = (e as Error).message || "";
+    if (/siren_trades|schema cache|does not exist/i.test(msg)) {
+      return {
+        window,
+        scope,
+        metric,
+        entries: [],
+        emptyReason:
+          "Rankings will go live once trade history is connected. Meanwhile, check Activity on Portfolio for this device.",
+      };
+    }
     return {
       window,
       scope,
       metric,
       entries: [],
-      emptyReason: (e as Error).message || "Could not load trades",
+      emptyReason: "Could not load rankings right now. Try again in a moment.",
     };
   }
 
@@ -264,7 +302,7 @@ export async function buildLeaderboard(params: {
       scope,
       metric,
       entries: [],
-      emptyReason: "No logged trades in this period yet. Trades appear after successful swaps (see siren_trades in Supabase).",
+      emptyReason: "No trades in this period yet. Trade from the terminal and they will show up here.",
     };
   }
 

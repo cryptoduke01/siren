@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
@@ -30,6 +30,7 @@ import {
   pnlFromAvgEntry,
   markCentsForSide,
 } from "@/lib/positionEntryStorage";
+import { pushLocalTrade, readLocalTrades, type LocalTradeLedgerRow } from "@/lib/localTradeLedger";
 
 const LAMPORTS_PER_SOL = 1e9;
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -200,7 +201,37 @@ const SWAP_TOKENS = [
   { symbol: "USDT", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6 },
 ];
 
-function SwapPanel() {
+const MINT_SYMBOL: Record<string, string> = Object.fromEntries(SWAP_TOKENS.map((t) => [t.mint, t.symbol]));
+
+function symbolForMint(mint: string): string {
+  return MINT_SYMBOL[mint] ?? `${mint.slice(0, 4)}…`;
+}
+
+function formatActivitySummary(row: LocalTradeLedgerRow): string {
+  const sym = symbolForMint(row.mint);
+  if (row.side === "sell") {
+    return `Sold · ${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${sym}`;
+  }
+  if (row.solAmount > 0) {
+    return `Swapped · ${fmtToken(row.solAmount, 4)} SOL → ~${fmtToken(row.tokenAmount, 2)} ${sym}`;
+  }
+  return `Bought · ~${fmtToken(row.tokenAmount, 4)} ${sym}`;
+}
+
+function formatActivityTime(ts: number): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(ts));
+  } catch {
+    return "";
+  }
+}
+
+function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
   const { publicKey, signTransaction } = useSirenWallet();
   const queryClient = useQueryClient();
   const showResultModal = useResultModalStore((s) => s.show);
@@ -286,6 +317,36 @@ function SwapPanel() {
         body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: parseFloat(amount) }),
       }).catch(() => {});
 
+      const outUi =
+        quoteData && quoteData.outAmount
+          ? parseInt(quoteData.outAmount, 10) / 10 ** toToken.decimals
+          : 0;
+      const amtNum = parseFloat(amount) || 0;
+      pushLocalTrade(publicKey.toBase58(), {
+        ts: Date.now(),
+        mint: toToken.mint,
+        side: "buy",
+        solAmount: fromToken.symbol === "SOL" ? amtNum : 0,
+        tokenAmount: outUi,
+        priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : 0,
+      });
+      fetch(`${API_URL}/api/trades/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: publicKey.toBase58(),
+          mint: toToken.mint,
+          side: "buy",
+          tokenAmount: outUi || null,
+          priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : null,
+          tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
+          tokenSymbol: toToken.symbol,
+          txSignature: typeof result.signature === "string" ? result.signature : `swap-${Date.now()}`,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      onActivityLogged?.();
+
       const sig = typeof result.signature === "string" ? result.signature : undefined;
       showResultModal({
         type: "success",
@@ -306,7 +367,7 @@ function SwapPanel() {
     } finally {
       setLoading(false);
     }
-  }, [publicKey, signTransaction, amount, fromToken, toToken, showResultModal, queryClient]);
+  }, [publicKey, signTransaction, amount, fromToken, toToken, quoteData, showResultModal, queryClient, onActivityLogged]);
 
   const outDisplay = quoteData
     ? (parseInt(quoteData.outAmount, 10) / 10 ** toToken.decimals).toFixed(toToken.decimals === 9 ? 6 : 2)
@@ -408,6 +469,7 @@ function TokenRow({ symbol, balance, usdValue }: {
 
 function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntrySaved: () => void }) {
   const [shareOpen, setShareOpen] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [avgCentsDraft, setAvgCentsDraft] = useState("");
   const { setSelectedToken } = useSirenStore();
   const { publicKey } = useSirenWallet();
@@ -428,15 +490,31 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
   });
 
   const settled = p.status === "settled";
-  const { usd: pnl, pct: pnlPct } = computePositionPnl(p);
   const shares = p.quantity ?? p.balance ?? 0;
   const prob = p.probability ?? 0;
   const probPct = prob > 1 ? prob : prob * 100;
-  const entry = p.entryPrice ?? 0;
   const current = p.currentPriceUsd ?? p.currentPrice ?? (prob > 1 ? prob / 100 : prob);
   const kalshiUrl = p.kalshi_url || `https://kalshi.com/markets/${p.ticker?.toLowerCase()}`;
   const markCents = markCentsForSide(p.side, p.probability);
   const savedEntry = p.mint ? getPositionEntry(p.mint) : null;
+  const draftParsed = avgCentsDraft.trim() === "" ? Number.NaN : parseFloat(avgCentsDraft);
+  const draftAvg =
+    Number.isFinite(draftParsed) && draftParsed >= 0 && draftParsed <= 100 ? draftParsed : null;
+  const avgCentsForPnl = draftAvg ?? savedEntry?.avgCents ?? null;
+  const fromLocalAvg =
+    avgCentsForPnl != null && shares > 0
+      ? pnlFromAvgEntry({
+          side: p.side,
+          probability: p.probability,
+          shares,
+          avgCents: avgCentsForPnl,
+        })
+      : null;
+  const apiPnl = computePositionPnl(p);
+  const pnl = fromLocalAvg != null ? fromLocalAvg.pnlUsd : apiPnl.usd;
+  const pnlPct = fromLocalAvg != null ? fromLocalAvg.pnlPct : apiPnl.pct;
+  const pnlIsPreview =
+    draftAvg != null && (!savedEntry || Math.abs(draftAvg - savedEntry.avgCents) > 1e-6);
   const stakeForCard =
     savedEntry && shares > 0 ? (shares * savedEntry.avgCents) / 100 : null;
   const valueForCard =
@@ -489,181 +567,186 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
 
   return (
     <div
-      className="rounded-xl border overflow-hidden transition-colors hover:border-[var(--accent)]/35"
+      className="rounded-2xl border overflow-hidden transition-colors hover:border-[var(--accent)]/35"
       style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
     >
-      <div className="flex flex-col md:flex-row md:items-stretch" style={{ borderLeft: "4px solid var(--accent)" }}>
-        <div className="min-w-0 flex-1 px-4 py-4 md:border-r md:pr-5" style={{ borderColor: "var(--border-subtle)" }}>
-          <h3
-            className="font-heading text-[15px] font-semibold leading-snug line-clamp-3"
-            style={{ color: "var(--text-1)" }}
-          >
+      <div className="px-5 py-6 space-y-5" style={{ borderLeft: "4px solid var(--accent)" }}>
+        <div>
+          <h3 className="font-heading text-lg font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
             {p.title || p.ticker}
           </h3>
-          <p className="mt-2 flex flex-wrap items-center gap-2 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+          <p className="mt-2 flex flex-wrap items-center gap-2 font-sub text-sm" style={{ color: "var(--text-3)" }}>
             <span
-              className="rounded px-1.5 py-0.5 font-sub text-[10px] font-semibold uppercase"
+              className="rounded-md px-2 py-0.5 font-heading text-[11px] font-semibold uppercase"
               style={{
-                background: p.side === "yes" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
+                background: p.side === "yes" ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
                 color: p.side === "yes" ? "var(--up)" : "var(--down)",
               }}
             >
               {p.side}
             </span>
             <span>{shares.toFixed(shares >= 1 ? 0 : 2)} shares</span>
-            <span className="font-label opacity-80">{p.ticker}</span>
             {settled && (
-              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: "rgba(255,255,255,0.06)" }}>
+              <span className="rounded-md px-2 py-0.5 text-[11px]" style={{ background: "rgba(255,255,255,0.06)" }}>
                 Settled
               </span>
             )}
           </p>
-          <p className="mt-3 font-sub text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-            <span className="font-money tabular-nums">{markCents.toFixed(0)}¢</span> mark
-            {valueUsdDisplay != null && (
-              <>
-                {" · "}
-                <span className="font-money tabular-nums">${fmtUsd(valueUsdDisplay)}</span> value
-              </>
-            )}
-            {" · "}
-            <span className="font-money tabular-nums">{probPct.toFixed(0)}%</span> YES implied
-            {p.yesBid != null && p.yesAsk != null && (
-              <>
-                {" · "}
-                <span className="font-money tabular-nums text-[11px]">
-                  bid {p.yesBid} / ask {p.yesAsk}
-                </span>
-              </>
+        </div>
+
+        <div
+          className="rounded-xl px-4 py-4"
+          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
+        >
+          <p className="font-sub text-[11px] uppercase tracking-wider mb-1" style={{ color: "var(--text-3)" }}>
+            Unrealized PnL
+            {pnlIsPreview && (
+              <span className="normal-case ml-2 opacity-80">(updates as you type — tap Save to keep)</span>
             )}
           </p>
-          {!savedEntry && !settled && (
-            <p className="mt-2 font-sub text-[10px] leading-snug" style={{ color: "var(--text-3)" }}>
-              Add your average buy (¢/share) once — we use it for unrealized PnL. Kalshi fills are not on-chain.
+          <p className="font-money tabular-nums text-3xl font-bold leading-none" style={{ color: pnlColor(pnl) }}>
+            {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
+          </p>
+          {(fromLocalAvg != null || (pnlPct !== 0 && avgCentsForPnl != null)) && (
+            <p className="font-money tabular-nums text-lg font-semibold mt-2" style={{ color: pnlColor(pnlPct) }}>
+              {pnlPct >= 0 ? "+" : ""}
+              {pnlPct.toFixed(1)}%
             </p>
           )}
-          {!settled && p.mint && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="font-sub text-[10px] uppercase tracking-wide shrink-0" style={{ color: "var(--text-3)" }}>
-                Avg buy (¢)
-              </span>
+        </div>
+
+        <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+          About <span className="font-money tabular-nums">{markCents.toFixed(0)}¢</span> per share right now
+          {valueUsdDisplay != null && (
+            <>
+              {" "}
+              (~<span className="font-money tabular-nums">${fmtUsd(valueUsdDisplay)}</span> total)
+            </>
+          )}
+          .
+        </p>
+
+        {p.yesBid != null && p.yesAsk != null && (
+          <div>
+            <button
+              type="button"
+              className="font-sub text-xs underline-offset-2 hover:underline"
+              style={{ color: "var(--text-3)" }}
+              onClick={() => setShowDetails(!showDetails)}
+            >
+              {showDetails ? "Hide" : "Show"} order book (bid / ask)
+            </button>
+            {showDetails && (
+              <p className="mt-2 font-money text-sm tabular-nums" style={{ color: "var(--text-2)" }}>
+                Bid {p.yesBid} · Ask {p.yesAsk}
+              </p>
+            )}
+          </div>
+        )}
+
+        {!settled && (
+          <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+            To estimate profit or loss, enter what you paid per share in cents (for example 20), then Save. We do not see
+            your Kalshi history automatically.
+          </p>
+        )}
+
+        {!settled && p.mint && (
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="font-sub text-[11px] uppercase tracking-wide block mb-1" style={{ color: "var(--text-3)" }}>
+                Paid (¢ per share)
+              </label>
               <input
                 type="number"
                 inputMode="decimal"
                 min={0}
                 max={100}
                 step={1}
-                placeholder={savedEntry ? String(savedEntry.avgCents) : "20"}
+                placeholder={savedEntry ? String(savedEntry.avgCents) : "e.g. 20"}
                 value={avgCentsDraft}
                 onChange={(e) => setAvgCentsDraft(e.target.value)}
-                className="w-20 rounded-md border px-2 py-1 font-money text-sm tabular-nums outline-none"
+                className="w-28 rounded-lg border px-3 py-2.5 font-money text-base tabular-nums outline-none"
                 style={{
                   borderColor: "var(--border-subtle)",
-                  background: "var(--bg-elevated)",
+                  background: "var(--bg-surface)",
                   color: "var(--text-1)",
                 }}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  hapticLight();
-                  const n = parseFloat(avgCentsDraft);
-                  if (!p.mint || !Number.isFinite(n) || n < 0 || n > 100) {
-                    showResultModal({
-                      type: "error",
-                      title: "Invalid entry",
-                      message: "Enter average price in cents between 0 and 100.",
-                    });
-                    return;
-                  }
-                  setPositionEntry(p.mint, n);
-                  setAvgCentsDraft("");
-                  onEntrySaved();
-                  showResultModal({
-                    type: "success",
-                    title: "Saved",
-                    message: "Average buy stored on this device for PnL on this position.",
-                  });
-                }}
-                className="rounded-md px-3 py-1 font-heading text-[11px] font-semibold"
-                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-              >
-                Save
-              </button>
-              {savedEntry && (
-                <span
-                  className="rounded-full border px-2 py-0.5 font-heading text-[10px] font-semibold"
-                  style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-                >
-                  Stamped @{savedEntry.avgCents.toFixed(0)}¢
-                </span>
-              )}
             </div>
-          )}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a
-              href={kalshiUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
-              style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-            >
-              Kalshi ↗
-            </a>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
-              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-            >
-              Terminal
-            </Link>
             <button
               type="button"
-              onClick={handleSharePnL}
-              className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
-              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+              onClick={() => {
+                hapticLight();
+                const n = parseFloat(avgCentsDraft);
+                if (!p.mint || !Number.isFinite(n) || n < 0 || n > 100) {
+                  showResultModal({
+                    type: "error",
+                    title: "Check the number",
+                    message: "Use a price in cents between 0 and 100.",
+                  });
+                  return;
+                }
+                setPositionEntry(p.mint, n);
+                setAvgCentsDraft("");
+                onEntrySaved();
+                showResultModal({
+                  type: "success",
+                  title: "Saved",
+                  message: "We will use this on this device for PnL on this position.",
+                });
+              }}
+              className="rounded-lg px-5 py-2.5 font-heading text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
             >
-              <Share2 className="h-3 w-3" />
-              Share
+              Save
             </button>
-            {!settled && p.mint && (
-              <button
-                type="button"
-                onClick={handleSell}
-                className="rounded-md px-2.5 py-1.5 font-heading text-[11px] font-semibold transition-all hover:brightness-110"
-                style={{ background: "rgba(239,68,68,0.15)", color: "var(--down)" }}
+            {savedEntry && (
+              <span
+                className="rounded-full border px-3 py-1 font-heading text-xs font-semibold self-center"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
               >
-                Sell
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div
-          className="shrink-0 px-4 py-4 md:w-[148px] flex flex-row md:flex-col justify-between md:justify-start gap-3 md:gap-1 border-t md:border-t-0"
-          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
-        >
-          <div className="text-left md:text-right flex-1 md:flex-none">
-            <p className="font-sub text-[9px] uppercase tracking-widest mb-0.5" style={{ color: "var(--text-3)" }}>
-              PnL
-            </p>
-            <p className="font-money tabular-nums text-xl md:text-2xl font-bold leading-tight" style={{ color: pnlColor(pnl) }}>
-              {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
-            </p>
-            {(savedEntry || pnlPct !== 0) && (
-              <p className="font-money tabular-nums text-sm font-semibold mt-0.5" style={{ color: pnlColor(pnlPct) }}>
-                {pnlPct >= 0 ? "+" : ""}
-                {pnlPct.toFixed(1)}%
-              </p>
-            )}
-          </div>
-          {entry > 0 && (
-            <p className="font-sub text-[10px] md:text-right self-center md:self-end" style={{ color: "var(--text-3)" }}>
-              Ref entry{" "}
-              <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
-                ${fmtUsd(entry)}
+                Saved @ {savedEntry.avgCents.toFixed(0)}¢
               </span>
-            </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <a
+            href={kalshiUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-lg border px-4 py-2.5 font-heading text-xs font-semibold hover:brightness-110 transition-all"
+            style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+          >
+            View on Kalshi ↗
+          </a>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 rounded-lg border px-4 py-2.5 font-heading text-xs font-semibold hover:brightness-110 transition-all"
+            style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+          >
+            Terminal
+          </Link>
+          <button
+            type="button"
+            onClick={handleSharePnL}
+            className="inline-flex items-center gap-1 rounded-lg border px-4 py-2.5 font-heading text-xs font-semibold transition-all hover:brightness-110"
+            style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            Share
+          </button>
+          {!settled && p.mint && (
+            <button
+              type="button"
+              onClick={handleSell}
+              className="rounded-lg px-4 py-2.5 font-heading text-xs font-semibold transition-all hover:brightness-110"
+              style={{ background: "rgba(239,68,68,0.15)", color: "var(--down)" }}
+            >
+              Sell
+            </button>
           )}
         </div>
       </div>
@@ -731,8 +814,20 @@ export default function PortfolioPage() {
   const [usernameInput, setUsernameInput] = useState("");
   const [usernameSaving, setUsernameSaving] = useState(false);
   const [entryEpoch, setEntryEpoch] = useState(0);
+  const [activityEpoch, setActivityEpoch] = useState(0);
 
   const walletKey = publicKey?.toBase58() ?? null;
+
+  const localActivity = useMemo(() => {
+    if (!walletKey) return [];
+    return [...readLocalTrades(walletKey)].sort((a, b) => b.ts - a.ts).slice(0, 40);
+  }, [walletKey, activityEpoch]);
+
+  useEffect(() => {
+    const bump = () => setActivityEpoch((n) => n + 1);
+    window.addEventListener("focus", bump);
+    return () => window.removeEventListener("focus", bump);
+  }, []);
 
   // ── Username / Profile ──────────────────────────────────────
   const { data: profile } = useQuery({
@@ -1119,10 +1214,51 @@ export default function PortfolioPage() {
           </button>
           {swapOpen && (
             <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
-              <SwapPanel />
+              <SwapPanel onActivityLogged={() => setActivityEpoch((n) => n + 1)} />
             </div>
           )}
         </div>
+
+        {/* ── Recent activity (on-device) ───────────────────── */}
+        {connected && walletKey && (
+          <div
+            className="mt-4 rounded-xl border p-5"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+          >
+            <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+              Recent activity
+            </h2>
+            <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Swaps from this page and buys from the terminal, saved on this device only.
+            </p>
+            {localActivity.length === 0 ? (
+              <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
+                Nothing here yet — swap below or buy a token from the terminal.
+              </p>
+            ) : (
+              <ul className="mt-5 space-y-3">
+                {localActivity.map((row, idx) => (
+                  <li
+                    key={`${row.ts}-${row.mint}-${idx}`}
+                    className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
+                    style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                  >
+                    <p className="font-body text-sm leading-snug min-w-0" style={{ color: "var(--text-1)" }}>
+                      {formatActivitySummary(row)}
+                    </p>
+                    <time
+                      className="font-sub text-[11px] shrink-0 tabular-nums pt-0.5"
+                      style={{ color: "var(--text-3)" }}
+                      dateTime={new Date(row.ts).toISOString()}
+                    >
+                      {formatActivityTime(row.ts)}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* ── Positions ─────────────────────────────────────── */}
         <div className="mt-4 rounded-xl border p-4"
@@ -1155,13 +1291,13 @@ export default function PortfolioPage() {
             ))}
           </div>
 
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="mt-3 flex flex-col gap-3">
             {positionsLoading ? (
-              <div className="col-span-full flex items-center justify-center py-8">
+              <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
               </div>
             ) : activeTab.length === 0 ? (
-              <p className="col-span-full py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
+              <p className="py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
                 {positionTab === "open" ? "No open positions yet." : "No settled positions yet."}
               </p>
             ) : (

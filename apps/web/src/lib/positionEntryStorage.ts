@@ -19,15 +19,19 @@ function readMap(): Record<string, PositionEntryRow> {
   }
 }
 
+function normMint(mint: string): string {
+  return mint.trim();
+}
+
 export function getPositionEntry(mint: string): PositionEntryRow | null {
-  const row = readMap()[mint];
+  const row = readMap()[normMint(mint)];
   if (!row || typeof row.avgCents !== "number" || !Number.isFinite(row.avgCents)) return null;
   return row;
 }
 
 export function setPositionEntry(mint: string, avgCents: number): void {
   const map = readMap();
-  map[mint] = { avgCents, updatedAt: Date.now() };
+  map[normMint(mint)] = { avgCents, updatedAt: Date.now() };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
 }
 

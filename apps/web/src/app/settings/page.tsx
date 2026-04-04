@@ -113,10 +113,7 @@ export default function SettingsPage() {
               Profile photo
             </h2>
             <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Requires Supabase: bucket <code className="font-label text-[10px]">avatars</code> (public), column{" "}
-              <code className="font-label text-[10px]">users.avatar_url</code>. Run{" "}
-              <code className="font-label text-[10px]">add_avatar_url.sql</code> and{" "}
-              <code className="font-label text-[10px]">supabase_avatars_bucket.sql</code> in the SQL editor.
+              JPEG, PNG, or WebP, up to about 1.5 MB. If upload fails, try a smaller file.
             </p>
 
             <div className="mt-4 flex items-center gap-4">

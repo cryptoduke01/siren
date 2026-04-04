@@ -129,7 +129,6 @@ export default function LeaderboardPage() {
 
   const entries = data?.data?.entries ?? [];
   const emptyReason = data?.data?.emptyReason;
-  const truncated = data?.data?.truncated === true;
 
   const podium = useMemo(() => {
     const a = entries[0];
@@ -159,12 +158,8 @@ export default function LeaderboardPage() {
             Leaderboard
           </h1>
         </div>
-        <p className="font-sub text-sm mb-2" style={{ color: "var(--text-3)" }}>
-          Top traders, markets, and tokens by on-app swap volume. Win rate uses FIFO sells vs your logged buys.
-        </p>
-        <p className="font-sub text-[11px] mb-6 leading-relaxed" style={{ color: "var(--text-3)", opacity: 0.85 }}>
-          7d / 30d use trades in that period. All time ranks from your most recent 25,000 logged trades (API cap);
-          if you need full history, we can add a SQL aggregate later.
+        <p className="font-sub text-sm mb-8 leading-relaxed" style={{ color: "var(--text-3)" }}>
+          Who is moving the most volume, and who is winning more than they lose. Pick a timeframe below.
         </p>
 
         <div className="flex rounded-lg border p-0.5 mb-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
@@ -233,15 +228,6 @@ export default function LeaderboardPage() {
             All time
           </button>
         </div>
-
-        {truncated && entries.length > 0 && (
-          <p
-            className="font-sub text-[11px] rounded-lg border px-3 py-2 mb-4"
-            style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-elevated)" }}
-          >
-            Hit the 25k trade cap for this request — volume and win rate may omit older activity.
-          </p>
-        )}
 
         {showWinRateCol && (
           <div
