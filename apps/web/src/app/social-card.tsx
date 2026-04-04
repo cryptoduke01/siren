@@ -168,9 +168,9 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
               <div
                 style={{
                   fontFamily: "Clash Display",
-                  fontSize: "72px",
-                  lineHeight: 0.92,
-                  letterSpacing: "-0.07em",
+                  fontSize: "66px",
+                  lineHeight: 0.96,
+                  letterSpacing: "-0.06em",
                   fontWeight: 700,
                   maxWidth: "92%",
                 }}
@@ -249,8 +249,8 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
             <div
               style={{
                 fontFamily: "Clash Display",
-                fontSize: "34px",
-                lineHeight: 1.02,
+                fontSize: "30px",
+                lineHeight: 1.06,
                 letterSpacing: "-0.055em",
                 fontWeight: 700,
                 maxWidth: "96%",
@@ -373,9 +373,9 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
                 background: green,
                 color: "#04110A",
                 fontFamily: "Clash Display",
-                fontSize: "24px",
+                fontSize: "22px",
                 fontWeight: 700,
-                letterSpacing: "-0.03em",
+                letterSpacing: "-0.02em",
               }}
             >
               Pick a side
