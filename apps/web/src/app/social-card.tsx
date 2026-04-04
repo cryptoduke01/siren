@@ -5,13 +5,50 @@ type SocialCardProps = {
 };
 
 const bg = "#060609";
-const surface = "#0F0F18";
-const grid = "rgba(255,255,255,0.05)";
+const surface = "#10111A";
+const surfaceSoft = "#141624";
+const border = "rgba(255,255,255,0.08)";
 const green = "#00FF85";
-const red = "#FF4560";
+const blue = "#6EA8FF";
+const red = "#FF5C7A";
 const text = "#F5F7FB";
-const textDim = "#9FA6B2";
-const tokenBlue = "#65C8FF";
+const textDim = "#A4ACBA";
+const textSoft = "#70798B";
+
+function Pill({
+  label,
+  tone = "neutral",
+}: {
+  label: string;
+  tone?: "neutral" | "green" | "blue";
+}) {
+  const styles =
+    tone === "green"
+      ? { background: "rgba(0,255,133,0.12)", color: "#9AF8C5", borderColor: "rgba(0,255,133,0.18)" }
+      : tone === "blue"
+        ? { background: "rgba(110,168,255,0.12)", color: "#BDD4FF", borderColor: "rgba(110,168,255,0.18)" }
+        : { background: "rgba(255,255,255,0.05)", color: textDim, borderColor: border };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "999px",
+        padding: "10px 16px",
+        border: `1px solid ${styles.borderColor}`,
+        background: styles.background,
+        color: styles.color,
+        fontSize: "18px",
+        fontWeight: 600,
+        letterSpacing: "-0.02em",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
 
 export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
   return (
@@ -31,18 +68,31 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
         style={{
           position: "absolute",
           inset: 0,
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)",
-          backgroundSize: "40px 40px",
-          opacity: 0.75,
+          background:
+            "radial-gradient(circle at 12% 18%, rgba(0,255,133,0.20), transparent 28%), radial-gradient(circle at 84% 14%, rgba(110,168,255,0.16), transparent 24%), radial-gradient(circle at 84% 82%, rgba(255,92,122,0.12), transparent 26%), linear-gradient(180deg, rgba(255,255,255,0.02), transparent 34%)",
         }}
       />
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background:
-            "radial-gradient(circle at 18% 22%, rgba(0,255,133,0.2), transparent 28%), radial-gradient(circle at 86% 82%, rgba(255,69,96,0.18), transparent 30%), radial-gradient(circle at 70% 20%, rgba(0,255,133,0.1), transparent 24%)",
+          opacity: 0.45,
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
+          backgroundSize: "44px 44px",
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          right: "-80px",
+          top: "-100px",
+          width: "320px",
+          height: "320px",
+          borderRadius: "999px",
+          background: "rgba(0,255,133,0.10)",
+          filter: "blur(80px)",
         }}
       />
 
@@ -51,7 +101,7 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
           display: "flex",
           width: "100%",
           padding: "56px",
-          gap: "36px",
+          gap: "30px",
         }}
       >
         <div
@@ -59,46 +109,41 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            width: "58%",
-            padding: "36px",
-            borderRadius: "32px",
-            border: `1px solid ${grid}`,
-            background: "linear-gradient(180deg, rgba(15,15,24,0.92), rgba(7,8,12,0.9))",
-            boxShadow: "0 20px 80px rgba(0,0,0,0.35)",
+            width: "60%",
+            padding: "40px",
+            borderRadius: "36px",
+            border: `1px solid ${border}`,
+            background: "linear-gradient(180deg, rgba(16,17,26,0.95), rgba(8,9,14,0.93))",
+            boxShadow: "0 24px 80px rgba(0,0,0,0.38)",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "14px",
-              }}
-            >
+          <div style={{ display: "flex", flexDirection: "column", gap: "26px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: "58px",
-                  height: "58px",
+                  width: "56px",
+                  height: "56px",
                   borderRadius: "18px",
                   background: "rgba(0,255,133,0.12)",
-                  border: "1px solid rgba(0,255,133,0.2)",
+                  border: "1px solid rgba(0,255,133,0.18)",
                   color: green,
+                  fontFamily: "Clash Display",
                   fontSize: "28px",
-                  fontWeight: 800,
+                  fontWeight: 700,
                   letterSpacing: "-0.06em",
                 }}
               >
                 S
               </div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <span
                   style={{
                     fontFamily: "Clash Display",
-                    fontSize: "16px",
-                    letterSpacing: "0.16em",
+                    fontSize: "15px",
+                    letterSpacing: "0.18em",
                     textTransform: "uppercase",
                     color: green,
                     fontWeight: 700,
@@ -108,11 +153,10 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
                 </span>
                 <span
                   style={{
-                    marginTop: "4px",
                     fontSize: "22px",
-                    color: text,
                     fontWeight: 600,
                     letterSpacing: "-0.04em",
+                    color: text,
                   }}
                 >
                   onsiren.xyz
@@ -120,14 +164,15 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
               <div
                 style={{
                   fontFamily: "Clash Display",
-                  fontSize: "60px",
-                  lineHeight: 1,
-                  letterSpacing: "-0.06em",
+                  fontSize: "72px",
+                  lineHeight: 0.92,
+                  letterSpacing: "-0.07em",
                   fontWeight: 700,
+                  maxWidth: "92%",
                 }}
               >
                 {title}
@@ -135,8 +180,8 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
               <div
                 style={{
                   maxWidth: "88%",
-                  fontSize: "28px",
-                  lineHeight: 1.35,
+                  fontSize: "26px",
+                  lineHeight: 1.32,
                   color: textDim,
                 }}
               >
@@ -145,58 +190,22 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "18px" }}>
-            {[
-              { value: "24K+", label: "Active markets" },
-              { value: "Dual", label: "Prediction x token flow" },
-              { value: "Live", label: "Kalshi + Solana routing" },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                  flex: 1,
-                  padding: "18px 20px",
-                  borderRadius: "22px",
-                  border: `1px solid ${grid}`,
-                  background: "rgba(255,255,255,0.025)",
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "Clash Display",
-                    fontSize: "34px",
-                    color: green,
-                    fontWeight: 700,
-                    letterSpacing: "-0.05em",
-                  }}
-                >
-                  {stat.value}
-                </span>
-                <span
-                  style={{
-                    fontSize: "16px",
-                    color: textDim,
-                  }}
-                >
-                  {stat.label}
-                </span>
-              </div>
-            ))}
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <Pill label="Kalshi" tone="green" />
+            <Pill label="Polymarket" tone="blue" />
+            <Pill label="One clean trading flow" />
           </div>
         </div>
 
         <div
           style={{
             display: "flex",
-            width: "42%",
-            padding: "30px",
-            borderRadius: "32px",
-            border: `1px solid ${grid}`,
-            background: "linear-gradient(180deg, rgba(15,15,24,0.96), rgba(8,8,12,0.92))",
-            boxShadow: "0 20px 80px rgba(0,0,0,0.4)",
+            width: "40%",
+            padding: "22px",
+            borderRadius: "36px",
+            border: `1px solid ${border}`,
+            background: "linear-gradient(180deg, rgba(12,13,20,0.96), rgba(7,8,12,0.94))",
+            boxShadow: "0 24px 80px rgba(0,0,0,0.42)",
           }}
         >
           <div
@@ -204,222 +213,172 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
               display: "flex",
               flexDirection: "column",
               width: "100%",
-              borderRadius: "24px",
-              border: `1px solid ${grid}`,
-              background: "rgba(255,255,255,0.02)",
-              padding: "26px",
-              gap: "18px",
+              gap: "16px",
+              borderRadius: "28px",
+              border: `1px solid ${border}`,
+              background: `linear-gradient(180deg, rgba(7,30,20,0.95), ${surface} 60%)`,
+              padding: "24px",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                borderRadius: "22px",
-                border: `1px solid ${grid}`,
-                background: "rgba(255,255,255,0.02)",
-                padding: "22px",
-              }}
-            >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <span
-                  style={{
-                    fontFamily: "Clash Display",
-                    fontSize: "14px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.18em",
-                    color: green,
-                    fontWeight: 700,
-                  }}
-                >
-                  Signal from Kalshi
-                </span>
-                <span
-                  style={{
-                    maxWidth: "88%",
-                    fontFamily: "Clash Display",
-                    fontSize: "34px",
-                    lineHeight: 1.18,
-                    letterSpacing: "-0.05em",
-                    fontWeight: 700,
-                  }}
-                >
-                  Will the Fed cut rates before June 2026?
-                </span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <Pill label="Politics" tone="neutral" />
+                <Pill label="Poly" tone="blue" />
               </div>
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: "72px",
-                  height: "72px",
-                  borderRadius: "22px",
+                  minWidth: "74px",
+                  height: "38px",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(0,255,133,0.2)",
                   background: "rgba(0,255,133,0.08)",
-                  border: "1px solid rgba(0,255,133,0.16)",
                   color: green,
-                  fontSize: "18px",
+                  fontSize: "16px",
                   fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
                 }}
               >
-                LIVE
+                Live
               </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginTop: "26px" }}>
-              {[
-                { label: "Yes", price: "72c", accent: green, bg: "rgba(0,255,133,0.08)" },
-                { label: "No", price: "28c", accent: red, bg: "rgba(255,69,96,0.08)" },
-              ].map((row) => (
-                <div
-                  key={row.label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    borderRadius: "18px",
-                    padding: "18px 20px",
-                    background: row.bg,
-                    border: `1px solid ${row.accent}22`,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {row.label}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: "Clash Display",
-                      fontSize: "28px",
-                      fontWeight: 700,
-                      color: row.accent,
-                      letterSpacing: "-0.05em",
-                    }}
-                  >
-                    {row.price}
-                  </span>
-                </div>
-              ))}
-            </div>
             </div>
 
             <div
               style={{
-                display: "flex",
-                flexDirection: "column",
-                borderRadius: "22px",
-                border: `1px solid ${grid}`,
-                background: "rgba(255,255,255,0.02)",
-                padding: "22px",
-                gap: "14px",
+                fontFamily: "Clash Display",
+                fontSize: "34px",
+                lineHeight: 1.02,
+                letterSpacing: "-0.055em",
+                fontWeight: 700,
+                maxWidth: "96%",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <span
-                    style={{
-                      fontFamily: "Clash Display",
-                      fontSize: "14px",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.18em",
-                      color: tokenBlue,
-                      fontWeight: 700,
-                    }}
-                  >
-                    Token response
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: "Clash Display",
-                      fontSize: "28px",
-                      lineHeight: 1.1,
-                      letterSpacing: "-0.05em",
-                      fontWeight: 700,
-                    }}
-                  >
-                    BONK, BAGS, and narrative memes in one view
-                  </span>
-                </div>
-                <div
+              Will the Fed cut rates before June?
+            </div>
+
+            <div style={{ display: "flex", gap: "14px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: 1,
+                  gap: "8px",
+                  padding: "18px",
+                  borderRadius: "22px",
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                <span
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: "86px",
-                    padding: "12px 14px",
-                    borderRadius: "999px",
-                    background: "rgba(101,200,255,0.1)",
-                    border: "1px solid rgba(101,200,255,0.18)",
-                    color: tokenBlue,
-                    fontSize: "16px",
+                    fontFamily: "Clash Display",
+                    fontSize: "15px",
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: textSoft,
                     fontWeight: 700,
                   }}
                 >
-                  Dex live
-                </div>
+                  Yes
+                </span>
+                <span
+                  style={{
+                    fontFamily: "Clash Display",
+                    fontSize: "46px",
+                    lineHeight: 1,
+                    letterSpacing: "-0.05em",
+                    color: green,
+                    fontWeight: 700,
+                  }}
+                >
+                  61%
+                </span>
               </div>
-
-              <div style={{ display: "flex", gap: "12px" }}>
-                {[
-                  { symbol: "BONK", move: "+18%", accent: green },
-                  { symbol: "BAGS", move: "+9%", accent: tokenBlue },
-                  { symbol: "CT", move: "54 hits", accent: red },
-                ].map((token) => (
-                  <div
-                    key={token.symbol}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      flex: 1,
-                      gap: "8px",
-                      borderRadius: "18px",
-                      padding: "16px",
-                      background: "rgba(255,255,255,0.025)",
-                      border: `1px solid ${grid}`,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: "Clash Display",
-                        fontSize: "22px",
-                        lineHeight: 1,
-                        fontWeight: 700,
-                        letterSpacing: "-0.05em",
-                      }}
-                    >
-                      {token.symbol}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "16px",
-                        color: token.accent,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {token.move}
-                    </span>
-                  </div>
-                ))}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: 1,
+                  gap: "8px",
+                  padding: "18px",
+                  borderRadius: "22px",
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "Clash Display",
+                    fontSize: "15px",
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: textSoft,
+                    fontWeight: 700,
+                  }}
+                >
+                  No
+                </span>
+                <span
+                  style={{
+                    fontFamily: "Clash Display",
+                    fontSize: "46px",
+                    lineHeight: 1,
+                    letterSpacing: "-0.05em",
+                    color: red,
+                    fontWeight: 700,
+                  }}
+                >
+                  39%
+                </span>
               </div>
             </div>
 
             <div
               style={{
                 display: "flex",
+                alignItems: "center",
                 justifyContent: "space-between",
-                marginTop: "auto",
-                paddingTop: "6px",
-                color: textDim,
-                fontSize: "16px",
+                borderRadius: "22px",
+                border: `1px solid ${border}`,
+                background: surfaceSoft,
+                padding: "16px 18px",
               }}
             >
-              <span>Prediction markets x meme tokens</span>
-              <span>Kalshi data • DFlow routing • Solana execution</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "18px", color: textDim, fontSize: "18px" }}>
+                <span>$38.9M</span>
+                <span>1.7M traders</span>
+              </div>
+              <span
+                style={{
+                  color: green,
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  letterSpacing: "-0.03em",
+                }}
+              >
+                Match tokens below
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "68px",
+                borderRadius: "22px",
+                background: green,
+                color: "#04110A",
+                fontFamily: "Clash Display",
+                fontSize: "24px",
+                fontWeight: 700,
+                letterSpacing: "-0.03em",
+              }}
+            >
+              Pick a side
             </div>
           </div>
         </div>
