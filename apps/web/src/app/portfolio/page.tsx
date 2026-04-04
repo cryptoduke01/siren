@@ -945,9 +945,40 @@ export default function PortfolioPage() {
     },
     enabled: !!publicKey,
     staleTime: 12_000,
-    refetchInterval: 15_000,
+    refetchInterval: 90_000,
     refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    if (!publicKey || !walletKey) return;
+    if (typeof window === "undefined" || typeof EventSource === "undefined") return;
+    const url = `${API_URL}/api/dflow/positions/stream?address=${encodeURIComponent(walletKey)}`;
+    let source: EventSource;
+    try {
+      source = new EventSource(url);
+    } catch {
+      return;
+    }
+    const onMessage = (event: MessageEvent<string>) => {
+      try {
+        const parsed = JSON.parse(event.data) as {
+          success?: boolean;
+          data?: { positions?: Position[] };
+        };
+        const list = parsed?.data?.positions;
+        if (Array.isArray(list)) {
+          queryClient.setQueryData(["dflow-positions", walletKey], list);
+        }
+      } catch {
+        /* ignore malformed SSE payloads */
+      }
+    };
+    source.addEventListener("message", onMessage);
+    return () => {
+      source.removeEventListener("message", onMessage);
+      source.close();
+    };
+  }, [publicKey, walletKey, queryClient]);
 
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");

@@ -1,6 +1,9 @@
 "use client";
 
-import { CheckCircle, XCircle, ExternalLink, Info } from "lucide-react";
+import { CheckCircle, XCircle, ExternalLink, Info, Share2 } from "lucide-react";
+import { hapticLight } from "@/lib/haptics";
+import type { TradePnLSharePayload } from "@/store/useTradePnLShareStore";
+import { useTradePnLShareStore } from "@/store/useTradePnLShareStore";
 
 export function ResultModal({
   type,
@@ -8,26 +11,39 @@ export function ResultModal({
   message,
   onClose,
   txSignature,
+  txExplorer,
   actionLabel,
   actionHref,
+  sharePnL,
 }: {
   type: "success" | "error" | "info";
   title: string;
   message: string;
   onClose: () => void;
   txSignature?: string;
+  txExplorer?: "polygon" | "base" | "solscan";
   actionLabel?: string;
   actionHref?: string;
+  sharePnL?: TradePnLSharePayload;
 }) {
+  const openPnLShare = useTradePnLShareStore((s) => s.open);
   const Icon = type === "success" ? CheckCircle : type === "error" ? XCircle : Info;
   const color = type === "success" ? "var(--up)" : type === "error" ? "var(--down)" : "var(--accent)";
-  const txHref =
-    txSignature?.startsWith("0x")
-      ? `https://basescan.org/tx/${txSignature}`
-      : txSignature
-        ? `https://solscan.io/tx/${txSignature}`
-        : null;
-  const txLabel = txSignature?.startsWith("0x") ? "View on BaseScan" : "View on Solscan";
+  const txHref = (() => {
+    if (!txSignature) return null;
+    if (txSignature.startsWith("0x")) {
+      if (txExplorer === "polygon") return `https://polygonscan.com/tx/${txSignature}`;
+      if (txExplorer === "base") return `https://basescan.org/tx/${txSignature}`;
+      return `https://basescan.org/tx/${txSignature}`;
+    }
+    return `https://solscan.io/tx/${txSignature}`;
+  })();
+  const txLabel =
+    txExplorer === "polygon"
+      ? "View on Polygonscan"
+      : txSignature?.startsWith("0x")
+        ? "View on BaseScan"
+        : "View on Solscan";
 
   return (
     <div
@@ -84,6 +100,24 @@ export function ResultModal({
             {actionLabel}
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
+        )}
+        {type === "success" && sharePnL && (
+          <button
+            type="button"
+            onClick={() => {
+              hapticLight();
+              onClose();
+              openPnLShare(sharePnL);
+            }}
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-heading text-sm font-semibold mb-3 transition-colors hover:opacity-95"
+            style={{
+              background: "var(--accent)",
+              color: "var(--accent-text)",
+            }}
+          >
+            <Share2 className="w-4 h-4" />
+            Share PnL card
+          </button>
         )}
         <button
           type="button"

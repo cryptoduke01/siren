@@ -11,7 +11,7 @@ import { Copy, Check, Loader2, ExternalLink, ChevronDown, ChevronUp } from "luci
 import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
-import { TradePnLCard, type TradePnLToken } from "./TradePnLCard";
+import type { TradePnLSharePayload } from "@/store/useTradePnLShareStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { hapticLight } from "@/lib/haptics";
 import {
@@ -371,16 +371,6 @@ export function UnifiedBuyPanel() {
   const [tokenPriceFetchState, setTokenPriceFetchState] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [tokenPriceFetchReason, setTokenPriceFetchReason] = useState<string | null>(null);
 
-  type TradePnLCardModel = {
-    token: TradePnLToken;
-    profitUsd: number;
-    percent: number;
-    kalshiMarket: string;
-    wallet: string | null;
-    executedAt: number;
-  };
-  const [tradePnLModalOpen, setTradePnLModalOpen] = useState(false);
-  const [tradePnLData, setTradePnLData] = useState<TradePnLCardModel | null>(null);
   const [cardDisplayName, setCardDisplayName] = useState("@siren");
   const isPredictionToken = selectedToken?.assetType === "prediction";
   const selectedMarketSource = selectedMarket?.source;
@@ -636,7 +626,7 @@ export function UnifiedBuyPanel() {
     };
   }, [selectedToken?.mint, selectedToken?.price, selectedToken?.name, selectedToken?.symbol, sellMode, openForSell]);
 
-  if (!buyPanelOpen && !tradePnLModalOpen) return null;
+  if (!buyPanelOpen) return null;
   if (buyPanelOpen && buyPanelMode === "market" && !selectedMarket) return null;
   if (buyPanelOpen && buyPanelMode === "token" && !selectedToken) return null;
 
@@ -644,8 +634,6 @@ export function UnifiedBuyPanel() {
     setBuyPanelOpen(false);
     setError(null);
     setSuccess(null);
-    setTradePnLModalOpen(false);
-    setTradePnLData(null);
   };
   const buyBlocked = !!selectedToken?.riskBlocked && !sellMode;
   const riskScore = selectedToken?.riskScore ?? 0;
@@ -893,11 +881,11 @@ export function UnifiedBuyPanel() {
         // ignore volume tracking errors
       }
 
-      // Show screenshot-matching Trade PnL card after successful BUY (for quick testing).
+      let sharePnL: TradePnLSharePayload | undefined;
       if (!isSell && tokenAmountForPnL != null && boughtUsdForPnL != null && tokenAmountForPnL > 0 && boughtUsdForPnL > 0) {
         try {
-          const res = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
-          const j = await res.json();
+          const infoRes = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
+          const j = await infoRes.json();
           const currentPriceUsd = typeof j?.data?.priceUsd === "number" && Number.isFinite(j.data.priceUsd) ? j.data.priceUsd : null;
 
           const currentValueUsd = currentPriceUsd != null ? tokenAmountForPnL * currentPriceUsd : boughtUsdForPnL;
@@ -905,9 +893,9 @@ export function UnifiedBuyPanel() {
           const percentCard = boughtUsdForPnL > 0 ? (profitUsdCard / boughtUsdForPnL) * 100 : 0;
 
           const kalshiTitle =
-            buyPanelMode === "market" && selectedMarket?.title ? selectedMarket.title : selectedMarket?.title ?? "Signal from Kalshi";
+            buyPanelMode === "market" && selectedMarket?.title ? selectedMarket.title : selectedMarket?.title ?? "Siren trade";
 
-          setTradePnLData({
+          sharePnL = {
             token: {
               name: tokenDisplayName || selectedToken.name,
               symbol: tokenDisplaySymbol || selectedToken.symbol,
@@ -916,15 +904,13 @@ export function UnifiedBuyPanel() {
             percent: percentCard,
             kalshiMarket: kalshiTitle,
             wallet: publicKey.toBase58(),
+            displayName: cardDisplayName,
             executedAt: Date.now(),
-          });
-          setTradePnLModalOpen(true);
-          setBuyPanelOpen(false);
-          hideResultModal();
-          setSuccess(null);
-          return;
+            stakeUsd: boughtUsdForPnL,
+            valueUsd: currentValueUsd,
+          };
         } catch {
-          // If price fetch fails, still show regular success UI.
+          sharePnL = undefined;
         }
       }
 
@@ -932,6 +918,7 @@ export function UnifiedBuyPanel() {
       if (isSell) setSellAmount("");
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
+      setBuyPanelOpen(false);
       showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Swap complete",
@@ -943,6 +930,7 @@ export function UnifiedBuyPanel() {
               : "Transaction confirmed. Settlement is still being finalized by DFlow."
             : "Swap successful.",
         txSignature: sig,
+        sharePnL,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
@@ -1167,13 +1155,29 @@ export function UnifiedBuyPanel() {
 
       queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
 
+      setBuyPanelOpen(false);
       showResultModal({
         type: "success",
         title: "Polymarket order sent",
         message: `Bought ${marketSide.toUpperCase()} for ${formatUsd(amountNum, 2)} via Polygon.`,
         txSignature,
+        txExplorer: "polygon",
         actionLabel: "Open market page",
         actionHref: selectedMarket.market_url,
+        sharePnL: {
+          token: {
+            name: `${selectedMarket.title} · ${marketSide.toUpperCase()}`,
+            symbol: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+          },
+          profitUsd: 0,
+          percent: 0,
+          kalshiMarket: selectedMarket.title,
+          wallet: evmAddress ?? null,
+          displayName: cardDisplayName,
+          executedAt: Date.now(),
+          stakeUsd: amountNum,
+          valueUsd: amountNum,
+        },
       });
       setSolAmount("");
     } catch (e) {
@@ -1299,25 +1303,23 @@ export function UnifiedBuyPanel() {
       queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["portfolio-balances", publicKey.toBase58()] });
 
-      if (tokenAmountApprox != null && tokenAmountApprox > 0 && solPriceUsd > 0) {
-        setTradePnLData({
-          token: {
-            name: outcomeName,
-            symbol: outcomeSymbol,
-          },
-          profitUsd: 0,
-          percent: 0,
-          kalshiMarket: selectedMarket.title,
-          wallet: publicKey.toBase58(),
-          executedAt: Date.now(),
-        });
-        setTradePnLModalOpen(true);
-        setBuyPanelOpen(false);
-        hideResultModal();
-        setSuccess(null);
-        return;
-      }
+      const sharePnLKalshi =
+        tokenAmountApprox != null && tokenAmountApprox > 0 && solPriceUsd > 0
+          ? {
+              token: { name: outcomeName, symbol: outcomeSymbol },
+              profitUsd: 0,
+              percent: 0,
+              kalshiMarket: selectedMarket.title,
+              wallet: publicKey.toBase58(),
+              displayName: cardDisplayName,
+              executedAt: Date.now(),
+              stakeUsd: amountNum,
+              valueUsd: amountNum,
+            }
+          : undefined;
 
+      setBuyPanelOpen(false);
+      setSuccess(null);
       showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Trade complete",
@@ -1328,6 +1330,7 @@ export function UnifiedBuyPanel() {
               : `Bought ${outcomeLabel}. Transaction confirmed and settlement is still finalizing.`
             : `Bought ${outcomeLabel}.`,
         txSignature: sig,
+        sharePnL: sharePnLKalshi,
       });
       setSolAmount("");
     } catch (e) {
@@ -2160,50 +2163,6 @@ export function UnifiedBuyPanel() {
             </div>
           </motion.div>
         </>
-      )}
-      {tradePnLModalOpen && tradePnLData && (
-        <div
-          className="fixed inset-0 z-[150] flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.7)" }}
-          onClick={() => {
-            hapticLight();
-            setTradePnLModalOpen(false);
-            setTradePnLData(null);
-          }}
-        >
-          <div
-            className="w-full max-w-[460px]"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              borderRadius: "20px",
-            }}
-          >
-            <div className="flex justify-end mb-2">
-              <button
-                type="button"
-                onClick={() => {
-                  hapticLight();
-                  setTradePnLModalOpen(false);
-                  setTradePnLData(null);
-                }}
-                className="px-3 py-2 rounded-lg font-body text-xs font-medium"
-                style={{ background: "var(--bg-elevated)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
-                aria-label="Close PnL card"
-              >
-                Close
-              </button>
-            </div>
-            <TradePnLCard
-              token={tradePnLData.token}
-              profitUsd={tradePnLData.profitUsd}
-              percent={tradePnLData.percent}
-              kalshiMarket={tradePnLData.kalshiMarket}
-              wallet={tradePnLData.wallet}
-              displayName={cardDisplayName}
-              executedAt={tradePnLData.executedAt}
-            />
-          </div>
-        </div>
       )}
     </AnimatePresence>
   );

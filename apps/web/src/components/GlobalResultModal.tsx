@@ -13,8 +13,10 @@ export function GlobalResultModal() {
       title={payload.title}
       message={payload.message}
       txSignature={payload.txSignature}
+      txExplorer={payload.txExplorer}
       actionLabel={payload.actionLabel}
       actionHref={payload.actionHref}
+      sharePnL={payload.sharePnL}
       onClose={hide}
     />
   );

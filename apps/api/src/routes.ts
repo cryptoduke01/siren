@@ -2325,4 +2325,54 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.status(500).send({ success: false, error: (e as Error).message || "Failed to fetch DFlow positions" });
     }
   });
+
+  /** Server-driven position updates for portfolio (EventSource). Same payload shape as GET `/api/dflow/positions`. */
+  app.get("/api/dflow/positions/stream", async (req, reply) => {
+    const { address, wallet } = req.query as { address?: string; wallet?: string };
+    const addr = (address ?? wallet ?? "").trim();
+    if (!addr) {
+      return reply.status(400).send({ success: false, error: "address query param required" });
+    }
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    let closed = false;
+    const endSafe = () => {
+      if (closed) return;
+      closed = true;
+      try {
+        reply.raw.end();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const writeSnapshot = async () => {
+      if (closed) return;
+      try {
+        const data = await getDflowPositionsForWallet(addr);
+        const line = `data: ${JSON.stringify({ success: true, data })}\n\n`;
+        reply.raw.write(line);
+      } catch (e) {
+        const msg = (e as Error).message || "stream tick failed";
+        reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
+      }
+    };
+
+    await writeSnapshot();
+    const interval = setInterval(() => {
+      void writeSnapshot();
+    }, 12_000);
+
+    req.raw.on("close", () => {
+      clearInterval(interval);
+      endSafe();
+    });
+  });
 }

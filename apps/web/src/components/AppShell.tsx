@@ -2,6 +2,7 @@
 
 import { UnifiedBuyPanel } from "./UnifiedBuyPanel";
 import { GlobalResultModal } from "./GlobalResultModal";
+import { GlobalTradePnLShareModal } from "./GlobalTradePnLShareModal";
 import { ThemeSync } from "./ThemeSync";
 import { ToastContainer } from "./Toast";
 import { OnboardingModal } from "./OnboardingModal";
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Footer />
       <UnifiedBuyPanel />
       <GlobalResultModal />
+      <GlobalTradePnLShareModal />
       <ToastContainer />
       <OnboardingModal />
       <IssueBadge />

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { toPng } from "html-to-image";
 import { Copy, Check, ArrowUpRight, ExternalLink, Share2, Download, Loader2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
@@ -667,51 +667,76 @@ export function TokenSurface() {
           </div>
         </div>
       )}
-      {selectedMarket ? (
-        <PredictionMarketFocusPanel
-          market={selectedMarket}
-          onPrimaryAction={() => {
-            hapticLight();
-            if (canTradeSelectedMarketInSiren(selectedMarket)) {
-              setBuyPanelOpen(true, "market");
-              return;
-            }
-            tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-          onOpenVenue={() => {
-            hapticLight();
-            window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
-          }}
-          onBrowseTokens={() => {
-            hapticLight();
-            tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-          onShareCard={() => exportSelectedMarket("share")}
-          onDownloadCard={() => exportSelectedMarket("download")}
-          exportingCard={exportingCard}
-          displayName={cardDisplayName}
-        />
-      ) : selectedSignal ? (
-        <SignalNarrativePanel
-          signal={selectedSignal}
-          onBrowseTokens={() => {
-            hapticLight();
-            tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-        />
-      ) : (
-        <div
-          className="mb-4 rounded-xl border px-4 py-3"
-          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
-        >
-          <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-            Pick a market to see matching tokens.
-          </p>
-          <p className="mt-0.5 font-body text-xs" style={{ color: "var(--text-3)" }}>
-            Select an event from the left panel.
-          </p>
-        </div>
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        {selectedMarket ? (
+          <motion.div
+            key={`m-${selectedMarket.ticker}`}
+            className="mb-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <PredictionMarketFocusPanel
+              market={selectedMarket}
+              onPrimaryAction={() => {
+                hapticLight();
+                if (canTradeSelectedMarketInSiren(selectedMarket)) {
+                  setBuyPanelOpen(true, "market");
+                  return;
+                }
+                tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              onOpenVenue={() => {
+                hapticLight();
+                window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
+              }}
+              onBrowseTokens={() => {
+                hapticLight();
+                tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              onShareCard={() => exportSelectedMarket("share")}
+              onDownloadCard={() => exportSelectedMarket("download")}
+              exportingCard={exportingCard}
+              displayName={cardDisplayName}
+            />
+          </motion.div>
+        ) : selectedSignal ? (
+          <motion.div
+            key={`s-${selectedSignal.id}`}
+            className="mb-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <SignalNarrativePanel
+              signal={selectedSignal}
+              onBrowseTokens={() => {
+                hapticLight();
+                tokenSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="surface-empty"
+            className="mb-4 rounded-xl border px-4 py-3"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.99 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+              Pick a market to see matching tokens.
+            </p>
+            <p className="mt-0.5 font-body text-xs" style={{ color: "var(--text-3)" }}>
+              Select an event from the left panel.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="mb-3">
         <input
@@ -870,16 +895,26 @@ export function TokenSurface() {
           ))}
         </div>
       ) : (
-        <div className="token-grid">
-          {filteredTokens.map((t, i) => {
+        <motion.div
+          key={`tokencol-${selectedMarket?.ticker ?? ""}-${selectedSignal?.id ?? ""}-${searchQuery}-${launchpadFilter}`}
+          className="token-grid"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.042, delayChildren: 0.04 } },
+          }}
+        >
+          {filteredTokens.map((t) => {
             const topBorder = getTokenCardTopBorder(t);
             const isUserLaunch = bagsLaunches.includes(t.mint);
             return (
               <motion.div
                 key={t.mint}
-                initial={{ opacity: 0, transform: "translateY(6px)" }}
-                animate={{ opacity: 1, transform: "translateY(0)" }}
-                transition={{ duration: 0.18, delay: i * 0.05, ease: "easeOut" }}
+                variants={{
+                  hidden: { opacity: 0, y: 10 },
+                  visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] } },
+                }}
                 className="min-w-0 cursor-pointer overflow-hidden rounded-[14px] p-3 transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)]"
                 style={{
                   background: "var(--bg-surface)",
@@ -1015,7 +1050,7 @@ export function TokenSurface() {
               </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       )}
       {!isLoading && !isError && tokenRows.length === 0 && (
         <div
