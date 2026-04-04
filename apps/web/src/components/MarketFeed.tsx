@@ -8,7 +8,7 @@ import { useMarkets } from "@/hooks/useMarkets";
 import { useSignals } from "@/hooks/useSignals";
 import { MarketDetailPanel } from "./MarketDetailPanel";
 import { MarketFilterSheet, type MarketFeedSortMode } from "./MarketFilterSheet";
-import { HotTakeMarketCard } from "./HotTakeMarketCard";
+import { ImmersiveMarketCard } from "./ImmersiveMarketCard";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
@@ -329,7 +329,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   transition={{ duration: 0.2, delay: Math.min(i * 0.025, 0.12) }}
                   className="snap-start"
                 >
-                  <HotTakeMarketCard
+                  <ImmersiveMarketCard
                     market={m}
                     isSelected={isSelected}
                     isHot={isHot}

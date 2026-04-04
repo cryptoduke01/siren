@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { hapticLight } from "@/lib/haptics";
 import { StarButton } from "./StarButton";
-import { HotTakeMarketCard } from "./HotTakeMarketCard";
+import { ImmersiveMarketCard } from "./ImmersiveMarketCard";
 import type { MarketWithVelocity } from "@siren/shared";
 import { marketMatchesCategory, type MarketCategoryId } from "@/lib/marketFeedFilters";
 
@@ -113,7 +113,7 @@ export function MarketBottomSheet({
                     <div className="absolute top-3 right-3 z-[2]">
                       <StarButton type="market" id={m.ticker} />
                     </div>
-                    <HotTakeMarketCard
+                    <ImmersiveMarketCard
                       market={m}
                       isSelected={false}
                       isHot={false}

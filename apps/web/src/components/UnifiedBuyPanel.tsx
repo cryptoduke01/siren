@@ -656,6 +656,7 @@ export function UnifiedBuyPanel() {
     mint,
     side,
     volumeSol,
+    stakeUsd,
     tokenAmount,
     priceUsd,
     tokenName,
@@ -665,6 +666,8 @@ export function UnifiedBuyPanel() {
     mint: string;
     side: "buy" | "sell";
     volumeSol: number | null;
+    /** Prediction market: USDC spent (Solana or Polygon). */
+    stakeUsd?: number | null;
     tokenAmount: number | null;
     priceUsd: number | null;
     tokenName: string;
@@ -703,14 +706,9 @@ export function UnifiedBuyPanel() {
       }).catch(() => {});
     }
 
-    if (
-      tokenAmount != null &&
-      tokenAmount > 0 &&
-      priceUsd != null &&
-      priceUsd > 0 &&
-      volumeSol != null &&
-      Number.isFinite(volumeSol)
-    ) {
+    const stake = stakeUsd != null && Number.isFinite(stakeUsd) && stakeUsd > 0 ? stakeUsd : null;
+    const vol = volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0 ? volumeSol : null;
+    if (tokenAmount != null && tokenAmount > 0 && priceUsd != null && priceUsd > 0 && (vol != null || stake != null)) {
       const tradesKey = `siren-trades-${publicKey.toBase58()}`;
       const rawTrades = window.localStorage.getItem(tradesKey);
       let trades: Array<{
@@ -720,6 +718,7 @@ export function UnifiedBuyPanel() {
         solAmount: number;
         tokenAmount: number;
         priceUsd: number;
+        stakeUsd?: number;
       }> = [];
       if (rawTrades) {
         try {
@@ -733,14 +732,16 @@ export function UnifiedBuyPanel() {
         ts: Date.now(),
         mint,
         side,
-        solAmount: volumeSol,
+        solAmount: vol ?? 0,
         tokenAmount,
         priceUsd,
+        ...(stake != null ? { stakeUsd: stake } : {}),
       });
       if (trades.length > 1000) {
         trades = trades.slice(trades.length - 1000);
       }
       window.localStorage.setItem(tradesKey, JSON.stringify(trades));
+      window.dispatchEvent(new CustomEvent("siren-activity-logged"));
     }
 
     fetch(`${API_URL}/api/trades/log`, {
@@ -1156,12 +1157,15 @@ export function UnifiedBuyPanel() {
         mint: selectedPolymarketTokenId,
         side: "buy",
         volumeSol: null,
+        stakeUsd: amountNum,
         tokenAmount: tokenAmountApprox,
         priceUsd: selectedMarketPriceUsd,
         tokenName: `${selectedMarket.title} · ${marketSide.toUpperCase()}`,
         tokenSymbol: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
         txSignature: txSignature ?? `poly-${Date.now()}`,
       });
+
+      queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
 
       showResultModal({
         type: "success",
@@ -1282,6 +1286,7 @@ export function UnifiedBuyPanel() {
         mint: selectedMarketMint,
         side: "buy",
         volumeSol: solPriceUsd > 0 ? amountNum / solPriceUsd : null,
+        stakeUsd: amountNum,
         tokenAmount: tokenAmountApprox,
         priceUsd: marketPriceUsd,
         tokenName: outcomeName,
@@ -1291,6 +1296,8 @@ export function UnifiedBuyPanel() {
 
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["portfolio-balances", publicKey.toBase58()] });
 
       if (tokenAmountApprox != null && tokenAmountApprox > 0 && solPriceUsd > 0) {
         setTradePnLData({

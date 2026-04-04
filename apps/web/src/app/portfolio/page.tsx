@@ -212,6 +212,9 @@ function formatActivitySummary(row: LocalTradeLedgerRow): string {
   if (row.side === "sell") {
     return `Sold · ${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${sym}`;
   }
+  if (row.stakeUsd != null && row.stakeUsd > 0) {
+    return `Prediction · $${fmtUsd(row.stakeUsd)} → ~${fmtToken(row.tokenAmount, 2)} shares (${sym})`;
+  }
   if (row.solAmount > 0) {
     return `Swapped · ${fmtToken(row.solAmount, 4)} SOL → ~${fmtToken(row.tokenAmount, 2)} ${sym}`;
   }
@@ -598,10 +601,18 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
           className="rounded-xl px-4 py-4"
           style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
         >
-          <p className="font-sub text-[11px] uppercase tracking-wider mb-1" style={{ color: "var(--text-3)" }}>
-            Unrealized PnL
-            {pnlIsPreview && (
-              <span className="normal-case ml-2 opacity-80">(updates as you type — tap Save to keep)</span>
+          <p className="font-sub text-[11px] uppercase tracking-wider mb-1 flex flex-wrap items-center gap-2" style={{ color: "var(--text-3)" }}>
+            <span>
+              Unrealized PnL
+              {pnlIsPreview && (
+                <span className="normal-case ml-2 opacity-80">(updates as you type — tap Save to keep)</span>
+              )}
+            </span>
+            {!settled && (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-heading text-[9px] font-bold normal-case tracking-normal" style={{ background: "rgba(34,197,94,0.12)", color: "var(--up)" }}>
+                <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--up)" }} aria-hidden />
+                Live mark
+              </span>
             )}
           </p>
           <p className="font-money tabular-nums text-3xl font-bold leading-none" style={{ color: pnlColor(pnl) }}>
@@ -826,7 +837,11 @@ export default function PortfolioPage() {
   useEffect(() => {
     const bump = () => setActivityEpoch((n) => n + 1);
     window.addEventListener("focus", bump);
-    return () => window.removeEventListener("focus", bump);
+    window.addEventListener("siren-activity-logged", bump);
+    return () => {
+      window.removeEventListener("focus", bump);
+      window.removeEventListener("siren-activity-logged", bump);
+    };
   }, []);
 
   // ── Username / Profile ──────────────────────────────────────
@@ -929,8 +944,9 @@ export default function PortfolioPage() {
       return (payload?.data?.positions ?? []) as Position[];
     },
     enabled: !!publicKey,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 12_000,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   const openPositions = positions.filter((p) => p.status !== "settled");
@@ -1229,7 +1245,7 @@ export default function PortfolioPage() {
               Recent activity
             </h2>
             <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Swaps from this page and buys from the terminal, saved on this device only.
+              Swaps, token buys, and prediction orders from the terminal — saved on this device only. Updates as soon as a trade is logged.
             </p>
             {localActivity.length === 0 ? (
               <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
@@ -1273,6 +1289,9 @@ export default function PortfolioPage() {
               </span>
             )}
           </div>
+          <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+            Open Kalshi-linked positions poll about every 15 seconds while this page is open so marks move with the market.
+          </p>
 
           <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>
             {(["open", "settled"] as const).map((tab) => (

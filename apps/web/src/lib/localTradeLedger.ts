@@ -9,6 +9,8 @@ export interface LocalTradeLedgerRow {
   solAmount: number;
   tokenAmount: number;
   priceUsd: number;
+  /** USDC / USD notional for prediction buys when trade is not a SOL swap. */
+  stakeUsd?: number;
 }
 
 const MAX_ROWS = 500;
