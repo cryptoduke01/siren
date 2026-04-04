@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 /** Terminal gate: when enabled, / and terminal routes require siren_access cookie.
  * Gate is ON by default; set SIREN_GATE_ENABLED=false to disable (e.g. local dev). */
 const ACCESS_COOKIE = "siren_access";
-const TERMINAL_PATHS = ["/", "/portfolio", "/trending", "/watchlist", "/onboarding", "/settings"];
+const TERMINAL_PATHS = ["/", "/portfolio", "/trending", "/watchlist", "/onboarding", "/settings", "/leaderboard"];
 
 function isTerminalPath(pathname: string) {
   return pathname === "/" || TERMINAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));

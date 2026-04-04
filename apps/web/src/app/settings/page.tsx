@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
-import { useToastStore } from "@/store/useToastStore";
+import { useResultModalStore } from "@/store/useResultModalStore";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
 
@@ -16,7 +16,7 @@ export default function SettingsPage() {
   const { publicKey, connected } = useSirenWallet();
   const walletKey = publicKey?.toBase58() ?? null;
   const queryClient = useQueryClient();
-  const addToast = useToastStore((s) => s.addToast);
+  const showResultModal = useResultModalStore((s) => s.show);
   const [uploading, setUploading] = useState(false);
 
   const { data: profile, isLoading } = useQuery({
@@ -40,11 +40,11 @@ export default function SettingsPage() {
     async (file: File | null) => {
       if (!walletKey || !file) return;
       if (!file.type.startsWith("image/")) {
-        addToast("Choose an image file.", "error");
+        showResultModal({ type: "error", title: "Photo", message: "Choose an image file (JPEG or PNG)." });
         return;
       }
       if (file.size > MAX_FILE_BYTES) {
-        addToast("Image too large (max ~1.5MB).", "error");
+        showResultModal({ type: "error", title: "Photo too large", message: "Max size is about 1.5 MB." });
         return;
       }
       setUploading(true);
@@ -62,18 +62,22 @@ export default function SettingsPage() {
         });
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
-          addToast(typeof payload?.error === "string" ? payload.error : "Upload failed.", "error");
+          showResultModal({
+            type: "error",
+            title: "Upload failed",
+            message: typeof payload?.error === "string" ? payload.error : "Could not save photo.",
+          });
           return;
         }
-        addToast("Profile photo updated.", "success");
+        showResultModal({ type: "success", title: "Photo updated", message: "Your profile picture is saved." });
         queryClient.invalidateQueries({ queryKey: ["user-profile", walletKey] });
       } catch {
-        addToast("Could not upload image.", "error");
+        showResultModal({ type: "error", title: "Upload", message: "Could not read or upload the image." });
       } finally {
         setUploading(false);
       }
     },
-    [walletKey, addToast, queryClient],
+    [walletKey, showResultModal, queryClient],
   );
 
   return (
@@ -109,9 +113,10 @@ export default function SettingsPage() {
               Profile photo
             </h2>
             <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Requires Supabase: public bucket <code className="font-label text-[10px]">avatars</code>, column{" "}
-              <code className="font-label text-[10px]">users.avatar_url</code>. See{" "}
-              <code className="font-label text-[10px]">apps/api/sql/add_avatar_url.sql</code>.
+              Requires Supabase: bucket <code className="font-label text-[10px]">avatars</code> (public), column{" "}
+              <code className="font-label text-[10px]">users.avatar_url</code>. Run{" "}
+              <code className="font-label text-[10px]">add_avatar_url.sql</code> and{" "}
+              <code className="font-label text-[10px]">supabase_avatars_bucket.sql</code> in the SQL editor.
             </p>
 
             <div className="mt-4 flex items-center gap-4">

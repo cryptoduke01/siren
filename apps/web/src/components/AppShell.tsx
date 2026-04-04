@@ -1,6 +1,7 @@
 "use client";
 
 import { UnifiedBuyPanel } from "./UnifiedBuyPanel";
+import { GlobalResultModal } from "./GlobalResultModal";
 import { ThemeSync } from "./ThemeSync";
 import { ToastContainer } from "./Toast";
 import { OnboardingModal } from "./OnboardingModal";
@@ -21,6 +22,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </AccessGate>
       <Footer />
       <UnifiedBuyPanel />
+      <GlobalResultModal />
       <ToastContainer />
       <OnboardingModal />
       <IssueBadge />

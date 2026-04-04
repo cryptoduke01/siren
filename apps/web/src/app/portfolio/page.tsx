@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
+import { useResultModalStore } from "@/store/useResultModalStore";
 import { useSirenStore } from "@/store/useSirenStore";
 import { hapticLight } from "@/lib/haptics";
 import { fetchSolPriceUsd } from "@/lib/pricing";
@@ -86,7 +87,7 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
   const { publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
   const queryClient = useQueryClient();
-  const addToast = useToastStore((s) => s.addToast);
+  const showResultModal = useResultModalStore((s) => s.show);
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [sending, setSending] = useState(false);
@@ -96,12 +97,25 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
 
   const handleSend = async () => {
     if (!publicKey || !signTransaction) return;
-    if (!recipient.trim() || amt <= 0) { addToast("Enter a valid address and amount.", "error"); return; }
-    if (amt > solBalance) { addToast(`Insufficient SOL. Available: ${solBalance.toFixed(4)}`, "error"); return; }
+    if (!recipient.trim() || amt <= 0) {
+      showResultModal({ type: "error", title: "Send SOL", message: "Enter a valid recipient address and amount." });
+      return;
+    }
+    if (amt > solBalance) {
+      showResultModal({
+        type: "error",
+        title: "Insufficient SOL",
+        message: `You have ${solBalance.toFixed(4)} SOL available.`,
+      });
+      return;
+    }
 
     let toPubkey: PublicKey;
     try { toPubkey = new PublicKey(recipient.trim()); }
-    catch { addToast("Invalid Solana address.", "error"); return; }
+    catch {
+      showResultModal({ type: "error", title: "Invalid address", message: "That does not look like a valid Solana address." });
+      return;
+    }
 
     setSending(true);
     try {
@@ -115,11 +129,20 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
       const signed = await signTransaction(tx);
       const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
       await connection.confirmTransaction(sig, "confirmed");
-      addToast(`Sent ${amt} SOL — ${sig.slice(0, 8)}…`, "success");
+      showResultModal({
+        type: "success",
+        title: "SOL sent",
+        message: `Sent ${amt} SOL from your wallet.`,
+        txSignature: sig,
+      });
       queryClient.invalidateQueries({ queryKey: ["portfolio-balances"] });
       onClose();
     } catch (err) {
-      addToast(err instanceof Error ? err.message : "Withdraw failed.", "error");
+      showResultModal({
+        type: "error",
+        title: "Send failed",
+        message: err instanceof Error ? err.message : "Could not complete the transfer.",
+      });
     } finally { setSending(false); }
   };
 
@@ -180,7 +203,7 @@ const SWAP_TOKENS = [
 function SwapPanel() {
   const { publicKey, signTransaction } = useSirenWallet();
   const queryClient = useQueryClient();
-  const addToast = useToastStore((s) => s.addToast);
+  const showResultModal = useResultModalStore((s) => s.show);
 
   const [fromIdx, setFromIdx] = useState(0);
   const [toIdx, setToIdx] = useState(1);
@@ -234,8 +257,14 @@ function SwapPanel() {
         slippageBps: "50",
       });
       const orderRes = await fetch(`${API_URL}/api/swap/order?${params.toString()}`, { credentials: "omit" });
-      if (!orderRes.ok) throw new Error("Order failed");
-      const order = await orderRes.json();
+      const order = await orderRes.json().catch(() => ({}));
+      if (!orderRes.ok) {
+        const msg =
+          typeof order?.error === "string" && order.error.trim()
+            ? order.error
+            : `Order failed (${orderRes.status}).`;
+        throw new Error(msg);
+      }
       if (!order.transaction) throw new Error("No transaction returned");
 
       const txBuf = Buffer.from(order.transaction, "base64");
@@ -257,17 +286,27 @@ function SwapPanel() {
         body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: parseFloat(amount) }),
       }).catch(() => {});
 
-      addToast(`Swapped ${amount} ${fromToken.symbol} → ${toToken.symbol}`, "success");
+      const sig = typeof result.signature === "string" ? result.signature : undefined;
+      showResultModal({
+        type: "success",
+        title: "Swap complete",
+        message: `Swapped ${amount} ${fromToken.symbol} → ${toToken.symbol}.`,
+        txSignature: sig,
+      });
       setAmount("");
       setQuoteData(null);
       queryClient.invalidateQueries({ queryKey: ["portfolio-balances"] });
       queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
     } catch (err) {
-      addToast(err instanceof Error ? err.message : "Swap failed", "error");
+      showResultModal({
+        type: "error",
+        title: "Swap failed",
+        message: err instanceof Error ? err.message : "Swap could not be completed.",
+      });
     } finally {
       setLoading(false);
     }
-  }, [publicKey, signTransaction, amount, fromToken, toToken, addToast, queryClient]);
+  }, [publicKey, signTransaction, amount, fromToken, toToken, showResultModal, queryClient]);
 
   const outDisplay = quoteData
     ? (parseInt(quoteData.outAmount, 10) / 10 ** toToken.decimals).toFixed(toToken.decimals === 9 ? 6 : 2)
@@ -368,13 +407,12 @@ function TokenRow({ symbol, balance, usdValue }: {
 // ── Position Row ────────────────────────────────────────────────────
 
 function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntrySaved: () => void }) {
-  const [expanded, setExpanded] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [avgCentsDraft, setAvgCentsDraft] = useState("");
   const { setSelectedToken } = useSirenStore();
   const { publicKey } = useSirenWallet();
   const walletKey = publicKey?.toBase58() ?? null;
-  const addToast = useToastStore((s) => s.addToast);
+  const showResultModal = useResultModalStore((s) => s.show);
 
   const { data: shareProfile } = useQuery({
     queryKey: ["user-profile", walletKey],
@@ -442,166 +480,142 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
     shareProfile?.display_name?.trim() ||
     (walletKey ? `${walletKey.slice(0, 4)}…${walletKey.slice(-4)}` : null);
 
+  const valueUsdDisplay =
+    typeof p.marketValueUsd === "number" && Number.isFinite(p.marketValueUsd)
+      ? p.marketValueUsd
+      : shares > 0
+        ? (shares * markCents) / 100
+        : null;
+
   return (
     <div
-      className="rounded-lg border px-4 py-3 cursor-pointer transition-colors hover:border-[var(--accent)]/30"
-      style={{ borderColor: expanded ? "var(--accent)" : "var(--border-subtle)", background: "var(--bg-base)" }}
-      onClick={() => { hapticLight(); setExpanded(!expanded); }}
+      className="rounded-xl border overflow-hidden transition-colors hover:border-[var(--accent)]/35"
+      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-heading text-sm font-medium" style={{ color: "var(--text-1)" }}>
+      <div className="flex flex-col md:flex-row md:items-stretch" style={{ borderLeft: "4px solid var(--accent)" }}>
+        <div className="min-w-0 flex-1 px-4 py-4 md:border-r md:pr-5" style={{ borderColor: "var(--border-subtle)" }}>
+          <h3
+            className="font-heading text-[15px] font-semibold leading-snug line-clamp-3"
+            style={{ color: "var(--text-1)" }}
+          >
             {p.title || p.ticker}
-          </p>
-          <div className="mt-1 flex items-center gap-2 font-sub text-xs" style={{ color: "var(--text-3)" }}>
-            <span className="rounded px-1.5 py-0.5 font-sub text-[10px] font-semibold uppercase"
+          </h3>
+          <p className="mt-2 flex flex-wrap items-center gap-2 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+            <span
+              className="rounded px-1.5 py-0.5 font-sub text-[10px] font-semibold uppercase"
               style={{
                 background: p.side === "yes" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
                 color: p.side === "yes" ? "var(--up)" : "var(--down)",
-              }}>
+              }}
+            >
               {p.side}
             </span>
             <span>{shares.toFixed(shares >= 1 ? 0 : 2)} shares</span>
+            <span className="font-label opacity-80">{p.ticker}</span>
             {settled && (
-              <span className="rounded px-1.5 py-0.5 text-[10px]"
-                style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-3)" }}>
+              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: "rgba(255,255,255,0.06)" }}>
                 Settled
               </span>
             )}
-            <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} style={{ color: "var(--text-3)" }} />
-          </div>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="font-money tabular-nums text-sm font-semibold" style={{ color: pnlColor(pnl) }}>
-            {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
           </p>
-          {(pnlPct !== 0 || savedEntry) && (
-            <p className="font-money tabular-nums text-[11px] font-medium" style={{ color: pnlColor(pnlPct) }}>
-              {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%
+          <p className="mt-3 font-sub text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+            <span className="font-money tabular-nums">{markCents.toFixed(0)}¢</span> mark
+            {valueUsdDisplay != null && (
+              <>
+                {" · "}
+                <span className="font-money tabular-nums">${fmtUsd(valueUsdDisplay)}</span> value
+              </>
+            )}
+            {" · "}
+            <span className="font-money tabular-nums">{probPct.toFixed(0)}%</span> YES implied
+            {p.yesBid != null && p.yesAsk != null && (
+              <>
+                {" · "}
+                <span className="font-money tabular-nums text-[11px]">
+                  bid {p.yesBid} / ask {p.yesAsk}
+                </span>
+              </>
+            )}
+          </p>
+          {!savedEntry && !settled && (
+            <p className="mt-2 font-sub text-[10px] leading-snug" style={{ color: "var(--text-3)" }}>
+              Add your average buy (¢/share) once — we use it for unrealized PnL. Kalshi fills are not on-chain.
             </p>
           )}
-        </div>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 font-sub text-[11px]"
-        style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
-        {entry > 0 && (
-          <span>
-            Entry{" "}
-            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>${fmtUsd(entry)}</span>
-          </span>
-        )}
-        {(typeof current === "number" ? current : 0) > 0 && (
-          <span>
-            {settled ? "Final" : "Mark"}{" "}
-            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>${fmtUsd(typeof current === "number" ? current : 0)}</span>
-          </span>
-        )}
-        <span>
-          YES implied{" "}
-          <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>{probPct.toFixed(0)}%</span>
-        </span>
-        {p.yesBid != null && p.yesAsk != null && (
-          <span className="w-full sm:w-auto">
-            Book{" "}
-            <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
-              bid {p.yesBid} / ask {p.yesAsk}
-            </span>
-          </span>
-        )}
-      </div>
-
-      {!savedEntry && !settled && (
-        <p className="mt-2 font-sub text-[10px] leading-snug" style={{ color: "var(--text-3)" }}>
-          Set your average buy (¢ per share) below to track unrealized PnL. We do not see your Kalshi fills on-chain.
-        </p>
-      )}
-
-      {expanded && (
-        <div className="mt-3 space-y-3 border-t pt-3" style={{ borderColor: "var(--border-subtle)" }} onClick={(e) => e.stopPropagation()}>
-          <div>
-            <p className="font-heading text-sm font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
-              {p.title || p.ticker}
-            </p>
-            <p className="mt-1 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
-              {p.side.toUpperCase()} · {shares.toFixed(shares >= 1 ? 0 : 2)} shares · Mark{" "}
-              <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
-                {markCents.toFixed(0)}¢
-              </span>
-              {typeof p.marketValueUsd === "number" && (
-                <>
-                  {" "}
-                  · Value{" "}
-                  <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
-                    ${fmtUsd(p.marketValueUsd)}
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
           {!settled && p.mint && (
-            <div className="rounded-lg border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-              <p className="font-sub text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                Avg buy ({p.side.toUpperCase()} ¢ / share)
-              </p>
-              <div className="mt-2 flex flex-wrap items-end gap-2">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  max={100}
-                  step={1}
-                  placeholder={savedEntry ? String(savedEntry.avgCents) : "e.g. 20"}
-                  value={avgCentsDraft}
-                  onChange={(e) => setAvgCentsDraft(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-24 rounded-md border px-2 py-1.5 font-money text-sm tabular-nums outline-none"
-                  style={{
-                    borderColor: "var(--border-subtle)",
-                    background: "var(--bg-base)",
-                    color: "var(--text-1)",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const n = parseFloat(avgCentsDraft);
-                    if (!p.mint || !Number.isFinite(n) || n < 0 || n > 100) {
-                      addToast("Enter average price in cents (0–100).", "error");
-                      return;
-                    }
-                    setPositionEntry(p.mint, n);
-                    setAvgCentsDraft("");
-                    onEntrySaved();
-                    addToast("Saved average buy for PnL.", "success");
-                    hapticLight();
-                  }}
-                  className="rounded-md px-3 py-1.5 font-heading text-[11px] font-semibold"
-                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="font-sub text-[10px] uppercase tracking-wide shrink-0" style={{ color: "var(--text-3)" }}>
+                Avg buy (¢)
+              </span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                step={1}
+                placeholder={savedEntry ? String(savedEntry.avgCents) : "20"}
+                value={avgCentsDraft}
+                onChange={(e) => setAvgCentsDraft(e.target.value)}
+                className="w-20 rounded-md border px-2 py-1 font-money text-sm tabular-nums outline-none"
+                style={{
+                  borderColor: "var(--border-subtle)",
+                  background: "var(--bg-elevated)",
+                  color: "var(--text-1)",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  hapticLight();
+                  const n = parseFloat(avgCentsDraft);
+                  if (!p.mint || !Number.isFinite(n) || n < 0 || n > 100) {
+                    showResultModal({
+                      type: "error",
+                      title: "Invalid entry",
+                      message: "Enter average price in cents between 0 and 100.",
+                    });
+                    return;
+                  }
+                  setPositionEntry(p.mint, n);
+                  setAvgCentsDraft("");
+                  onEntrySaved();
+                  showResultModal({
+                    type: "success",
+                    title: "Saved",
+                    message: "Average buy stored on this device for PnL on this position.",
+                  });
+                }}
+                className="rounded-md px-3 py-1 font-heading text-[11px] font-semibold"
+                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+              >
+                Save
+              </button>
+              {savedEntry && (
+                <span
+                  className="rounded-full border px-2 py-0.5 font-heading text-[10px] font-semibold"
+                  style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
                 >
-                  Save
-                </button>
-              </div>
+                  Stamped @{savedEntry.avgCents.toFixed(0)}¢
+                </span>
+              )}
             </div>
           )}
-          <div className="flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <a
               href={kalshiUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
               className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
               style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
             >
-              Full market on Kalshi ↗
+              Kalshi ↗
             </a>
             <Link
               href="/"
-              onClick={(e) => e.stopPropagation()}
               className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-heading text-[11px] font-semibold hover:brightness-110 transition-all"
               style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
             >
-              Open terminal
+              Terminal
             </Link>
             <button
               type="button"
@@ -610,7 +624,7 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
               style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
             >
               <Share2 className="h-3 w-3" />
-              Share PnL
+              Share
             </button>
             {!settled && p.mint && (
               <button
@@ -622,12 +636,37 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
                 Sell
               </button>
             )}
-            <span className="font-sub text-[10px] self-center" style={{ color: "var(--text-3)" }}>
-              {p.ticker}
-            </span>
           </div>
         </div>
-      )}
+
+        <div
+          className="shrink-0 px-4 py-4 md:w-[148px] flex flex-row md:flex-col justify-between md:justify-start gap-3 md:gap-1 border-t md:border-t-0"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+        >
+          <div className="text-left md:text-right flex-1 md:flex-none">
+            <p className="font-sub text-[9px] uppercase tracking-widest mb-0.5" style={{ color: "var(--text-3)" }}>
+              PnL
+            </p>
+            <p className="font-money tabular-nums text-xl md:text-2xl font-bold leading-tight" style={{ color: pnlColor(pnl) }}>
+              {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
+            </p>
+            {(savedEntry || pnlPct !== 0) && (
+              <p className="font-money tabular-nums text-sm font-semibold mt-0.5" style={{ color: pnlColor(pnlPct) }}>
+                {pnlPct >= 0 ? "+" : ""}
+                {pnlPct.toFixed(1)}%
+              </p>
+            )}
+          </div>
+          {entry > 0 && (
+            <p className="font-sub text-[10px] md:text-right self-center md:self-end" style={{ color: "var(--text-3)" }}>
+              Ref entry{" "}
+              <span className="font-money tabular-nums" style={{ color: "var(--text-2)" }}>
+                ${fmtUsd(entry)}
+              </span>
+            </p>
+          )}
+        </div>
+      </div>
 
       {shareOpen && (
         <div
@@ -679,6 +718,7 @@ export default function PortfolioPage() {
   const { connection } = useConnection();
   const { fundWallet } = useSolanaFundWallet();
   const addToast = useToastStore((s) => s.addToast);
+  const showResultModal = useResultModalStore((s) => s.show);
 
   const queryClient = useQueryClient();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -723,18 +763,22 @@ export default function PortfolioPage() {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        addToast(payload?.error || "Failed to save username", "error");
+        showResultModal({
+          type: "error",
+          title: "Username",
+          message: typeof payload?.error === "string" ? payload.error : "Could not save username.",
+        });
         return;
       }
-      addToast("Username saved", "success");
+      showResultModal({ type: "success", title: "Username saved", message: "Your handle is updated on Siren." });
       setEditingUsername(false);
       queryClient.invalidateQueries({ queryKey: ["user-profile", walletKey] });
     } catch {
-      addToast("Network error saving username", "error");
+      showResultModal({ type: "error", title: "Username", message: "Network error. Try again." });
     } finally {
       setUsernameSaving(false);
     }
-  }, [walletKey, usernameInput, addToast, queryClient]);
+  }, [walletKey, usernameInput, showResultModal, queryClient]);
 
   // ── Balances ──────────────────────────────────────────────────
 
@@ -826,17 +870,25 @@ export default function PortfolioPage() {
 
   const handleDeposit = useCallback(async () => {
     hapticLight();
-    if (!publicKey) { addToast("Connect wallet first.", "error"); return; }
+    if (!publicKey) {
+      showResultModal({ type: "error", title: "Wallet", message: "Connect your wallet first." });
+      return;
+    }
     try {
       await fundWallet({ address: publicKey.toBase58(), options: buildSolanaFundingConfig() });
     } catch (err) {
-      if (err instanceof Error && !err.message.includes("cancelled")) addToast(err.message, "error");
+      if (err instanceof Error && !err.message.includes("cancelled")) {
+        showResultModal({ type: "error", title: "Deposit", message: err.message });
+      }
     }
-  }, [publicKey, fundWallet, addToast]);
+  }, [publicKey, fundWallet, showResultModal]);
 
   const openVerify = useCallback(async () => {
     hapticLight();
-    if (!publicKey || !signMessage) { addToast("Connect wallet to verify identity.", "error"); return; }
+    if (!publicKey || !signMessage) {
+      showResultModal({ type: "error", title: "Verify", message: "Connect your wallet to verify identity." });
+      return;
+    }
     setProofLoading(true);
     try {
       const timestamp = Date.now();
@@ -848,11 +900,19 @@ export default function PortfolioPage() {
       );
       const link = buildProofDeepLink({ wallet: publicKey.toBase58(), signature, timestamp, redirectUri });
       window.open(link, "_blank", "noopener,noreferrer");
-      addToast("Verification opened in a new tab.", "success");
+      showResultModal({
+        type: "info",
+        title: "Complete verification",
+        message: "We opened DFlow in a new tab. Finish there, then return to trade.",
+      });
     } catch (err) {
-      addToast(err instanceof Error ? err.message : "Verification failed.", "error");
+      showResultModal({
+        type: "error",
+        title: "Verification",
+        message: err instanceof Error ? err.message : "Verification could not start.",
+      });
     } finally { setProofLoading(false); }
-  }, [publicKey, signMessage, addToast]);
+  }, [publicKey, signMessage, showResultModal]);
 
   const copyAddress = useCallback(() => {
     if (!walletKey) return;

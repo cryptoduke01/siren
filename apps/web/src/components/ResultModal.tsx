@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, XCircle, ExternalLink } from "lucide-react";
+import { CheckCircle, XCircle, ExternalLink, Info } from "lucide-react";
 
 export function ResultModal({
   type,
@@ -11,7 +11,7 @@ export function ResultModal({
   actionLabel,
   actionHref,
 }: {
-  type: "success" | "error";
+  type: "success" | "error" | "info";
   title: string;
   message: string;
   onClose: () => void;
@@ -19,8 +19,8 @@ export function ResultModal({
   actionLabel?: string;
   actionHref?: string;
 }) {
-  const Icon = type === "success" ? CheckCircle : XCircle;
-  const color = type === "success" ? "var(--up)" : "var(--down)";
+  const Icon = type === "success" ? CheckCircle : type === "error" ? XCircle : Info;
+  const color = type === "success" ? "var(--up)" : type === "error" ? "var(--down)" : "var(--accent)";
   const txHref =
     txSignature?.startsWith("0x")
       ? `https://basescan.org/tx/${txSignature}`
@@ -31,7 +31,7 @@ export function ResultModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[120] flex items-center justify-center px-4 backdrop-blur-[2px]"
       style={{ background: "rgba(6,6,9,0.55)" }}
       onClick={onClose}
     >

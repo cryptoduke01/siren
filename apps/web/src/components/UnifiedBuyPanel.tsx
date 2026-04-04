@@ -10,9 +10,8 @@ import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import { Copy, Check, Loader2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useSirenStore } from "@/store/useSirenStore";
-import { ResultModal } from "./ResultModal";
+import { useResultModalStore } from "@/store/useResultModalStore";
 import { TradePnLCard, type TradePnLToken } from "./TradePnLCard";
-import { useToastStore } from "@/store/useToastStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { hapticLight } from "@/lib/haptics";
 import {
@@ -351,7 +350,9 @@ export function UnifiedBuyPanel() {
   const { connected, publicKey, evmAddress, signTransaction, signMessage, getEvmProvider, switchEvmChain } = useSirenWallet();
   const { connection } = useConnection();
   const { fundWallet: fundEvmWallet } = useEvmFundWallet();
-  const addToast = useToastStore((s) => s.addToast);
+  const showResultModal = useResultModalStore((s) => s.show);
+  const hideResultModal = useResultModalStore((s) => s.hide);
+  const resultModalOpen = useResultModalStore((s) => s.payload != null);
   const queryClient = useQueryClient();
   const { data: solPriceUsd = 0 } = useQuery({
     queryKey: ["sol-price"],
@@ -360,14 +361,6 @@ export function UnifiedBuyPanel() {
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [resultModal, setResultModal] = useState<{
-    type: "success" | "error";
-    title: string;
-    message: string;
-    txSignature?: string;
-    actionLabel?: string;
-    actionHref?: string;
-  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [polymarketFundingLoading, setPolymarketFundingLoading] = useState(false);
   const [solAmount, setSolAmount] = useState("");
@@ -651,7 +644,6 @@ export function UnifiedBuyPanel() {
     setBuyPanelOpen(false);
     setError(null);
     setSuccess(null);
-    setResultModal(null);
     setTradePnLModalOpen(false);
     setTradePnLData(null);
   };
@@ -778,12 +770,12 @@ export function UnifiedBuyPanel() {
       const reason = riskReasons[0] ?? "This token looks too risky to trade.";
       const msg = `Risk trade analysed. ${reason}.`;
       setError(msg);
-      setResultModal({ type: "error", title: "Trade blocked", message: msg });
-      addToast(msg, "error");
+      showResultModal({ type: "error", title: "Trade blocked", message: msg });
       return;
     }
     setError(null);
     setSuccess(null);
+    hideResultModal();
     setLoading(true);
     const isSell = !!sellMode;
     try {
@@ -926,7 +918,7 @@ export function UnifiedBuyPanel() {
           });
           setTradePnLModalOpen(true);
           setBuyPanelOpen(false);
-          setResultModal(null);
+          hideResultModal();
           setSuccess(null);
           return;
         } catch {
@@ -934,11 +926,11 @@ export function UnifiedBuyPanel() {
         }
       }
 
-      setSuccess(isSell ? `Sold! ${tokenDisplayName || selectedToken.name} Tx: ${sig.slice(0, 8)}...` : `Swap successful! ${sig.slice(0, 8)}...`);
+      setSuccess(null);
       if (isSell) setSellAmount("");
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
-      setResultModal({
+      showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Swap complete",
         message: isSell
@@ -965,7 +957,7 @@ export function UnifiedBuyPanel() {
         message: msg,
       });
       setError(friendly);
-      setResultModal({
+      showResultModal({
         type: "error",
         title: requiresVerification ? "Verify wallet" : "Swap failed",
         message: requiresVerification
@@ -974,7 +966,6 @@ export function UnifiedBuyPanel() {
         actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
         actionHref: requiresVerification ? DFLOW_PROOF_PORTAL_URL : undefined,
       });
-      addToast(friendly, "error");
     } finally {
       setLoading(false);
     }
@@ -985,7 +976,7 @@ export function UnifiedBuyPanel() {
     if (!publicKey || !signMessage) {
       const message = "Connect your Solana wallet to verify it on DFlow.";
       setError(message);
-      addToast(message, "error");
+      showResultModal({ type: "error", title: "Wallet required", message });
       return;
     }
 
@@ -1004,11 +995,16 @@ export function UnifiedBuyPanel() {
       });
 
       window.open(deepLink, "_blank", "noopener,noreferrer");
-      addToast("Proof opened in a new tab. Finish verification there, then come back and trade.", "success");
+      showResultModal({
+        type: "info",
+        title: "Complete verification",
+        message:
+          "We opened DFlow in a new tab. Finish verification there, then return here and submit your trade again.",
+      });
     } catch (e) {
       const friendly = e instanceof Error ? e.message : "Unable to open Proof right now.";
       setError(friendly);
-      addToast(friendly, "error");
+      showResultModal({ type: "error", title: "Verification", message: friendly });
     } finally {
       setLoading(false);
     }
@@ -1019,7 +1015,7 @@ export function UnifiedBuyPanel() {
     if (!evmAddress) {
       const message = "Sign in to set up your Polygon wallet for Polymarket trading.";
       setError(message);
-      addToast(message, "error");
+      showResultModal({ type: "error", title: "Sign in required", message });
       return;
     }
 
@@ -1030,14 +1026,22 @@ export function UnifiedBuyPanel() {
         options: buildPolymarketFundingConfig(solAmount.trim() || "50"),
       });
       if (result?.status === "cancelled") {
-        addToast("Funding flow closed.", "success");
+        showResultModal({
+          type: "info",
+          title: "Funding closed",
+          message: "You closed the funding window. Open it again anytime from the trade panel.",
+        });
       } else {
-        addToast("Funding flow opened. Card and Apple Pay options appear inside Privy when available.", "success");
+        showResultModal({
+          type: "info",
+          title: "Funding opened",
+          message: "Card and Apple Pay options appear inside Privy when available.",
+        });
       }
     } catch (e) {
       const friendly = e instanceof Error ? e.message : "Unable to open funding right now.";
       setError(friendly);
-      addToast(friendly, "error");
+      showResultModal({ type: "error", title: "Funding", message: friendly });
     } finally {
       setPolymarketFundingLoading(false);
     }
@@ -1066,6 +1070,7 @@ export function UnifiedBuyPanel() {
 
     setError(null);
     setSuccess(null);
+    hideResultModal();
     setLoading(true);
 
     try {
@@ -1157,7 +1162,7 @@ export function UnifiedBuyPanel() {
         txSignature: txSignature ?? `poly-${Date.now()}`,
       });
 
-      setResultModal({
+      showResultModal({
         type: "success",
         title: "Polymarket order sent",
         message: `Bought ${marketSide.toUpperCase()} for ${formatUsd(amountNum, 2)} via Polygon.`,
@@ -1165,7 +1170,6 @@ export function UnifiedBuyPanel() {
         actionLabel: "Open market page",
         actionHref: selectedMarket.market_url,
       });
-      setSuccess(`Bought ${marketSide.toUpperCase()} on ${selectedMarket.title}.`);
       setSolAmount("");
     } catch (e) {
       const msg = extractErrorMessage(e);
@@ -1181,12 +1185,11 @@ export function UnifiedBuyPanel() {
         message: msg,
       });
       setError(friendly);
-      setResultModal({
+      showResultModal({
         type: "error",
         title: "Polymarket trade failed",
         message: friendly,
       });
-      addToast(friendly, "error");
     } finally {
       setLoading(false);
     }
@@ -1200,8 +1203,7 @@ export function UnifiedBuyPanel() {
     }
     if (predictionTradeBlocked) {
       setError(predictionTradeBlockReason);
-      setResultModal({ type: "error", title: "Trade unavailable", message: predictionTradeBlockReason });
-      addToast(predictionTradeBlockReason, "error");
+      showResultModal({ type: "error", title: "Trade unavailable", message: predictionTradeBlockReason });
       return;
     }
     if (!connected || !publicKey || !selectedMarket || !selectedMarketMint || !signTransaction) {
@@ -1238,6 +1240,7 @@ export function UnifiedBuyPanel() {
 
     setError(null);
     setSuccess(null);
+    hideResultModal();
     setLoading(true);
     try {
       const amount = parseUnitsToBigInt(solAmount.trim(), 6).toString();
@@ -1302,12 +1305,12 @@ export function UnifiedBuyPanel() {
         });
         setTradePnLModalOpen(true);
         setBuyPanelOpen(false);
-        setResultModal(null);
+        hideResultModal();
         setSuccess(null);
         return;
       }
 
-      setResultModal({
+      showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Trade complete",
         message:
@@ -1318,7 +1321,6 @@ export function UnifiedBuyPanel() {
             : `Bought ${outcomeLabel}.`,
         txSignature: sig,
       });
-      setSuccess(`Bought ${outcomeLabel} on ${selectedMarket.ticker}.`);
       setSolAmount("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Prediction trade failed";
@@ -1335,7 +1337,7 @@ export function UnifiedBuyPanel() {
         message: msg,
       });
       setError(friendly);
-      setResultModal({
+      showResultModal({
         type: "error",
         title: requiresVerification ? "Verify wallet" : "Trade failed",
         message: requiresVerification
@@ -1344,7 +1346,6 @@ export function UnifiedBuyPanel() {
         actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
         actionHref: requiresVerification ? DFLOW_PROOF_PORTAL_URL : undefined,
       });
-      addToast(friendly, "error");
     } finally {
       setLoading(false);
     }
@@ -2097,8 +2098,8 @@ export function UnifiedBuyPanel() {
                   </>
                 )}
               </div>
-              {!resultModal && error && <p className="text-sm mt-3" style={{ color: "var(--down)" }}>{error}</p>}
-              {!resultModal && verificationRequired && (
+              {!resultModalOpen && error && <p className="text-sm mt-3" style={{ color: "var(--down)" }}>{error}</p>}
+              {!resultModalOpen && verificationRequired && (
                 <a
                   href={DFLOW_PROOF_PORTAL_URL}
                   target="_blank"
@@ -2110,7 +2111,7 @@ export function UnifiedBuyPanel() {
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
-              {!resultModal && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
+              {!resultModalOpen && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
               <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">
                 Use market mode for YES or NO shares and token mode for linked coins. Siren spends USDC for both Solana and Polymarket trades, and Kalshi may need a one-time DFlow wallet verification first.
               </p>
@@ -2161,18 +2162,6 @@ export function UnifiedBuyPanel() {
             />
           </div>
         </div>
-      )}
-      {resultModal && (
-        <ResultModal
-          key="result-modal"
-          type={resultModal.type}
-          title={resultModal.title}
-          message={resultModal.message}
-          txSignature={resultModal.txSignature}
-          actionLabel={resultModal.actionLabel}
-          actionHref={resultModal.actionHref}
-          onClose={() => setResultModal(null)}
-        />
       )}
     </AnimatePresence>
   );

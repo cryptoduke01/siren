@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Star, Sun, Moon, Rocket, TrendingUp, User, Settings } from "lucide-react";
+import { Menu, X, Star, Sun, Moon, Rocket, TrendingUp, User, Settings, Trophy } from "lucide-react";
 import { WalletButton } from "./WalletButton";
 import { NavbarBalance } from "./NavbarBalance";
 import { useThemeStore } from "@/store/useThemeStore";
@@ -14,6 +14,7 @@ import { useSignals } from "@/hooks/useSignals";
 const NAV = [
   { href: "/", label: "Terminal", icon: Rocket },
   { href: "/trending", label: "Trending", icon: TrendingUp },
+  { href: "/leaderboard", label: "Ranks", icon: Trophy },
 ];
 const LIVE_SIGNAL_WINDOW_MS = 30 * 60 * 1000;
 

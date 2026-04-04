@@ -9,6 +9,7 @@ import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
+import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
@@ -86,7 +87,8 @@ function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
 
 function getTradeErrorStatus(error?: string | null): number {
   const lower = error?.toLowerCase().trim() ?? "";
-  if (!lower) return 502;
+  /** 422 = app understood the request but could not produce a trade (not an HTTP/proxy fault). */
+  if (!lower) return 422;
   if (lower.includes("rate limited") || lower.includes("429")) return 429;
   if (
     lower.includes("wallet must be verified") ||
@@ -106,7 +108,7 @@ function getTradeErrorStatus(error?: string | null): number {
   ) {
     return 400;
   }
-  return 502;
+  return 422;
 }
 
 let signalRouteCache: { expiresAt: number; value: Awaited<ReturnType<typeof getSignalFeedSnapshot>> } | null = null;
@@ -1536,16 +1538,16 @@ export function registerRoutes(app: FastifyInstance) {
         });
         if (upErr) {
           req.log.warn({ err: upErr }, "avatar storage upload failed");
-          return reply.status(503).send({
+          return reply.status(422).send({
             success: false,
             error:
-              "Avatar storage failed. In Supabase: create a public bucket named avatars (or fix Storage policies).",
+              "Avatar storage failed. In Supabase: create a public bucket named avatars (or fix Storage policies). See apps/api/sql/supabase_avatars_bucket.sql.",
           });
         }
         const { data: pub } = supabase.storage.from("avatars").getPublicUrl(objectPath);
         const publicUrl = pub?.publicUrl;
         if (!publicUrl) {
-          return reply.status(503).send({ success: false, error: "Could not resolve public URL for avatar" });
+          return reply.status(422).send({ success: false, error: "Could not resolve public URL for avatar" });
         }
         const { data, error } = await supabase
           .from("users")
@@ -1555,9 +1557,9 @@ export function registerRoutes(app: FastifyInstance) {
           .maybeSingle();
         if (error) {
           req.log.error({ err: error }, "avatar_url column may be missing");
-          return reply.status(503).send({
+          return reply.status(422).send({
             success: false,
-            error: "Could not save avatar URL. Run: ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;",
+            error: "Could not save avatar URL. Run apps/api/sql/add_avatar_url.sql on users.",
           });
         }
         return reply.send({ success: true, data: data ?? { wallet: w, avatar_url: publicUrl } });
@@ -1764,6 +1766,50 @@ export function registerRoutes(app: FastifyInstance) {
       });
     }
   });
+
+  /**
+   * Public leaderboard from `siren_trades` (volume) + FIFO-based sell PnL for trader win rate.
+   * Query: scope=users|tokens|markets, window=7d|30d|all|alltime, metric=volume|winRate (winRate applies to users only).
+   * All-time uses the most recent 25k rows (then sorted for FIFO) so the route stays bounded.
+   */
+  app.get<{ Querystring: { scope?: string; window?: string; metric?: string } }>(
+    "/api/leaderboard",
+    async (req, reply) => {
+      const scopeRaw = (req.query.scope || "users").toLowerCase();
+      const scope = scopeRaw === "tokens" || scopeRaw === "markets" ? scopeRaw : "users";
+      const win = (req.query.window || "7d").toLowerCase();
+      const window =
+        win === "30d" ? "30d" : win === "all" || win === "alltime" ? "all" : "7d";
+      const metricRaw = (req.query.metric || "volume").toLowerCase().replace(/_/g, "");
+      const metric = metricRaw === "winrate" ? "winRate" : "volume";
+      const effectiveMetric = scope === "users" ? metric : "volume";
+      try {
+        const client = getSupabaseAdminClient();
+        const built = await buildLeaderboard({
+          client,
+          scope,
+          window,
+          metric: effectiveMetric,
+          limit: 50,
+        });
+        let { entries, ...meta } = built;
+        if (scope === "users") {
+          entries = await enrichUsersWithProfiles(client, entries);
+        }
+        return reply.send({
+          success: true,
+          data: { ...meta, metric: effectiveMetric, entries },
+        });
+      } catch (e) {
+        const msg = (e as Error).message || "Leaderboard failed";
+        if (msg.includes("Supabase not configured")) {
+          return reply.status(503).send({ success: false, error: msg });
+        }
+        app.log.error(e);
+        return reply.status(500).send({ success: false, error: "Leaderboard failed" });
+      }
+    },
+  );
 
   /** Admin: list app users (wallet-connected users from users table). */
   app.get<{ Querystring: { limit?: string; offset?: string } }>("/api/admin/users", async (req, reply) => {
