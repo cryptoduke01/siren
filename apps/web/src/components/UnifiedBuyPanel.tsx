@@ -336,7 +336,7 @@ function CopyCAButton({ mint }: { mint: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="mt-2 flex items-center gap-2 text-xs font-body text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors duration-100"
+      className="flex items-center gap-2 text-xs font-body text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors duration-100"
     >
       {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-bags)]" /> : <Copy className="w-3.5 h-3.5" />}
       {copied ? "Copied!" : "Copy CA"}
@@ -1385,30 +1385,32 @@ export function UnifiedBuyPanel() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="fixed top-0 right-0 bottom-0 z-[51] w-full max-w-[420px] md:w-[400px] flex flex-col overflow-hidden"
+            className="fixed inset-x-0 bottom-0 top-[8%] z-[51] flex w-full flex-col overflow-hidden rounded-t-[28px] border-t md:top-0 md:right-0 md:left-auto md:w-[520px] md:max-w-[520px] md:rounded-none md:border-t-0 md:border-l"
             style={{
               background: "var(--bg-surface)",
-              borderLeft: "1px solid var(--border-subtle)",
               boxShadow: "-8px 0 32px rgba(0,0,0,0.35)",
+              borderColor: "var(--border-subtle)",
             }}
           >
-            <div className="flex justify-between items-center px-4 py-3 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-              <h3 className="font-heading font-bold text-sm" style={{ color: "var(--accent)" }}>Trade</h3>
-              <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-[var(--bg-elevated)] transition-colors" style={{ color: "var(--text-3)" }} aria-label="Close">✕</button>
+            <div className="flex items-center justify-between border-b px-5 py-4 shrink-0 md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+              <h3 className="font-heading font-bold text-base" style={{ color: "var(--text-1)" }}>Trade</h3>
+              <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-[var(--bg-elevated)] transition-colors" style={{ color: "var(--text-3)" }} aria-label="Close">✕</button>
             </div>
-            <div className="p-4 overflow-y-auto flex-1 min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 md:p-6">
               <div className="flex flex-col gap-4">
                 {buyPanelMode === "market" && selectedMarket && (
-                  <div className="rounded-xl border p-4 md:p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
-                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Trade market</p>
-                    <p className="font-heading font-bold text-[var(--text-primary)] text-sm line-clamp-3">{selectedMarket.title}</p>
-                    <p className="font-body text-xs mt-2" style={{ color: "var(--text-3)" }}>
+                  <div className="rounded-[24px] border p-5 md:p-6" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
+                    <p className="text-xs uppercase tracking-[0.16em]" style={{ color: "var(--accent)" }}>Market</p>
+                    <p className="mt-2 font-heading text-lg font-bold leading-tight text-[var(--text-primary)] md:text-[1.45rem]">
+                      {selectedMarket.title}
+                    </p>
+                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
-                        ? "Pick YES or NO, enter a USDC amount, and Siren will route through your Polygon wallet."
-                        : "Pick YES or NO, enter Solana USDC, and Siren will build the order for you."}
+                        ? "Pick YES or NO and enter USDC from your Polygon wallet."
+                        : "Pick YES or NO and enter USDC from your Solana wallet."}
                     </p>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="mt-5 grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => {
@@ -1416,16 +1418,16 @@ export function UnifiedBuyPanel() {
                           setMarketSide("yes");
                         }}
                         disabled={!(selectedMarket.source === "polymarket" ? selectedMarket.yes_token_id : selectedMarket.yes_mint)}
-                        className="rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-40"
+                        className="rounded-[20px] border px-4 py-4 text-left transition-all disabled:opacity-40"
                         style={{
                           background: marketSide === "yes" ? "color-mix(in srgb, var(--up) 12%, var(--bg-surface))" : "var(--bg-surface)",
                           borderColor: marketSide === "yes" ? "color-mix(in srgb, var(--up) 40%, transparent)" : "var(--border-subtle)",
                         }}
                       >
-                        <p className="font-heading text-xs font-semibold uppercase tracking-wide" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--text-2)" }}>
+                        <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--text-2)" }}>
                           YES
                         </p>
-                        <p className="font-mono text-lg tabular-nums mt-1" style={{ color: "var(--text-1)" }}>
+                        <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketYesPriceUsd != null ? `${(marketYesPriceUsd * 100).toFixed(1)}c` : "—"}
                         </p>
                       </button>
@@ -1436,49 +1438,49 @@ export function UnifiedBuyPanel() {
                           setMarketSide("no");
                         }}
                         disabled={!(selectedMarket.source === "polymarket" ? selectedMarket.no_token_id : selectedMarket.no_mint)}
-                        className="rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-40"
+                        className="rounded-[20px] border px-4 py-4 text-left transition-all disabled:opacity-40"
                         style={{
                           background: marketSide === "no" ? "color-mix(in srgb, var(--down) 10%, var(--bg-surface))" : "var(--bg-surface)",
                           borderColor: marketSide === "no" ? "color-mix(in srgb, var(--down) 35%, transparent)" : "var(--border-subtle)",
                         }}
                       >
-                        <p className="font-heading text-xs font-semibold uppercase tracking-wide" style={{ color: marketSide === "no" ? "var(--down)" : "var(--text-2)" }}>
+                        <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "no" ? "var(--down)" : "var(--text-2)" }}>
                           NO
                         </p>
-                        <p className="font-mono text-lg tabular-nums mt-1" style={{ color: "var(--text-1)" }}>
+                        <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketNoPriceUsd != null ? `${(marketNoPriceUsd * 100).toFixed(1)}c` : "—"}
                         </p>
                       </button>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>YES price</p>
-                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--kalshi)" }}>
-                          {marketYesPriceUsd != null ? `${(marketYesPriceUsd * 100).toFixed(1)}c` : "—"}
+                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Price</p>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--down)" }}>
+                          {selectedMarketPriceUsd != null ? `${(selectedMarketPriceUsd * 100).toFixed(1)}c` : "—"}
                         </p>
                       </div>
-                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>24h volume</p>
-                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Volume</p>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
                           {formatCompactNumber(selectedMarket.volume_24h, 1)}
                         </p>
                       </div>
-                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                           {selectedMarket.source === "polymarket" ? "Liquidity" : "Trades 24h"}
                         </p>
-                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
                           {selectedMarket.source === "polymarket"
                             ? formatCompactNumber(selectedMarket.liquidity, 1)
                             : formatCompactNumber(marketActivity?.recentTrades?.length, 0)}
                         </p>
                       </div>
-                      <div className="rounded-xl border px-3 py-2.5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                        <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                           {selectedMarket.source === "polymarket" ? "Wallet" : "Open interest"}
                         </p>
-                        <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
                           {selectedMarket.source === "polymarket"
                             ? formatAddressShort(evmAddress)
                             : formatCompactNumber(selectedMarket.open_interest, 1)}
@@ -1486,8 +1488,8 @@ export function UnifiedBuyPanel() {
                       </div>
                     </div>
 
-                    <div className="mt-4">
-                      <label className="text-xs text-[var(--text-secondary)] block mb-1">Stake ({marketSpendAssetLabel})</label>
+                    <div className="mt-5 rounded-[20px] border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                      <label className="block text-[11px] uppercase tracking-[0.16em] text-[var(--text-secondary)]">How much</label>
                       <input
                         type="number"
                         step={isPolymarketTrade ? "0.01" : "0.001"}
@@ -1495,10 +1497,10 @@ export function UnifiedBuyPanel() {
                         placeholder={marketSpendPlaceholder}
                         value={solAmount}
                         onChange={(e) => setSolAmount(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                        className="mt-3 w-full rounded-2xl border px-4 py-3.5 font-body text-lg text-[var(--text-primary)] transition-colors focus:border-[var(--border-active)] focus:outline-none"
                         style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                       />
-                      <div className="flex flex-wrap gap-1.5 mt-2">
+                      <div className="mt-3 flex flex-wrap gap-2">
                         {(["5", "10", "25", "50", "100"] as const).map((amt) => (
                           <button
                             key={amt}
@@ -1507,7 +1509,7 @@ export function UnifiedBuyPanel() {
                               hapticLight();
                               setSolAmount(amt);
                             }}
-                            className="rounded-full px-3 py-1.5 font-mono text-[11px] font-semibold border transition-colors"
+                            className="rounded-full px-3.5 py-2 font-mono text-[11px] font-semibold border transition-colors"
                             style={{
                               background: solAmount === amt ? "color-mix(in srgb, var(--accent) 14%, var(--bg-elevated))" : "var(--bg-surface)",
                               borderColor: solAmount === amt ? "var(--accent)" : "var(--border-subtle)",
@@ -1520,73 +1522,40 @@ export function UnifiedBuyPanel() {
                       </div>
                     </div>
 
-                    <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                      <p className="text-[10px] uppercase tracking-wide mb-2 font-semibold" style={{ color: "var(--text-3)" }}>
-                        Payout in plain English
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                            Current price (~¢ / share)
-                          </p>
-                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--down)" }}>
-                            {selectedMarketPriceUsd != null ? `${(selectedMarketPriceUsd * 100).toFixed(1)}¢` : "—"}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                            You put in
-                          </p>
-                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                            {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
-                          </p>
-                          <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
-                            {parsedBuySolAmount != null
-                              ? `${formatTokenAmount(parsedBuySolAmount, isPolymarketTrade ? 2 : 4)} ${marketSpendAssetLabel}`
-                              : `Enter ${marketSpendAssetLabel}`}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                            Potential shares
-                          </p>
-                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                            {estimatedContracts != null ? formatTokenAmount(estimatedContracts, 2) : "—"}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                            Potential payout if right
-                          </p>
-                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--up)" }}>
-                            {marketMaxPayoutUsd != null ? formatUsd(marketMaxPayoutUsd, 2) : "—"}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                            Potential profit
-                          </p>
-                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: marketNetIfCorrectUsd != null && marketNetIfCorrectUsd >= 0 ? "var(--up)" : "var(--down)" }}>
-                            {marketNetIfCorrectUsd != null ? formatUsd(marketNetIfCorrectUsd, 2) : "—"}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                            Implied break-even
-                          </p>
-                          <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                            {marketBreakEvenPct != null ? `${marketBreakEvenPct.toFixed(1)}%` : "—"}
-                          </p>
-                        </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>You pay</p>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
+                        </p>
                       </div>
-                      <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                        Estimates only. If this side wins, shares tend toward $1 each; if not, toward $0. You can lose your whole stake.
-                      </p>
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Shares</p>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                          {estimatedContracts != null ? formatTokenAmount(estimatedContracts, 2) : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>If you're right</p>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--up)" }}>
+                          {marketMaxPayoutUsd != null ? formatUsd(marketMaxPayoutUsd, 2) : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Profit</p>
+                        <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: marketNetIfCorrectUsd != null && marketNetIfCorrectUsd >= 0 ? "var(--up)" : "var(--down)" }}>
+                          {marketNetIfCorrectUsd != null ? formatUsd(marketNetIfCorrectUsd, 2) : "—"}
+                        </p>
+                      </div>
                     </div>
+
+                    <p className="mt-3 text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                      Prices can move before your order lands. You can lose the amount you put in.
+                    </p>
 
                     {predictionTradeBlocked && (
                       <div
-                        className="mt-3 rounded-xl border px-3 py-3"
+                        className="mt-4 rounded-[18px] border px-4 py-3.5"
                         style={{
                           background: "color-mix(in srgb, var(--down) 10%, var(--bg-surface))",
                           borderColor: "color-mix(in srgb, var(--down) 30%, var(--border-subtle))",
@@ -1604,11 +1573,10 @@ export function UnifiedBuyPanel() {
                     <button
                       onClick={executePredictionMarketTrade}
                       disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked}
-                      className="mt-4 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
                       style={{
                         background: marketSide === "yes" ? "var(--accent-bags)" : "var(--down)",
                         color: "var(--bg-base)",
-                        height: "36px",
                       }}
                     >
                       {loading ? (
@@ -1628,15 +1596,15 @@ export function UnifiedBuyPanel() {
                       href={selectedMarket.market_url || selectedMarket.kalshi_url || (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com")}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-3 w-full py-2.5 rounded-md font-body font-medium text-[13px] transition-all duration-100 hover:brightness-110 flex items-center justify-center gap-2 border"
+                      className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border font-body text-sm font-medium transition-all duration-100 hover:brightness-110"
                       style={{ background: "var(--bg-surface)", color: "var(--text-2)", borderColor: "var(--border-subtle)" }}
                     >
-                      Open source page
+                      Market page
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
 
                     <div
-                      className="mt-3 rounded-xl border px-3 py-3"
+                      className="mt-3 rounded-[18px] border px-4 py-3.5"
                       style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
                     >
                       {isKalshiMarketTrade ? (
@@ -1646,8 +1614,8 @@ export function UnifiedBuyPanel() {
                           </p>
                           <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
                             {proofVerified
-                              ? "Your wallet is verified. You can place Kalshi orders from Siren."
-                              : "Kalshi orders need a one-time wallet check before your first trade can go through."}
+                              ? "Your wallet is ready."
+                              : "Kalshi needs a one-time identity check before your first trade."}
                           </p>
                           {!proofVerified && (
                             <button
@@ -1667,7 +1635,7 @@ export function UnifiedBuyPanel() {
                             Polymarket wallet
                           </p>
                           <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Polymarket trades use your Polygon wallet. Fund it with USDC on Polygon, or bridge from Solana.
+                            Polymarket trades use your Polygon wallet. Add USDC there before you buy.
                           </p>
                           <button
                             type="button"
@@ -1686,7 +1654,7 @@ export function UnifiedBuyPanel() {
                       )}
                     </div>
 
-                    <p className="text-[11px] mt-3 leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    <p className="mt-3 text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
                         ? "This can take a few seconds while your wallet signs and the order lands."
                         : "This can take a few seconds after your wallet confirms."}

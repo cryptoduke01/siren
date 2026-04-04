@@ -8,7 +8,7 @@ import { PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@so
 import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
-  ChevronDown, ArrowUp, ArrowDown, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2, Settings,
+  ChevronDown, ArrowUp, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2, Settings,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
@@ -188,6 +188,96 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
             Cancel
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DepositModal({
+  walletKey,
+  onClose,
+  onFund,
+  addressCopied,
+  onCopyAddress,
+  loading,
+}: {
+  walletKey: string;
+  onClose: () => void;
+  onFund: () => Promise<void> | void;
+  addressCopied: boolean;
+  onCopyAddress: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl border p-5"
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+      >
+        <h3 className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+          Deposit
+        </h3>
+        <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+          Add USDC with card or Apple Pay, or send crypto from another wallet.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <button
+            type="button"
+            onClick={onFund}
+            disabled={loading}
+            className="flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors disabled:opacity-50"
+            style={{ borderColor: "color-mix(in srgb, var(--accent) 38%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" }}
+          >
+            <div>
+              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Buy with card
+              </p>
+              <p className="mt-0.5 font-body text-xs" style={{ color: "var(--text-3)" }}>
+                Apple Pay may appear when supported by Privy.
+              </p>
+            </div>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} /> : <CreditCard className="h-4 w-4" style={{ color: "var(--accent)" }} />}
+          </button>
+
+          <div
+            className="rounded-lg border p-4"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+          >
+            <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+              Transfer from another wallet
+            </p>
+            <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Send SOL or Solana USDC to this address.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <code className="min-w-0 flex-1 select-all break-all font-label text-[10px]" style={{ color: "var(--text-1)" }}>
+                {walletKey}
+              </code>
+              <button
+                type="button"
+                onClick={onCopyAddress}
+                className="shrink-0 rounded-md p-1 hover:bg-[var(--bg-elevated)]"
+                style={{ color: "var(--text-2)" }}
+                aria-label="Copy wallet address"
+              >
+                {addressCopied ? <Check className="h-3 w-3" style={{ color: "var(--up)" }} /> : <Copy className="h-3 w-3" />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-4 w-full rounded-lg border py-2.5 font-body text-sm"
+          style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+        >
+          Close
+        </button>
       </div>
     </div>
   );
@@ -815,8 +905,8 @@ export default function PortfolioPage() {
   const showResultModal = useResultModalStore((s) => s.show);
 
   const queryClient = useQueryClient();
+  const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [receiveOpen, setReceiveOpen] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
   const [positionTab, setPositionTab] = useState<"open" | "settled">("open");
@@ -1103,50 +1193,19 @@ export default function PortfolioPage() {
               </p>
             )}
 
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <button type="button" onClick={handleDeposit} disabled={!connected}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { hapticLight(); setDepositOpen(true); }} disabled={!connected}
                 className="flex flex-col items-center gap-1 rounded-lg py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
                 <CreditCard className="h-3.5 w-3.5" /> Deposit
               </button>
               <button type="button" disabled={!connected}
-                onClick={() => { hapticLight(); setReceiveOpen(!receiveOpen); }}
-                className="flex flex-col items-center gap-1 rounded-lg border py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
-                style={{
-                  borderColor: receiveOpen ? "var(--accent)" : "var(--border-subtle)",
-                  color: receiveOpen ? "var(--accent)" : "var(--text-1)",
-                }}>
-                <ArrowDown className="h-3.5 w-3.5" /> Receive
-              </button>
-              <button type="button" disabled={!connected}
                 onClick={() => { hapticLight(); setWithdrawOpen(true); }}
                 className="flex flex-col items-center gap-1 rounded-lg border py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
-                <ArrowUp className="h-3.5 w-3.5" /> Send
+                <ArrowUp className="h-3.5 w-3.5" /> Withdraw
               </button>
             </div>
-
-            {receiveOpen && walletKey && (
-              <div className="mt-3 rounded-lg border p-3"
-                style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                <p className="mb-1 font-sub text-[10px]" style={{ color: "var(--text-3)" }}>
-                  Send SOL or USDC to this address
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 select-all break-all font-label text-[10px]"
-                    style={{ color: "var(--text-1)" }}>
-                    {walletKey}
-                  </code>
-                  <button type="button" onClick={copyAddress}
-                    className="shrink-0 rounded-md p-1 hover:bg-[var(--bg-elevated)]"
-                    style={{ color: "var(--text-2)" }}>
-                    {addressCopied
-                      ? <Check className="h-3 w-3" style={{ color: "var(--up)" }} />
-                      : <Copy className="h-3 w-3" />}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right column: tokens + username + identity */}
@@ -1231,7 +1290,7 @@ export default function PortfolioPage() {
                 <Shield className="h-3.5 w-3.5" style={{ color: verified ? "var(--up)" : "var(--text-3)" }} />
                 <span className="font-body text-xs"
                   style={{ color: verified ? "var(--up)" : "var(--text-2)" }}>
-                  {verified ? "Kalshi KYC Verified" : "Kalshi KYC Not Verified"}
+                  {verified ? "Ready to trade Kalshi" : "Verify identity to trade Kalshi"}
                 </span>
               </div>
               {!verified && connected && (
@@ -1280,7 +1339,7 @@ export default function PortfolioPage() {
             </p>
             {localActivity.length === 0 ? (
               <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
-                Nothing here yet — swap below or buy a token from the terminal.
+                Nothing here yet. Make a trade to get started.
               </p>
             ) : (
               <ul className="mt-5 space-y-3">
@@ -1364,10 +1423,20 @@ export default function PortfolioPage() {
 
         <Link href="/" className="mt-6 inline-flex items-center gap-1.5 font-body text-xs"
           style={{ color: "var(--text-3)" }}>
-          <ArrowLeft className="h-3 w-3" /> Back to Terminal
+          <ArrowLeft className="h-3 w-3" /> Back
         </Link>
       </main>
 
+      {depositOpen && walletKey && (
+        <DepositModal
+          walletKey={walletKey}
+          onClose={() => setDepositOpen(false)}
+          onFund={handleDeposit}
+          addressCopied={addressCopied}
+          onCopyAddress={copyAddress}
+          loading={false}
+        />
+      )}
       {withdrawOpen && (
         <WithdrawModal solBalance={sol} solPrice={solPrice} onClose={() => setWithdrawOpen(false)} />
       )}

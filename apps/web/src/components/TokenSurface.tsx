@@ -200,7 +200,7 @@ function MarketShareExportCard({
       </h2>
 
       <p className="mt-5 max-w-[40ch] font-body text-lg leading-relaxed" style={{ color: "var(--text-2)" }}>
-        Trade this market in Siren, or use the linked tokens below if you want more exposure.
+        Buy this market in Siren or check the linked tokens below.
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-3">
@@ -238,7 +238,6 @@ function PredictionMarketFocusPanel({
   onShareCard,
   onDownloadCard,
   exportingCard,
-  displayName,
 }: {
   market: SelectedMarket;
   onPrimaryAction: () => void;
@@ -247,7 +246,6 @@ function PredictionMarketFocusPanel({
   onShareCard: () => void;
   onDownloadCard: () => void;
   exportingCard: boolean;
-  displayName: string;
 }) {
   const { data: marketActivity } = useMarketActivity(market.source === "kalshi" ? market.ticker : undefined);
   const canTradeInSiren = canTradeSelectedMarketInSiren(market);
@@ -302,14 +300,14 @@ function PredictionMarketFocusPanel({
           </div>
 
           <h2
-            className="mt-4 max-w-[18ch] break-words font-heading text-[clamp(1.15rem,2vw,1.8rem)] font-bold leading-[0.95] tracking-[-0.045em]"
+            className="mt-4 max-w-[17ch] break-words font-heading text-[clamp(1.05rem,1.8vw,1.55rem)] font-bold leading-[0.95] tracking-[-0.045em]"
             style={{ color: "var(--text-1)" }}
           >
             {market.title}
           </h2>
 
           <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Trade this market here, then check the linked tokens below if you want more ways to play it.
+            Buy this market or check the linked tokens below.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -338,7 +336,7 @@ function PredictionMarketFocusPanel({
             Actions
           </p>
           <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Shared as {displayName}. Save the card, trade here, or open the source market if you need more detail.
+            Share it, save it, or open the market page.
           </p>
 
           <div className="mt-4 space-y-2">
@@ -348,7 +346,7 @@ function PredictionMarketFocusPanel({
               className="inline-flex w-full items-center justify-center rounded-xl px-4 py-3 font-heading text-xs font-semibold uppercase tracking-[0.14em]"
               style={{ background: "var(--accent)", color: "var(--accent-text)" }}
             >
-              {canTradeInSiren ? "Trade now" : "View linked tokens"}
+              {canTradeInSiren ? "Trade" : "View tokens"}
             </button>
             <button
               type="button"
@@ -356,7 +354,7 @@ function PredictionMarketFocusPanel({
               className="inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-1)" }}
             >
-              Linked tokens
+              Tokens
             </button>
             <button
               type="button"
@@ -364,7 +362,7 @@ function PredictionMarketFocusPanel({
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-body text-xs font-medium"
               style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
             >
-              Open source page
+              Market page
               <ExternalLink className="h-4 w-4" />
             </button>
           </div>
@@ -707,7 +705,6 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
               onShareCard={() => exportSelectedMarket("share")}
               onDownloadCard={() => exportSelectedMarket("download")}
               exportingCard={exportingCard}
-              displayName={cardDisplayName}
             />
           </motion.div>
         ) : selectedSignal ? (
@@ -928,7 +925,7 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
                   hidden: { opacity: 0, y: 10 },
                   visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] } },
                 }}
-                className="min-w-0 cursor-pointer overflow-hidden rounded-[14px] p-3 transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)]"
+                className="min-w-0 cursor-pointer overflow-hidden rounded-[18px] p-4 transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] md:p-5"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border-subtle)",
@@ -961,8 +958,8 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
                   });
                 }}
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl shrink-0 overflow-hidden" style={{ background: "var(--bg-base)", border: "1px solid var(--border-subtle)" }}>
+                <div className="flex items-start gap-4">
+                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl" style={{ background: "var(--bg-base)", border: "1px solid var(--border-subtle)" }}>
                     <img
                       src={t.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.symbol || t.name)}&background=0F172A&color=E2E8F0&size=64`}
                       alt=""
@@ -975,9 +972,9 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
+                        <p className="font-heading font-bold text-base truncate" style={{ color: "var(--text-1)" }}>
                           ${t.symbol}
                         </p>
                         <LaunchpadBadge launchpad={t.launchpad} />
@@ -987,32 +984,50 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
                           </span>
                         )}
                       </div>
-                      <span className="font-mono text-xs font-semibold tabular-nums shrink-0" style={{ color: "var(--text-1)" }}>
+                      <span className="font-mono text-sm font-semibold tabular-nums shrink-0" style={{ color: "var(--text-1)" }}>
                         ${t.price != null ? (t.price < 0.001 ? t.price.toExponential(1) : t.price.toFixed(4)) : "—"}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <p className="font-body text-[10px] truncate" style={{ color: "var(--text-3)" }}>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <p className="font-body text-xs truncate" style={{ color: "var(--text-3)" }}>
                         {t.name}
                       </p>
-                      <span className="font-body text-[10px] tabular-nums shrink-0" style={{ color: "var(--text-3)" }}>
+                      <span className="font-body text-xs tabular-nums shrink-0" style={{ color: "var(--text-3)" }}>
                         Vol ${formatCompactNumber(t.volume24h)}
                       </span>
                     </div>
-                    <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                      <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl border px-2.5 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                        <p className="font-body text-[9px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+                          Vol
+                        </p>
+                        <p className="mt-1 font-body text-xs font-medium" style={{ color: "var(--text-1)" }}>
+                          ${formatCompactNumber(t.volume24h)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-2.5 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                        <p className="font-body text-[9px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+                          Liq
+                        </p>
+                        <p className="mt-1 font-body text-xs font-medium" style={{ color: "var(--text-1)" }}>
+                          ${formatCompactNumber(t.liquidityUsd)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border px-2.5 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                        <p className="font-body text-[9px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+                          Holders
+                        </p>
+                        <p className="mt-1 font-body text-xs font-medium" style={{ color: "var(--text-1)" }}>
+                          {t.holders != null && t.holders > 0 ? formatCompactNumber(t.holders, 0) : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                      <span className="rounded-full px-2 py-1 text-[10px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
                         {t.bondingCurveStatus === "bonded" ? "Bonded" : t.bondingCurveStatus === "bonding" ? "Curve" : "—"}
                       </span>
-                      {t.holders != null && t.holders > 0 && (
-                        <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
-                          {formatCompactNumber(t.holders, 0)} holders
-                        </span>
-                      )}
-                      <span className="rounded px-1.5 py-px text-[9px] font-body" style={{ background: "var(--bg-elevated)", color: "var(--text-2)" }}>
-                        Liq ${formatCompactNumber(t.liquidityUsd)}
-                      </span>
                       <span
-                        className="rounded px-1.5 py-px text-[9px] font-body font-medium"
+                        className="rounded-full px-2 py-1 text-[10px] font-body font-medium"
                         style={{
                           background: t.safe === false ? "rgba(255,69,96,0.1)" : "rgba(0,255,133,0.08)",
                           color: t.safe === false ? "var(--down)" : "var(--up)",
@@ -1023,42 +1038,45 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
                     </div>
                   </div>
 
-                  <div className="mt-2 flex items-center gap-1.5 justify-end">
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5">
                     <TokenAlertButton mint={t.mint} symbol={t.symbol} price={t.price} />
                     <StarButton type="token" id={t.mint} />
                     <CopyCAButton mint={t.mint} />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        hapticLight();
-                        setSelectedToken({
-                          mint: t.mint,
-                          name: t.name,
-                          symbol: t.symbol,
-                          price: t.price,
-                          volume24h: t.volume24h,
-                          liquidityUsd: t.liquidityUsd,
-                          fdvUsd: t.fdvUsd,
-                          holders: t.holders,
-                          bondingCurveStatus: t.bondingCurveStatus,
-                          rugcheckScore: t.rugcheckScore,
-                          safe: t.safe,
-                          riskScore: t.riskScore,
-                          riskLabel: t.riskLabel,
-                          riskReasons: t.riskReasons,
-                          riskBlocked: t.riskBlocked,
-                        });
-                        setBuyPanelOpen(true, "token");
-                      }}
-                      className="h-8 shrink-0 rounded-lg px-5 font-heading text-[11px] font-bold uppercase tracking-wide transition-all duration-100 hover:brightness-110 active:scale-95"
-                      style={{
-                        background: "var(--accent)",
-                        color: "var(--accent-text)",
-                      }}
-                    >
-                      Buy
-                    </button>
                   </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      hapticLight();
+                      setSelectedToken({
+                        mint: t.mint,
+                        name: t.name,
+                        symbol: t.symbol,
+                        price: t.price,
+                        volume24h: t.volume24h,
+                        liquidityUsd: t.liquidityUsd,
+                        fdvUsd: t.fdvUsd,
+                        holders: t.holders,
+                        bondingCurveStatus: t.bondingCurveStatus,
+                        rugcheckScore: t.rugcheckScore,
+                        safe: t.safe,
+                        riskScore: t.riskScore,
+                        riskLabel: t.riskLabel,
+                        riskReasons: t.riskReasons,
+                        riskBlocked: t.riskBlocked,
+                      });
+                      setBuyPanelOpen(true, "token");
+                    }}
+                    className="h-10 shrink-0 rounded-xl px-6 font-heading text-[11px] font-bold uppercase tracking-wide transition-all duration-100 hover:brightness-110 active:scale-95"
+                    style={{
+                      background: "var(--accent)",
+                      color: "var(--accent-text)",
+                    }}
+                  >
+                    Buy
+                  </button>
                 </div>
               </motion.div>
             );
