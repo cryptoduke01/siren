@@ -1168,7 +1168,7 @@ export default function AdminPage() {
                     Waitlist &amp; email
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Search the queue, send access codes, and broadcast the current product announcement to opted-in emails.
+                    Search the queue, send access codes, and broadcast the current Siren update to opted-in emails.
                   </p>
                 </div>
                 <div className="relative">
@@ -1196,18 +1196,18 @@ export default function AdminPage() {
                   <div className="p-5 md:p-6">
                     <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
                       <Mail className="h-3.5 w-3.5" />
-                      Product announcement
+                      Siren update
                     </div>
                     <h3 className="font-heading text-2xl leading-tight tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Trading live: prediction markets, deposits &amp; withdrawals
+                      X account update and next steps
                     </h3>
                     <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Sends the HTML campaign that prediction trading is live on Siren, deposits and withdrawals work in-app, and early volume helps shape the product. Recipients must be on the waitlist with a valid email.
+                      Sends the HTML campaign explaining that the Siren X account is temporarily offline, all user funds and data are safe, Telegram is active, and X login will be removed from Siren. Recipients must be on the waitlist with a valid email.
                     </p>
                     <ul className="mt-4 list-disc pl-5 font-body text-sm space-y-1" style={{ color: "var(--text-3)" }}>
-                      <li>Trade Kalshi-linked outcomes and memes in one terminal.</li>
-                      <li>Fund and cash out without leaving the app.</li>
-                      <li>Invite to stress-test flows and share feedback.</li>
+                      <li>Confirms that funds and account data are safe.</li>
+                      <li>Points people to the Telegram community and founder account.</li>
+                      <li>Explains that X login will be removed to reduce platform risk.</li>
                     </ul>
 
                     <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1259,7 +1259,7 @@ export default function AdminPage() {
                       Retry selected addresses
                     </h3>
                     <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Paste emails that must be on the waitlist. Sends the same trading-live announcement to matches only.
+                      Paste emails that must be on the waitlist. Sends the same Siren update to matches only.
                     </p>
                     <textarea
                       value={productEmailInput}
@@ -1280,7 +1280,7 @@ export default function AdminPage() {
                     </button>
                   </div>
 
-                  <DispatchSummary result={productEmailResult} accentLabel="Trading live email" />
+                  <DispatchSummary result={productEmailResult} accentLabel="Siren update email" />
 
                   <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
                     <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>

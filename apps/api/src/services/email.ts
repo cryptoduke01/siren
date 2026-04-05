@@ -382,7 +382,7 @@ export async function sendTradingLiveAnnouncementEmail(params: {
 
   const greeting = params.name ? `Hi ${params.name}` : "Hi there";
   const logoUrl = `${APP_URL}/brand/mark.svg`;
-  const subject = "Siren: Prediction Trading, Deposits & Withdrawals Are Live";
+  const subject = "Important Siren Update: Our X Account Is Temporarily Offline";
 
   const html = `
 <!DOCTYPE html>
@@ -390,39 +390,94 @@ export async function sendTradingLiveAnnouncementEmail(params: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light">
-  <meta name="supported-color-schemes" content="light">
-  <title>Siren Is Live. Trade, Fund, And Withdraw In One Place.</title>
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>Important Siren Update</title>
   <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+  <style>
+    :root {
+      color-scheme: light dark;
+      supported-color-schemes: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      body, .mail-shell {
+        background: #060609 !important;
+      }
+      .mail-card {
+        background: #10111a !important;
+        border-color: #232635 !important;
+      }
+      .mail-hero {
+        background: #0d1712 !important;
+        border-bottom-color: #232635 !important;
+      }
+      .mail-panel {
+        background: #151827 !important;
+        border-color: #232635 !important;
+      }
+      .mail-note {
+        background: #111522 !important;
+        border-color: #2a3150 !important;
+      }
+      .mail-footer {
+        background: #0d1018 !important;
+        border-top-color: #232635 !important;
+      }
+      .text-main {
+        color: #f6f7fb !important;
+      }
+      .text-body {
+        color: #c6cfdd !important;
+      }
+      .text-soft {
+        color: #8c96ab !important;
+      }
+      .text-accent {
+        color: #30f2a0 !important;
+      }
+      .text-link {
+        color: #f6f7fb !important;
+      }
+      .button-main {
+        background: #00d977 !important;
+        color: #04110a !important;
+      }
+      .button-secondary {
+        background: #151827 !important;
+        color: #f6f7fb !important;
+        border-color: #232635 !important;
+      }
+    }
+  </style>
 </head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<body class="mail-shell" style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#eef2ef;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    Trade prediction markets, move USDC, and surface meme tokens. Thread contest coming soon. Open ${APP_URL.replace(/^https?:\/\//, "")} .
+    Our Siren X account is temporarily offline. The product is safe, funds are safe, and the Telegram community is active while we work through next steps.
   </div>
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#eef1ee" style="background-color:#eef1ee;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#eef2ef" style="background-color:#eef2ef;">
     <tr>
       <td align="center" style="padding:28px 14px 40px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffff" style="max-width:600px;border-radius:24px;overflow:hidden;border:1px solid #d8e3dc;background-color:#ffffff;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-card" bgcolor="#ffffff" style="max-width:620px;border-radius:28px;overflow:hidden;border:1px solid #d8e3dc;background-color:#ffffff;">
           <tr>
             <td style="padding:0;border-top:4px solid #00c76a;">
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f7fdf9" style="background-color:#f7fdf9;border-bottom:1px solid #d8e3dc;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-hero" bgcolor="#f6fdf8" style="background-color:#f6fdf8;border-bottom:1px solid #d8e3dc;">
                 <tr>
                   <td style="padding:32px 28px 26px;">
                     <img src="${logoUrl}" alt="Siren" width="112" height="30" style="display:block;height:30px;width:auto;border:0;" />
-                    <p style="margin:22px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#087443;font-weight:800;">
-                      Now live
+                    <p class="text-accent" style="margin:22px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#087443;font-weight:800;">
+                      Account update
                     </p>
-                    <h1 style="margin:10px 0 0;font-size:28px;line-height:1.15;font-weight:800;letter-spacing:-0.03em;color:#0f172a;">
-                      Prediction Markets, Deposits, And Withdrawals. All In One Terminal.
+                    <h1 class="text-main" style="margin:10px 0 0;font-size:30px;line-height:1.12;font-weight:800;letter-spacing:-0.03em;color:#0f172a;">
+                      The Siren X account is temporarily offline.
                     </h1>
-                    <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#334155;">
-                      ${greeting}, this is the update you have been waiting for. <strong style="color:#0f172a;">Siren is open for real trading.</strong> You can trade Kalshi-linked prediction markets, follow signals into Solana meme tokens, and move funds in and out without bouncing between apps.
+                    <p class="text-body" style="margin:16px 0 0;font-size:17px;line-height:1.68;color:#334155;">
+                      ${greeting}, our Siren X account was suspended. We are working through next steps now, either waiting for recovery or opening a new account.
                     </p>
-                    <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#334155;">
-                      Fund with card or crypto, withdraw when you are done, and share a PnL card when you are proud of the call. We want this flow hammered on real volume, so we can harden routing, polish the terminal, and keep shipping what you actually use.
+                    <p class="text-body" style="margin:16px 0 0;font-size:17px;line-height:1.68;color:#334155;">
+                      The important part is simple: <strong class="text-main" style="color:#0f172a;">all user funds and data are safe.</strong> Siren, the product, is still live. Wallet balances, deposits, withdrawals, and your account data are not affected by this.
                     </p>
-                    <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#334155;">
-                      If you care about being early, this is the window: help us break the charts, file rough edges, and tell us what feels broken. Your feedback goes straight into the next release.
+                    <p class="text-body" style="margin:16px 0 0;font-size:17px;line-height:1.68;color:#334155;">
+                      To reduce platform risk going forward, we will also remove X as a login option on Siren. Google, GitHub, email, and wallet-based flows will remain available where supported.
                     </p>
                   </td>
                 </tr>
@@ -431,42 +486,26 @@ export async function sendTradingLiveAnnouncementEmail(params: {
           </tr>
           <tr>
             <td style="padding:24px 28px 8px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f0fdf4" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:18px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-panel" bgcolor="#f8fafc" style="background-color:#f8fafc;border:1px solid #dbe3ea;border-radius:20px;">
                 <tr>
                   <td style="padding:20px 22px;">
-                    <p style="margin:0 0 10px;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#047857;font-weight:800;">
-                      Thread contest (coming soon)
-                    </p>
-                    <p style="margin:0;font-size:16px;line-height:1.65;color:#14532d;">
-                      We are lining up a <strong>thread contest</strong> for the community: sharp takes, memes, and real trades on display. Full rules and prizes will drop on <a href="${X_URL}" style="color:#0f172a;font-weight:700;">X</a> soon. Follow <a href="${X_URL}" style="color:#0f172a;font-weight:700;">@sirentracker</a> so you do not miss the start signal.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px 20px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f8fafc" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;">
-                <tr>
-                  <td style="padding:20px 22px;">
-                    <p style="margin:0 0 12px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#64748b;font-weight:800;">
-                      Try this first
+                    <p class="text-soft" style="margin:0 0 10px;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#64748b;font-weight:800;">
+                      What to do now
                     </p>
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#0f172a;">
-                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Open or add to a prediction position you believe in.
+                        <td class="text-body" style="padding:0 0 10px;font-size:16px;line-height:1.7;color:#334155;">
+                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Join the active Telegram community at <a href="https://t.me/sirenupdates" class="text-link" style="color:#0f172a;font-weight:700;text-decoration:underline;">t.me/sirenupdates</a>.
                         </td>
                       </tr>
                       <tr>
-                        <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#0f172a;">
-                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">2.</span> Run a deposit, then a withdrawal, so you know the rails feel right.
+                        <td class="text-body" style="padding:0 0 10px;font-size:16px;line-height:1.7;color:#334155;">
+                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">2.</span> Follow the founder account, <a href="https://x.com/cryptoduke01" class="text-link" style="color:#0f172a;font-weight:700;text-decoration:underline;">@cryptoduke01</a>, for any public update while we decide the X account path.
                         </td>
                       </tr>
                       <tr>
-                        <td style="font-size:15px;line-height:1.7;color:#0f172a;">
-                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Hit a meme token off the signal and share your PnL card if it prints.
+                        <td class="text-body" style="font-size:16px;line-height:1.7;color:#334155;">
+                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Keep using Siren normally. If we open a new official X account, we will announce it through Telegram, email, and inside the product.
                         </td>
                       </tr>
                     </table>
@@ -476,24 +515,43 @@ export async function sendTradingLiveAnnouncementEmail(params: {
             </td>
           </tr>
           <tr>
+            <td style="padding:8px 28px 20px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-note" bgcolor="#eef7f1" style="background-color:#eef7f1;border:1px solid #cde7d5;border-radius:20px;">
+                <tr>
+                  <td style="padding:20px 22px;">
+                    <p class="text-accent" style="margin:0 0 12px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#087443;font-weight:800;">
+                      Login change
+                    </p>
+                    <p class="text-body" style="margin:0;font-size:16px;line-height:1.68;color:#1f3b2e;">
+                      We will remove X account login from Siren to prevent issues like this from interrupting user access in the future. This does not affect your wallet, your balances, or your saved account data.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
             <td style="padding:4px 28px 28px;" align="center">
-              <a href="${APP_URL}" style="display:inline-block;background:#00c76a;color:#ffffff;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;">
+              <a href="https://t.me/sirenupdates" class="button-main" style="display:inline-block;background:#00c76a;color:#ffffff;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;">
+                Join the Telegram Community
+              </a>
+              <a href="${APP_URL}" class="button-secondary" style="display:inline-block;background:#ffffff;color:#0f172a;font-size:17px;font-weight:700;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;border:1px solid #d8e3dc;margin-top:12px;">
                 Open Siren
               </a>
-              <p style="margin:20px 0 0;font-size:14px;line-height:1.6;color:#64748b;">
-                Docs: <a href="${DOCS_URL}" style="color:#0f172a;font-weight:600;">docs.onsiren.xyz</a>
+              <p class="text-soft" style="margin:20px 0 0;font-size:14px;line-height:1.7;color:#64748b;">
+                Founder updates: <a href="https://x.com/cryptoduke01" class="text-link" style="color:#0f172a;font-weight:600;">@cryptoduke01</a>
                 &nbsp;·&nbsp;
-                Questions? Reply to this email.
+                Docs: <a href="${DOCS_URL}" class="text-link" style="color:#0f172a;font-weight:600;">docs.onsiren.xyz</a>
               </p>
             </td>
           </tr>
           <tr>
-            <td bgcolor="#fbfefc" style="padding:18px 28px 22px;border-top:1px solid #e6efe8;background-color:#fbfefc;">
-              <p style="margin:0 0 8px;font-size:12px;line-height:1.5;color:#64748b;">
+            <td class="mail-footer" bgcolor="#fbfefc" style="padding:18px 28px 22px;border-top:1px solid #e6efe8;background-color:#fbfefc;">
+              <p class="text-soft" style="margin:0 0 8px;font-size:12px;line-height:1.5;color:#64748b;">
                 You are receiving this because you joined the Siren waitlist or shared your email with us.
               </p>
-              <p style="margin:0;font-size:12px;color:#94a3b8;">
-                (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
+              <p class="text-soft" style="margin:0;font-size:12px;color:#94a3b8;">
+                (c) ${new Date().getFullYear()} Siren. Event-driven meme terminal.
               </p>
             </td>
           </tr>
@@ -509,10 +567,12 @@ export async function sendTradingLiveAnnouncementEmail(params: {
     subject,
     "",
     `${greeting},`,
-    "Siren is live for real: prediction market trading, deposits, and withdrawals in one terminal. Trade Kalshi-linked markets, follow signals into Solana meme tokens, and move funds without leaving the app.",
-    "We want you to stress test deposits, withdrawals, and volume so we can harden the product. Early feedback shapes what ships next.",
-    "Thread contest: coming soon. Follow @sirentracker on X for rules and prizes.",
+    "Our Siren X account was suspended. We are working through next steps now, either waiting for recovery or opening a new account.",
+    "All user funds and data are safe. Siren, the product, is still live and your wallets, balances, deposits, withdrawals, and account data are not affected.",
+    "We will remove X as a login option on Siren to prevent issues like this from interrupting access in the future.",
     "",
+    `Telegram community: https://t.me/sirenupdates`,
+    `Founder account: https://x.com/cryptoduke01`,
     `Open Siren: ${APP_URL}`,
     `Docs: ${DOCS_URL}`,
   ].join("\n");
