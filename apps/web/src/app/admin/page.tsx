@@ -1199,15 +1199,15 @@ export default function AdminPage() {
                       Siren update
                     </div>
                     <h3 className="font-heading text-2xl leading-tight tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      X account update and next steps
+                      New X account and login update
                     </h3>
                     <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Sends the HTML campaign explaining that the Siren X account is temporarily offline, all user funds and data are safe, Telegram is active, and X login will be removed from Siren. Recipients must be on the waitlist with a valid email.
+                      Sends the HTML campaign announcing @sirenmarketsxyz, confirming that all user funds and data are safe, pointing users to Telegram, and explaining that X login is being removed by 12:00 AM WAT today. Recipients must be on the waitlist with a valid email.
                     </p>
                     <ul className="mt-4 list-disc pl-5 font-body text-sm space-y-1" style={{ color: "var(--text-3)" }}>
                       <li>Confirms that funds and account data are safe.</li>
-                      <li>Points people to the Telegram community and founder account.</li>
-                      <li>Explains that X login will be removed to reduce platform risk.</li>
+                      <li>Points people to the new X account, Telegram community, and founder account.</li>
+                      <li>Explains that X login is being removed to reduce platform risk.</li>
                     </ul>
 
                     <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">

@@ -5,7 +5,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 const FROM = process.env.SIREN_EMAIL_FROM || "Duke <onboarding@resend.dev>";
 const APP_URL = (process.env.SIREN_APP_URL || "https://onsiren.xyz").replace(/\/+$/, "");
 const DOCS_URL = "https://docs.onsiren.xyz";
-const X_URL = "https://x.com/sirentracker";
+const X_URL = "https://x.com/sirenmarketsxyz";
 const LAUNCH_THREAD_URL = "https://x.com/cryptoduke01/status/2037410069109768374";
 const LAUNCH_THREAD_TITLE = "Prediction Markets, Memes, and The Madness";
 const LAUNCH_THREAD_PREVIEW =
@@ -118,7 +118,7 @@ export async function sendWelcomeWithAccessCode(params: {
                     <ol style="margin:0 0 28px;padding-left:20px;font-size:15px;line-height:1.7;color:#a1a1aa;">
                       <li>Go to <a href="${APP_URL}" style="color:#22c55e;text-decoration:none;">onsiren.xyz</a></li>
                       <li>Enter your 6-digit code when prompted</li>
-                      <li>Connect your wallet or sign in with Google, GitHub, or X</li>
+                      <li>Connect your wallet or sign in with Google or GitHub</li>
                       <li>Browse Kalshi prediction markets and trade meme tokens</li>
                     </ol>
                     <a href="${APP_URL}" style="display:inline-block;background:#22c55e;color:#0c0c0e;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">
@@ -129,7 +129,7 @@ export async function sendWelcomeWithAccessCode(params: {
                 <tr>
                   <td style="padding-top:36px;border-top:1px solid #1f1f24;margin-top:32px;">
                     <p style="margin:0 0 16px;font-size:13px;color:#71717a;">
-                      <a href="${DOCS_URL}" style="color:#71717a;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#71717a;text-decoration:underline;">X @sirentracker</a>
+                      <a href="${DOCS_URL}" style="color:#71717a;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#71717a;text-decoration:underline;">X @sirenmarketsxyz</a>
                     </p>
                     <p style="margin:0;font-size:12px;color:#52525b;">
                       (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
@@ -339,7 +339,7 @@ export async function sendLaunchThreadEmail(params: {
           <tr>
             <td bgcolor="#fbfefc" style="padding:18px 24px 24px;border-top:1px solid #e6efe8;background-color:#fbfefc;">
               <p style="margin:0 0 8px;font-size:12px;color:#64748b;">
-                <a href="${DOCS_URL}" style="color:#475569;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#475569;text-decoration:underline;">X @sirentracker</a>
+                <a href="${DOCS_URL}" style="color:#475569;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#475569;text-decoration:underline;">X @sirenmarketsxyz</a>
               </p>
               <p style="margin:0;font-size:12px;color:#94a3b8;">
                 (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
@@ -382,7 +382,7 @@ export async function sendTradingLiveAnnouncementEmail(params: {
 
   const greeting = params.name ? `Hi ${params.name}` : "Hi there";
   const logoUrl = `${APP_URL}/brand/mark.svg`;
-  const subject = "Important Siren Update: Our X Account Is Temporarily Offline";
+  const subject = "Siren Is Moving: Follow Our New X Account";
 
   const html = `
 <!DOCTYPE html>
@@ -392,7 +392,7 @@ export async function sendTradingLiveAnnouncementEmail(params: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
-  <title>Important Siren Update</title>
+  <title>Siren Is Moving</title>
   <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
   <style>
     :root {
@@ -452,7 +452,7 @@ export async function sendTradingLiveAnnouncementEmail(params: {
 </head>
 <body class="mail-shell" style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#eef2ef;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    Our Siren X account is temporarily offline. The product is safe, funds are safe, and the Telegram community is active while we work through next steps.
+    Siren has a new X account: @sirenmarketsxyz. Funds and data are safe, Telegram is active, and X login is being removed today.
   </div>
   <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#eef2ef" style="background-color:#eef2ef;">
     <tr>
@@ -468,16 +468,16 @@ export async function sendTradingLiveAnnouncementEmail(params: {
                       Account update
                     </p>
                     <h1 class="text-main" style="margin:10px 0 0;font-size:30px;line-height:1.12;font-weight:800;letter-spacing:-0.03em;color:#0f172a;">
-                      The Siren X account is temporarily offline.
+                      Siren has a new X account.
                     </h1>
                     <p class="text-body" style="margin:16px 0 0;font-size:17px;line-height:1.68;color:#334155;">
-                      ${greeting}, our Siren X account was suspended. We are working through next steps now, either waiting for recovery or opening a new account.
+                      ${greeting}, the old Siren X account was suspended, so we moved. The new official account is <a href="${X_URL}" class="text-link" style="color:#0f172a;font-weight:800;text-decoration:underline;">@sirenmarketsxyz</a>.
                     </p>
                     <p class="text-body" style="margin:16px 0 0;font-size:17px;line-height:1.68;color:#334155;">
-                      The important part is simple: <strong class="text-main" style="color:#0f172a;">all user funds and data are safe.</strong> Siren, the product, is still live. Wallet balances, deposits, withdrawals, and your account data are not affected by this.
+                      The important part is simple: <strong class="text-main" style="color:#0f172a;">all user funds and data are safe.</strong> Siren is still live. Wallet balances, deposits, withdrawals, and account data were not affected.
                     </p>
                     <p class="text-body" style="margin:16px 0 0;font-size:17px;line-height:1.68;color:#334155;">
-                      To reduce platform risk going forward, we will also remove X as a login option on Siren. Google, GitHub, email, and wallet-based flows will remain available where supported.
+                      A man in motion must meet his fortune, and Siren is very much in motion. To reduce platform risk, we are removing X login from Siren by <strong class="text-main" style="color:#0f172a;">12:00 AM WAT today</strong>. Email, Google, and GitHub login will stay available.
                     </p>
                   </td>
                 </tr>
@@ -495,17 +495,17 @@ export async function sendTradingLiveAnnouncementEmail(params: {
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
                         <td class="text-body" style="padding:0 0 10px;font-size:16px;line-height:1.7;color:#334155;">
-                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Join the active Telegram community at <a href="https://t.me/sirenupdates" class="text-link" style="color:#0f172a;font-weight:700;text-decoration:underline;">t.me/sirenupdates</a>.
+                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Follow the new official X account: <a href="${X_URL}" class="text-link" style="color:#0f172a;font-weight:700;text-decoration:underline;">@sirenmarketsxyz</a>.
                         </td>
                       </tr>
                       <tr>
                         <td class="text-body" style="padding:0 0 10px;font-size:16px;line-height:1.7;color:#334155;">
-                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">2.</span> Follow the founder account, <a href="https://x.com/cryptoduke01" class="text-link" style="color:#0f172a;font-weight:700;text-decoration:underline;">@cryptoduke01</a>, for any public update while we decide the X account path.
+                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">2.</span> Join the active Telegram community at <a href="https://t.me/sirenupdates" class="text-link" style="color:#0f172a;font-weight:700;text-decoration:underline;">t.me/sirenupdates</a>.
                         </td>
                       </tr>
                       <tr>
                         <td class="text-body" style="font-size:16px;line-height:1.7;color:#334155;">
-                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Keep using Siren normally. If we open a new official X account, we will announce it through Telegram, email, and inside the product.
+                          <span class="text-accent" style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Follow the founder account, <a href="https://x.com/cryptoduke01" class="text-link" style="color:#0f172a;font-weight:700;text-decoration:underline;">@cryptoduke01</a>, for founder updates.
                         </td>
                       </tr>
                     </table>
@@ -523,7 +523,10 @@ export async function sendTradingLiveAnnouncementEmail(params: {
                       Login change
                     </p>
                     <p class="text-body" style="margin:0;font-size:16px;line-height:1.68;color:#1f3b2e;">
-                      We will remove X account login from Siren to prevent issues like this from interrupting user access in the future. This does not affect your wallet, your balances, or your saved account data.
+                      We are removing X login from Siren by <strong class="text-main" style="color:#0f172a;">12:00 AM WAT today</strong>. This prevents account suspension issues from affecting access. It does not affect your wallet, balances, or saved account data.
+                    </p>
+                    <p class="text-body" style="margin:14px 0 0;font-size:16px;line-height:1.68;color:#1f3b2e;">
+                      Also, the thread contest is still incoming. Some users may also have trouble checking positions right now. We are fixing that flow and will send an update once it is smooth again.
                     </p>
                   </td>
                 </tr>
@@ -532,14 +535,16 @@ export async function sendTradingLiveAnnouncementEmail(params: {
           </tr>
           <tr>
             <td style="padding:4px 28px 28px;" align="center">
-              <a href="https://t.me/sirenupdates" class="button-main" style="display:inline-block;background:#00c76a;color:#ffffff;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;">
-                Join the Telegram Community
+              <a href="${X_URL}" class="button-main" style="display:inline-block;background:#00c76a;color:#ffffff;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;">
+                Follow @sirenmarketsxyz
               </a>
               <a href="${APP_URL}" class="button-secondary" style="display:inline-block;background:#ffffff;color:#0f172a;font-size:17px;font-weight:700;text-align:center;text-decoration:none;padding:16px 32px;border-radius:14px;border:1px solid #d8e3dc;margin-top:12px;">
                 Open Siren
               </a>
               <p class="text-soft" style="margin:20px 0 0;font-size:14px;line-height:1.7;color:#64748b;">
-                Founder updates: <a href="https://x.com/cryptoduke01" class="text-link" style="color:#0f172a;font-weight:600;">@cryptoduke01</a>
+                Telegram: <a href="https://t.me/sirenupdates" class="text-link" style="color:#0f172a;font-weight:600;">t.me/sirenupdates</a>
+                &nbsp;·&nbsp;
+                Founder: <a href="https://x.com/cryptoduke01" class="text-link" style="color:#0f172a;font-weight:600;">@cryptoduke01</a>
                 &nbsp;·&nbsp;
                 Docs: <a href="${DOCS_URL}" class="text-link" style="color:#0f172a;font-weight:600;">docs.onsiren.xyz</a>
               </p>
@@ -567,10 +572,14 @@ export async function sendTradingLiveAnnouncementEmail(params: {
     subject,
     "",
     `${greeting},`,
-    "Our Siren X account was suspended. We are working through next steps now, either waiting for recovery or opening a new account.",
-    "All user funds and data are safe. Siren, the product, is still live and your wallets, balances, deposits, withdrawals, and account data are not affected.",
-    "We will remove X as a login option on Siren to prevent issues like this from interrupting access in the future.",
+    "The old Siren X account was suspended, so we moved. The new official account is @sirenmarketsxyz.",
+    "All user funds and data are safe. Siren is still live. Wallet balances, deposits, withdrawals, and account data were not affected.",
+    "A man in motion must meet his fortune, and Siren is very much in motion.",
+    "We are removing X login from Siren by 12:00 AM WAT today to prevent account suspension issues from affecting access. Email, Google, and GitHub login will stay available.",
+    "The thread contest is still incoming.",
+    "Some users may have trouble checking positions right now. We are fixing that flow and will send an update once it is smooth again.",
     "",
+    `New official X account: ${X_URL}`,
     `Telegram community: https://t.me/sirenupdates`,
     `Founder account: https://x.com/cryptoduke01`,
     `Open Siren: ${APP_URL}`,
@@ -596,7 +605,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
 
   const greeting = params.name ? `Hi ${params.name}` : "Hi there";
   const logoUrl = `${APP_URL}/brand/mark.svg`;
-  const subject = "The Siren leaderboard is live — climb it this week";
+  const subject = "The Siren leaderboard is live";
 
   const html = `
 <!DOCTYPE html>
@@ -629,7 +638,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
                       Prediction traders, this scoreboard is yours.
                     </h1>
                     <p style="margin:18px 0 0;font-size:17px;line-height:1.65;color:#cbd5e1;">
-                      ${greeting}, we just flipped on the <strong style="color:#f8fafc;">public leaderboard</strong> inside Siren. It ranks <strong style="color:#f8fafc;">wallets</strong> by how much prediction-market notional they push and how often their realized closes land green — not meme-coin noise, not random mints. If you have been trading Kalshi- and Polymarket-linked outcomes through the terminal, your volume finally has a place to flex.
+                      ${greeting}, we just flipped on the <strong style="color:#f8fafc;">public leaderboard</strong> inside Siren. It ranks <strong style="color:#f8fafc;">wallets</strong> by how much prediction-market notional they push and how often their realized closes land green. Not meme-coin noise, not random mints. If you have been trading Kalshi- and Polymarket-linked outcomes through the terminal, your volume finally has a place to flex.
                     </p>
                     <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#cbd5e1;">
                       Open the board, pick <strong style="color:#f8fafc;">7 days</strong>, <strong style="color:#f8fafc;">30 days</strong>, or <strong style="color:#f8fafc;">all time</strong>, then toggle <strong style="color:#f8fafc;">sort by volume</strong> versus <strong style="color:#f8fafc;">sort by win rate</strong>. Same names, two stories: who is size, and who is sharp.
@@ -648,7 +657,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
                       Weekly &amp; monthly spotlight
                     </p>
                     <p style="margin:0;font-size:16px;line-height:1.65;color:#d1fae5;">
-                      Every <strong style="color:#ecfdf5;">week</strong> and every <strong style="color:#ecfdf5;">month</strong>, we put the <strong style="color:#ecfdf5;">top three</strong> prediction traders on blast: featured on <a href="${X_URL}" style="color:#a7f3d0;font-weight:700;">X</a>, shout-outs in-product, and a rotating mix of <strong style="color:#ecfdf5;">rewards</strong> worth showing up for (think credits, merch, and partner drops — full prize table posts with each season on <a href="${X_URL}" style="color:#a7f3d0;font-weight:700;">@sirentracker</a>).
+                      Every <strong style="color:#ecfdf5;">week</strong> and every <strong style="color:#ecfdf5;">month</strong>, we put the <strong style="color:#ecfdf5;">top three</strong> prediction traders on blast: featured on <a href="${X_URL}" style="color:#a7f3d0;font-weight:700;">X</a>, shout-outs in-product, and a rotating mix of <strong style="color:#ecfdf5;">rewards</strong> worth showing up for (think credits, merch, and partner drops. Full prize details post with each season on <a href="${X_URL}" style="color:#a7f3d0;font-weight:700;">@sirenmarketsxyz</a>).
                     </p>
                     <p style="margin:14px 0 0;font-size:15px;line-height:1.6;color:#86efac;">
                       No pay-to-win: ranks come from logged prediction-market trades only. Bring size, bring win rate, or bring both.
@@ -669,7 +678,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
                         <td style="padding:0 0 10px;font-size:15px;line-height:1.7;color:#e2e8f0;">
-                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Hit the leaderboard and sanity-check your window — momentum traders love 7d, builders love 30d.
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">1.</span> Hit the leaderboard and sanity-check your window. Momentum traders love 7d, builders love 30d.
                         </td>
                       </tr>
                       <tr>
@@ -679,7 +688,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
                       </tr>
                       <tr>
                         <td style="font-size:15px;line-height:1.7;color:#e2e8f0;">
-                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Screenshot your spot, share the PnL card, and tag <a href="${X_URL}" style="color:#f8fafc;font-weight:700;">@sirentracker</a> — we are watching for early legends.
+                          <span style="display:inline-block;min-width:22px;font-weight:800;color:#00c76a;">3.</span> Screenshot your spot, share the PnL card, and tag <a href="${X_URL}" style="color:#f8fafc;font-weight:700;">@sirenmarketsxyz</a>. We are watching for early legends.
                         </td>
                       </tr>
                     </table>
@@ -699,7 +708,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
                 Docs: <a href="${DOCS_URL}" style="color:#e2e8f0;font-weight:600;">docs.onsiren.xyz</a>
               </p>
               <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:#64748b;">
-                Questions or press? Reply to this email — a human reads it.
+                Questions or press? Reply to this email. A human reads it.
               </p>
             </td>
           </tr>
@@ -727,7 +736,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
     `${greeting},`,
     "The Siren leaderboard is live at " + LEADERBOARD_URL,
     "It ranks prediction-market traders (Kalshi / Polymarket-style trades through Siren) by notional volume and by win rate. Meme-token swaps are excluded.",
-    "Every week and every month we spotlight the top three traders on X (@sirentracker) with rewards and partner drops — details post with each season.",
+    "Every week and every month we spotlight the top three traders on X (@sirenmarketsxyz) with rewards and partner drops. Details post with each season.",
     "",
     `Open: ${APP_URL}`,
     `Docs: ${DOCS_URL}`,

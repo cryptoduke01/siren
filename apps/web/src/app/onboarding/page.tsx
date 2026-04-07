@@ -153,7 +153,7 @@ export default function OnboardingPage() {
                 )}
 
                 <p className="font-body text-[11px] mt-4 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Email, Google, GitHub, or X. Embedded Solana wallet, no extension needed.
+                  Email, Google, or GitHub. Embedded Solana wallet, no extension needed.
                 </p>
               </>
             ) : (

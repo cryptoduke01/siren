@@ -29,14 +29,14 @@ export function Footer() {
             Docs
           </a>
           <a
-            href="https://x.com/sirentracker"
+            href="https://x.com/sirenmarketsxyz"
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => hapticLight()}
             className="font-body text-xs underline"
             style={{ color: "var(--text-2)" }}
           >
-            X: @sirentracker
+            X: @sirenmarketsxyz
           </a>
           <Link
             href="/terms"
@@ -59,4 +59,3 @@ export function Footer() {
     </footer>
   );
 }
-

@@ -8,7 +8,7 @@ import { API_URL } from "@/lib/apiUrl";
 type AuthContextType = {
   session: Session | null;
   loading: boolean;
-  signInWithOAuth: (provider: "google" | "github" | "twitter") => Promise<void>;
+  signInWithOAuth: (provider: "google" | "github") => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -17,7 +17,6 @@ const AuthContext = createContext<AuthContextType | null>(null);
 function signupSourceFromProvider(provider: Provider): string {
   if (provider === "google") return "google";
   if (provider === "github") return "github";
-  if (provider === "twitter") return "twitter";
   return "oauth";
 }
 
@@ -56,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  const signInWithOAuth = async (provider: "google" | "github" | "twitter") => {
+  const signInWithOAuth = async (provider: "google" | "github") => {
     if (!supabase) return;
     await supabase.auth.signInWithOAuth({
       provider,
