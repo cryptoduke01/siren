@@ -99,13 +99,14 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
     const sellingOutcomeForUsdc =
       outputMint === SOLANA_USDC_MINT && inputMint !== SOLANA_USDC_MINT && inputMint !== SOL_MINT;
 
+    const predictionMarketSlippageBps = sellingOutcomeForUsdc ? Math.max(900, slippageBps) : 500;
     const dflow = await getDflowOrderWithSettlementFallback({
       inputMint,
       outputMint,
       amount,
       userPublicKey,
       slippageBps,
-      predictionMarketSlippageBps: 500,
+      predictionMarketSlippageBps,
       retryCashSettlementOnRouteError: sellingOutcomeForUsdc,
     });
     if (dflow.transaction) {
@@ -122,7 +123,10 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
     return {
       provider: "dflow",
       transaction: "",
-      error: dflow.error || "Prediction market routing is unavailable right now.",
+      error:
+        dflow.error?.toLowerCase().includes("route not found")
+          ? "No executable route found for this exact size right now. Try selling a smaller amount."
+          : dflow.error || "Prediction market routing is unavailable right now.",
     };
   }
 

@@ -23,6 +23,7 @@ import {
 } from "@/lib/dflowProof";
 import { buildPolymarketFundingConfig } from "@/lib/privyFunding";
 import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
+import { getPositionEntry } from "@/lib/positionEntryStorage";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 import { API_URL } from "@/lib/apiUrl";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -110,6 +111,9 @@ function getFriendlyTradeError(message: string, fallback: string): string {
   }
   if (lower.includes("not tradable")) {
     return "This market is not routable right now. Refresh and try again in a moment.";
+  }
+  if (lower.includes("route not found")) {
+    return "No executable route found for this size right now. Try a smaller sell amount.";
   }
   if (lower.includes("validation error") || lower.includes("400")) {
     return "We could not get a live quote for this order right now. Please try again.";
@@ -928,11 +932,24 @@ export function UnifiedBuyPanel() {
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
       setBuyPanelOpen(false);
+      const realizedSummary = (() => {
+        if (!isSell || !isPredictionToken || !selectedToken.mint) return null;
+        const entry = getPositionEntry(selectedToken.mint);
+        if (!entry || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
+        const soldValueUsd = amountNum * tokenPriceUsd;
+        const costUsd = amountNum * (entry.avgCents / 100);
+        if (costUsd <= 0) return null;
+        const pnlUsd = soldValueUsd - costUsd;
+        const pnlPct = (pnlUsd / costUsd) * 100;
+        const marketLabel = selectedToken.marketTitle || selectedToken.name;
+        return `${marketLabel} • Realized ${pnlUsd >= 0 ? "+" : "-"}$${Math.abs(pnlUsd).toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%).`;
+      })();
       showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Swap complete",
         message: isSell
-          ? `Sold ${tokenDisplayName || selectedToken.name} (${amountNum.toLocaleString(undefined, { maximumFractionDigits: 6 })} tokens).`
+          ? realizedSummary ??
+            `Sold ${tokenDisplayName || selectedToken.name} (${amountNum.toLocaleString(undefined, { maximumFractionDigits: 6 })} tokens).`
           : data.executionMode === "async"
             ? asyncStatus?.status === "closed"
               ? "Trade confirmed and settled."
