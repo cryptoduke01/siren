@@ -2319,6 +2319,10 @@ export function registerRoutes(app: FastifyInstance) {
     }
     try {
       const positions = await getDflowPositionsForWallet(addr);
+      if (positions.error) {
+        app.log.warn({ wallet: `${addr.slice(0, 6)}...${addr.slice(-4)}`, err: positions.error }, "DFlow positions lookup degraded");
+        return reply.status(503).send({ success: false, error: positions.error });
+      }
       return reply.send({ success: true, data: positions });
     } catch (e) {
       app.log.error(e);
@@ -2370,6 +2374,10 @@ export function registerRoutes(app: FastifyInstance) {
       if (closed) return;
       try {
         const data = await getDflowPositionsForWallet(addr);
+        if (data.error) {
+          reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: data.error })}\n\n`);
+          return;
+        }
         const line = `data: ${JSON.stringify({ success: true, data })}\n\n`;
         reply.raw.write(line);
       } catch (e) {

@@ -1029,7 +1029,10 @@ export default function PortfolioPage() {
         `${API_URL}/api/dflow/positions?address=${encodeURIComponent(publicKey.toBase58())}`,
         { credentials: "omit" },
       );
-      if (!res.ok) return [];
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error || "Unable to refresh positions right now.");
+      }
       const payload = await res.json().catch(() => ({}));
       return (payload?.data?.positions ?? []) as Position[];
     },
