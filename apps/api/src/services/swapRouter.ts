@@ -15,6 +15,7 @@ import { getBagsTradeQuote, createBagsSwapTransaction } from "./bags.js";
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const DFLOW_METADATA_URL = process.env.DFLOW_METADATA_API_URL || "https://dev-prediction-markets-api.dflow.net";
 
 function isBagsMint(mint: string): boolean {
   return mint.endsWith("BAGS");
@@ -45,6 +46,40 @@ async function getMarketMints(): Promise<Set<string>> {
 
 function isMarketMint(mint: string, mints: Set<string>): boolean {
   return mints.has(mint);
+}
+
+function isRouteNotFoundError(message?: string): boolean {
+  const lower = (message || "").toLowerCase();
+  return lower.includes("route_not_found") || lower.includes("route not found");
+}
+
+async function explainPredictionSellRouteFailure(inputMint: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${DFLOW_METADATA_URL}/api/v1/market/by-mint/${encodeURIComponent(inputMint)}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as {
+      market?: {
+        yesBid?: string | null;
+        noBid?: string | null;
+        accounts?: Record<string, { yesMint?: string; noMint?: string }>;
+      };
+    };
+    const market = payload?.market;
+    if (!market?.accounts) return null;
+    const accounts = Object.values(market.accounts);
+    const matching = accounts.find((entry) => entry?.yesMint === inputMint || entry?.noMint === inputMint);
+    if (!matching) return null;
+    const sellingSide = matching.yesMint === inputMint ? "yes" : "no";
+    const sideBid = sellingSide === "yes" ? market.yesBid : market.noBid;
+    if (!sideBid || sideBid === "0" || sideBid === "0.0") {
+      return `No ${sellingSide.toUpperCase()} bids are currently available for this market. Try again later or sell a smaller amount.`;
+    }
+    return "No executable route found for this exact size right now. Try selling a smaller amount.";
+  } catch {
+    return null;
+  }
 }
 
 export type SwapProvider = "dflow" | "bags" | "jupiter";
@@ -99,14 +134,13 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
     const sellingOutcomeForUsdc =
       outputMint === SOLANA_USDC_MINT && inputMint !== SOLANA_USDC_MINT && inputMint !== SOL_MINT;
 
-    const predictionMarketSlippageBps = sellingOutcomeForUsdc ? Math.max(900, slippageBps) : 500;
     const dflow = await getDflowOrderWithSettlementFallback({
       inputMint,
       outputMint,
       amount,
       userPublicKey,
       slippageBps,
-      predictionMarketSlippageBps,
+      predictionMarketSlippageBps: 500,
       retryCashSettlementOnRouteError: sellingOutcomeForUsdc,
     });
     if (dflow.transaction) {
@@ -120,13 +154,19 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
       };
     }
 
+    if (sellingOutcomeForUsdc && isRouteNotFoundError(dflow.error)) {
+      const detailed = await explainPredictionSellRouteFailure(inputMint);
+      return {
+        provider: "dflow",
+        transaction: "",
+        error: detailed || "No executable route found for this exact size right now. Try selling a smaller amount.",
+      };
+    }
+
     return {
       provider: "dflow",
       transaction: "",
-      error:
-        dflow.error?.toLowerCase().includes("route not found")
-          ? "No executable route found for this exact size right now. Try selling a smaller amount."
-          : dflow.error || "Prediction market routing is unavailable right now.",
+      error: dflow.error || "Prediction market routing is unavailable right now.",
     };
   }
 
