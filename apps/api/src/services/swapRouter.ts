@@ -65,8 +65,15 @@ async function explainPredictionSellRouteFailure(inputMint: string): Promise<str
         noBid?: string | null;
         accounts?: Record<string, { yesMint?: string; noMint?: string }>;
       };
+      yesBid?: string | null;
+      noBid?: string | null;
+      accounts?: Record<string, { yesMint?: string; noMint?: string }>;
     };
-    const market = payload?.market;
+    const market = payload?.market ?? {
+      yesBid: payload?.yesBid,
+      noBid: payload?.noBid,
+      accounts: payload?.accounts,
+    };
     if (!market?.accounts) return null;
     const accounts = Object.values(market.accounts);
     const matching = accounts.find((entry) => entry?.yesMint === inputMint || entry?.noMint === inputMint);
