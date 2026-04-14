@@ -708,7 +708,7 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
           <p className="font-money tabular-nums text-3xl font-bold leading-none" style={{ color: pnlColor(pnl) }}>
             {pnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(pnl))}
           </p>
-          {(fromLocalAvg != null || (pnlPct !== 0 && avgCentsForPnl != null)) && (
+          {Number.isFinite(pnlPct) && pnlPct !== 0 && (
             <p className="font-money tabular-nums text-lg font-semibold mt-2" style={{ color: pnlColor(pnlPct) }}>
               {pnlPct >= 0 ? "+" : ""}
               {pnlPct.toFixed(1)}%

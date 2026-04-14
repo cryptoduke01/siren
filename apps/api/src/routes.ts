@@ -2334,12 +2334,25 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: "address query param required" });
     }
 
+    const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+    const isProd = process.env.NODE_ENV === "production";
+    const allowedOrigins = isProd
+      ? new Set(["https://onsiren.xyz", "https://www.onsiren.xyz"])
+      : null;
+    const corsOrigin = !isProd
+      ? requestOrigin || "*"
+      : requestOrigin && allowedOrigins?.has(requestOrigin)
+        ? requestOrigin
+        : "https://www.onsiren.xyz";
+
     reply.hijack();
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": corsOrigin,
+      Vary: "Origin",
     });
 
     let closed = false;

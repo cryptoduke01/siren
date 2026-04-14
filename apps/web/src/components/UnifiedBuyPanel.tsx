@@ -96,6 +96,15 @@ function isWalletVerificationError(message?: string | null): boolean {
 
 function getFriendlyTradeError(message: string, fallback: string): string {
   const lower = message.toLowerCase();
+  if (
+    lower.includes("insufficient funds for fee") ||
+    lower.includes("forrent") ||
+    lower.includes("for rent") ||
+    lower.includes("lamports") ||
+    lower.includes("attempt to debit an account")
+  ) {
+    return "Not enough SOL to pay network fees. Add a small SOL balance, then try again.";
+  }
   if (lower.includes("user rejected") || lower.includes("rejected the request") || lower.includes("4001")) {
     return "Wallet signature was canceled.";
   }
