@@ -784,6 +784,8 @@ export function UnifiedBuyPanel() {
       let inputMint: string;
       let outputMint: string;
       let amount: string;
+      let sellDecimals = 6;
+      let partialSellFilled = false;
 
       let amountNum: number;
 
@@ -796,8 +798,8 @@ export function UnifiedBuyPanel() {
           return;
         }
         // DFlow Kalshi outcome tokens use 6 decimals; parsed mint fetch can miss Token-2022 edge cases.
-        const decimals = isPredictionToken ? 6 : await getMintDecimals(connection, selectedToken.mint);
-        amount = parseUnitsToBigInt(amountStr, decimals).toString();
+        sellDecimals = isPredictionToken ? 6 : await getMintDecimals(connection, selectedToken.mint);
+        amount = parseUnitsToBigInt(amountStr, sellDecimals).toString();
         inputMint = selectedToken.mint;
         outputMint = SOLANA_USDC_MINT;
       } else {
@@ -830,24 +832,60 @@ export function UnifiedBuyPanel() {
         tokenAmountForPnL = amountNum / tokenPriceUsd;
       }
 
-      const res = await fetch(`${API_URL}/api/swap/order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inputMint,
-          outputMint,
-          amount,
-          userPublicKey: publicKey.toBase58(),
-          slippageBps,
-          tryDflowFirst: true,
-          forcePredictionMarket: isPredictionToken,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "Swap failed");
+      const requestSwapOrder = async (amountAtomic: string): Promise<Record<string, unknown>> => {
+        const res = await fetch(`${API_URL}/api/swap/order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            inputMint,
+            outputMint,
+            amount: amountAtomic,
+            userPublicKey: publicKey.toBase58(),
+            slippageBps,
+            tryDflowFirst: true,
+            forcePredictionMarket: isPredictionToken,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok || data.error) {
+          throw new Error(typeof data.error === "string" ? data.error : "Swap failed");
+        }
+        return data;
+      };
+
+      let data: Record<string, unknown>;
+      try {
+        data = await requestSwapOrder(amount);
+      } catch (orderError) {
+        const orderMsg = extractErrorMessage(orderError);
+        const isRouteMiss =
+          isSell &&
+          isPredictionToken &&
+          (orderMsg.toLowerCase().includes("route_not_found") ||
+            orderMsg.toLowerCase().includes("route not found") ||
+            orderMsg.toLowerCase().includes("no executable route"));
+        if (!isRouteMiss) throw orderError;
+
+        const fallbackFractions = [0.75, 0.5, 0.25, 0.1];
+        let recovered: Record<string, unknown> | null = null;
+        for (const fraction of fallbackFractions) {
+          const candidateAmount = Number((amountNum * fraction).toFixed(6));
+          if (!(candidateAmount > 0 && candidateAmount < amountNum)) continue;
+          try {
+            const candidateAtomic = parseUnitsToBigInt(String(candidateAmount), sellDecimals).toString();
+            const candidateData = await requestSwapOrder(candidateAtomic);
+            amountNum = candidateAmount;
+            partialSellFilled = true;
+            recovered = candidateData;
+            break;
+          } catch {
+            // Try next smaller chunk size.
+          }
+        }
+        if (!recovered) throw orderError;
+        data = recovered;
       }
-      const txB64 = data.transaction;
+      const txB64 = typeof data.transaction === "string" ? data.transaction : "";
       if (!txB64) throw new Error("No transaction returned");
       const txBuf = base64ToUint8Array(txB64);
       const tx = VersionedTransaction.deserialize(txBuf);
@@ -856,7 +894,10 @@ export function UnifiedBuyPanel() {
       await connection.confirmTransaction(sig, "confirmed");
       const asyncStatus =
         data.provider === "dflow" && data.executionMode === "async"
-          ? await waitForDflowSettlement(sig, data.lastValidBlockHeight)
+          ? await waitForDflowSettlement(
+              sig,
+              typeof data.lastValidBlockHeight === "number" ? data.lastValidBlockHeight : undefined,
+            )
           : null;
       if (asyncStatus?.status === "failed" || asyncStatus?.status === "expired") {
         throw new Error(`DFlow order ${asyncStatus.status}.`);
@@ -948,8 +989,9 @@ export function UnifiedBuyPanel() {
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Swap complete",
         message: isSell
-          ? realizedSummary ??
+          ? `${partialSellFilled ? "Partial fill executed. " : ""}${realizedSummary ??
             `Sold ${tokenDisplayName || selectedToken.name} (${amountNum.toLocaleString(undefined, { maximumFractionDigits: 6 })} tokens).`
+            }`
           : data.executionMode === "async"
             ? asyncStatus?.status === "closed"
               ? "Trade confirmed and settled."
