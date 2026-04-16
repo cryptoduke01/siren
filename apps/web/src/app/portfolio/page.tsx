@@ -23,6 +23,8 @@ import {
   buildProofRedirectUri, encodeProofSignature,
 } from "@/lib/dflowProof";
 import { API_URL } from "@/lib/apiUrl";
+import { useGoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
+import { useTorqueRelayReadiness } from "@/hooks/useTorqueRelayReadiness";
 import { TradePnLCard } from "@/components/TradePnLCard";
 import {
   getPositionEntry,
@@ -1239,6 +1241,10 @@ export default function PortfolioPage() {
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");
   const activeTab = positionTab === "open" ? openPositions : settledPositions;
+  const openBookUsd = useMemo(
+    () => openPositions.reduce((sum, position) => sum + positionMarketValueUsd(position), 0),
+    [openPositions],
+  );
   const totalPnl = useMemo(
     () => positions.reduce((sum, p) => sum + computePositionPnl(p).usd, 0),
     [positions, entryEpoch],
@@ -1281,6 +1287,8 @@ export default function PortfolioPage() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+  const { data: goldRushIntelligence, isLoading: goldRushLoading, isError: goldRushError } = useGoldRushWalletIntelligence(walletKey);
+  const { data: torqueReadiness } = useTorqueRelayReadiness();
 
   // ── Identity ──────────────────────────────────────────────────
 
@@ -1759,6 +1767,175 @@ export default function PortfolioPage() {
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        )}
+
+        {connected && (
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    GoldRush wallet intelligence
+                  </h2>
+                  <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    Structured on-chain balance context for execution readiness, reserves, and concentration.
+                  </p>
+                </div>
+                <span
+                  className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
+                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-base)" }}
+                >
+                  Covalent
+                </span>
+              </div>
+
+              {goldRushLoading ? (
+                <div className="mt-5 flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
+                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                    Reading wallet balances through GoldRush...
+                  </p>
+                </div>
+              ) : goldRushError || !goldRushIntelligence ? (
+                <p className="mt-6 py-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                  GoldRush wallet intelligence is not live yet in this environment. Add `GOLDRUSH_API_KEY` to promote this from scaffold to live signal.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {[
+                      { label: "Idle stables", value: `$${fmtUsd(goldRushIntelligence.summary.stablecoinUsd)}`, tone: "var(--accent)" },
+                      { label: "Visible wallet", value: `$${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}`, tone: "var(--text-1)" },
+                      { label: "Open book", value: `$${fmtUsd(openBookUsd)}`, tone: "var(--text-1)" },
+                      { label: "Concentration", value: `${goldRushIntelligence.summary.concentrationPct.toFixed(1)}%`, tone: "var(--up)" },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-xl border px-3 py-3"
+                        style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+                      >
+                        <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                          {item.label}
+                        </p>
+                        <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Siren read
+                      </p>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {goldRushIntelligence.narrative.reserveRead}
+                      </p>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {goldRushIntelligence.narrative.concentrationRead}
+                      </p>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {goldRushIntelligence.narrative.readiness}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Top holdings
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {goldRushIntelligence.holdings.slice(0, 4).map((holding) => (
+                          <div key={`${holding.symbol}-${holding.contractAddress ?? "native"}`} className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-body text-sm truncate" style={{ color: "var(--text-1)" }}>
+                                {holding.symbol}
+                                {holding.isStable ? " · stable" : holding.isNative ? " · native" : ""}
+                              </p>
+                              <p className="mt-0.5 font-body text-[11px] truncate" style={{ color: "var(--text-3)" }}>
+                                {holding.name}
+                              </p>
+                            </div>
+                            <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
+                              ${fmtUsd(holding.quoteUsd)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    Torque growth relay
+                  </h2>
+                  <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    Execution outcomes can now emit campaign-grade events for rebates, leaderboards, and retention loops.
+                  </p>
+                </div>
+                <span
+                  className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
+                  style={{ borderColor: "var(--border-subtle)", color: torqueReadiness?.configured ? "var(--up)" : "var(--text-3)", background: "var(--bg-base)" }}
+                >
+                  {torqueReadiness?.configured ? "Relay live" : "Relay pending"}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {[
+                  { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
+                  { label: "Success", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
+                  { label: "Partial", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
+                  { label: "Events", value: String(torqueReadiness?.eventNames.length ?? 0), tone: "var(--text-1)" },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      {item.label}
+                    </p>
+                    <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
+                      {item.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                  Relay status
+                </p>
+                <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  {torqueReadiness?.summary ?? "Torque relay metadata is unavailable right now."}
+                </p>
+                <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  {torqueReadiness?.configured
+                    ? `Events are routed toward ${torqueReadiness.webhookHost ?? "your configured endpoint"} whenever Siren logs an execution outcome.`
+                    : "Set `TORQUE_CUSTOM_EVENTS_WEBHOOK_URL` to turn recent execution outcomes into live campaign events."}
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                {(torqueReadiness?.eventNames ?? ["trade_attempt_logged", "trade_attempt_success", "trade_attempt_failed", "partial_fill_recorded"]).map((eventName) => (
+                  <div
+                    key={eventName}
+                    className="flex items-center justify-between rounded-xl border px-3 py-3"
+                    style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+                  >
+                    <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>
+                      {eventName}
+                    </p>
+                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      ready for campaign triggers
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

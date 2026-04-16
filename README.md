@@ -54,6 +54,9 @@ Backend (`apps/api/.env`):
 
 - `DFLOW_API_KEY` – DFlow (markets + trading). Request at pond.dflow.net.
 - `JUPITER_API_KEY` – Jupiter (swap routing). Get at portal.jup.ag.
+- `GOLDRUSH_API_KEY` – GoldRush / Covalent (wallet intelligence on Solana balances).
+- `TORQUE_CUSTOM_EVENTS_WEBHOOK_URL` – Torque-ready custom event relay endpoint for growth primitives.
+- `TORQUE_API_KEY` – Optional header for the Torque relay endpoint.
 - `DATABASE_URL` – PostgreSQL (optional for MVP)
 
 Frontend (`apps/web/.env.local`):

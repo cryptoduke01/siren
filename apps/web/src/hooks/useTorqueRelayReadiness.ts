@@ -1,0 +1,29 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { API_URL } from "@/lib/apiUrl";
+
+export type TorqueRelayReadiness = {
+  configured: boolean;
+  relayMode: "custom_webhook";
+  webhookHost: string | null;
+  eventNames: string[];
+  summary: string;
+};
+
+async function fetchTorqueRelayReadiness(): Promise<TorqueRelayReadiness> {
+  const res = await fetch(`${API_URL}/api/integrations/torque/readiness`, { credentials: "omit" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Torque readiness API error: ${res.status}`);
+  return body.data as TorqueRelayReadiness;
+}
+
+export function useTorqueRelayReadiness() {
+  return useQuery({
+    queryKey: ["torque-relay-readiness"],
+    queryFn: fetchTorqueRelayReadiness,
+    retry: 1,
+    staleTime: 300_000,
+    refetchOnWindowFocus: false,
+  });
+}

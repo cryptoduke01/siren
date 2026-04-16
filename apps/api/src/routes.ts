@@ -7,6 +7,9 @@ import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
+import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
+import { searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
+import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness } from "./services/torque.js";
 import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
@@ -1637,17 +1640,84 @@ export function registerRoutes(app: FastifyInstance) {
       const { error } = await supabase.from("siren_trade_attempts").insert(payload);
       if (error) {
         app.log.warn({ err: error, payload }, "siren_trade_attempts insert skipped");
+        void emitTorqueTradeAttemptEvent(payload).catch((relayError) => {
+          app.log.warn({ err: relayError, payload }, "torque relay skipped after trade attempt warning");
+        });
         return reply.status(202).send({ success: true, persisted: false, warning: error.message || "Trade attempt log skipped" });
       }
+      void emitTorqueTradeAttemptEvent(payload).catch((relayError) => {
+        app.log.warn({ err: relayError, payload }, "torque relay skipped after trade attempt success");
+      });
       return reply.send({ success: true, persisted: true });
     } catch (e) {
       app.log.warn({ err: e, payload }, "siren_trade_attempts insert skipped with exception");
+      void emitTorqueTradeAttemptEvent(payload).catch((relayError) => {
+        app.log.warn({ err: relayError, payload }, "torque relay skipped after trade attempt exception");
+      });
       return reply.status(202).send({
         success: true,
         persisted: false,
         warning: (e as Error).message || "Trade attempt log skipped",
       });
     }
+  });
+
+  app.get<{
+    Querystring: { title?: string; outcomeLabel?: string; limit?: string };
+  }>("/api/integrations/jupiter/prediction-map", async (req, reply) => {
+    const title = req.query.title?.trim();
+    if (!title) {
+      return reply.status(400).send({ success: false, error: "title required" });
+    }
+
+    const outcomeLabel = req.query.outcomeLabel?.trim() || null;
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "3", 10) || 3, 1), 6);
+
+    try {
+      const [kalshi, polymarket] = await Promise.all([
+        searchJupiterPredictionEvents({ title, outcomeLabel, provider: "kalshi", limit }),
+        searchJupiterPredictionEvents({ title, outcomeLabel, provider: "polymarket", limit }),
+      ]);
+
+      return reply.send({
+        success: true,
+        data: {
+          query: kalshi.query || polymarket.query,
+          providers: [
+            { provider: "kalshi", events: kalshi.events },
+            { provider: "polymarket", events: polymarket.events },
+          ],
+        },
+      });
+    } catch (error) {
+      req.log.warn(error, "Failed to build Jupiter prediction map");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "Jupiter prediction map unavailable",
+      });
+    }
+  });
+
+  app.get<{ Querystring: { wallet?: string } }>("/api/integrations/goldrush/wallet-intelligence", async (req, reply) => {
+    const wallet = req.query.wallet?.trim();
+    if (!wallet) {
+      return reply.status(400).send({ success: false, error: "wallet required" });
+    }
+
+    try {
+      const data = await getGoldRushWalletIntelligence(wallet);
+      return reply.send({ success: true, data });
+    } catch (error) {
+      req.log.warn(error, "Failed to load GoldRush wallet intelligence");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "GoldRush wallet intelligence unavailable",
+      });
+    }
+  });
+
+  app.get("/api/integrations/torque/readiness", async (_req, reply) => {
+    return reply.send({ success: true, data: getTorqueRelayReadiness() });
   });
 
   app.get<{ Querystring: { wallet?: string; limit?: string } }>("/api/trade-attempts", async (req, reply) => {
