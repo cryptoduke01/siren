@@ -404,7 +404,7 @@ export function UnifiedBuyPanel() {
   useEffect(() => {
     if (
       buyPanelOpen &&
-      buyPanelMode === "token" &&
+      buyPanelMode === "position" &&
       selectedToken &&
       selectedToken.assetType !== "prediction"
     ) {
@@ -417,7 +417,7 @@ export function UnifiedBuyPanel() {
   if (buyPanelOpen && buyPanelMode === "market" && !selectedMarket) return null;
   if (
     buyPanelOpen &&
-    buyPanelMode === "token" &&
+    buyPanelMode === "position" &&
     (!selectedToken || selectedToken.assetType !== "prediction")
   ) {
     return null;
@@ -1431,7 +1431,7 @@ export function UnifiedBuyPanel() {
                     </p>
                   </div>
                 )}
-                               {buyPanelMode === "token" && selectedToken && (
+                {buyPanelMode === "position" && selectedToken && (
                   <>
                     <div
                       className="rounded-xl border p-4 md:p-5"

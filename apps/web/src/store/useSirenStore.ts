@@ -54,7 +54,7 @@ export interface SelectedToken {
   kalshiUrl?: string;
 }
 
-type BuyPanelMode = "market" | "token";
+type BuyPanelMode = "market" | "position";
 
 interface SirenState {
   selectedMarket: SelectedMarket | null;
@@ -99,7 +99,7 @@ export const useSirenStore = create<SirenState>((set) => ({
     set((s) => ({
       selectedToken: t,
       buyPanelOpen: t ? true : s.buyPanelOpen,
-      buyPanelMode: t ? "token" : s.buyPanelMode,
+      buyPanelMode: t ? "position" : s.buyPanelMode,
       openForSell: t && opts?.openForSell ? true : s.openForSell,
     })),
   setBuyPanelOpen: (open, mode) =>
