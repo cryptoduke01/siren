@@ -11,6 +11,8 @@ import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
+import { useMarketExecutionPreview } from "@/hooks/useMarketExecutionPreview";
+import { usePositionExecutionPreview } from "@/hooks/usePositionExecutionPreview";
 import { hapticLight } from "@/lib/haptics";
 import {
   buildProofDeepLink,
@@ -58,6 +60,15 @@ function formatUsd(value?: number | null, digits = 2): string {
     currency: "USD",
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function formatUsdWhole(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
   }).format(value);
 }
 
@@ -249,6 +260,8 @@ export function UnifiedBuyPanel() {
   const selectedMarketSource = selectedMarket?.source;
   const isKalshiMarketTrade = buyPanelMode === "market" && selectedMarketSource === "kalshi";
   const isPolymarketTrade = buyPanelMode === "market" && selectedMarketSource === "polymarket";
+  const selectedOutcomeLabel = selectedMarket?.selected_outcome_label?.trim() || null;
+  const walletKey = publicKey?.toBase58();
   const deferredSolAmount = useDeferredValue(solAmount);
   const deferredSellAmount = useDeferredValue(sellAmount);
 
@@ -295,6 +308,11 @@ export function UnifiedBuyPanel() {
     retry: 1,
   });
   const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
+  const { data: executionPreview, isLoading: executionPreviewLoading } = useMarketExecutionPreview({
+    ticker: buyPanelMode === "market" ? selectedMarket?.event_ticker || selectedMarket?.ticker : undefined,
+    outcomeTicker: buyPanelMode === "market" ? selectedMarket?.ticker : undefined,
+    wallet: buyPanelMode === "market" && selectedMarket?.source === "kalshi" ? walletKey : null,
+  });
   const { data: solanaUsdcBalance = 0 } = useQuery({
     queryKey: ["solana-usdc-balance", publicKey?.toBase58()],
     queryFn: async () => {
@@ -323,6 +341,12 @@ export function UnifiedBuyPanel() {
     },
     enabled: !!publicKey && !!selectedToken && sellMode,
     staleTime: 10_000,
+  });
+  const { data: positionExecutionPreview, isLoading: positionExecutionPreviewLoading } = usePositionExecutionPreview({
+    mint: buyPanelMode === "position" ? selectedToken?.mint : undefined,
+    wallet: buyPanelMode === "position" ? walletKey : null,
+    balance: buyPanelMode === "position" && sellMode ? tokenBalance : null,
+    marketTicker: buyPanelMode === "position" ? selectedToken?.marketTicker ?? null : null,
   });
 
   useEffect(() => {
@@ -386,6 +410,51 @@ export function UnifiedBuyPanel() {
   const tokenRouteLabel = "DFlow";
   const verificationRequired = isWalletVerificationError(error);
   const proofVerified = !!dflowProofStatus?.verified;
+  const marketYesLabel = selectedOutcomeLabel || "YES";
+  const marketNoLabel = selectedOutcomeLabel ? `Fade ${selectedOutcomeLabel}` : "NO";
+  const previewSuggestedClipUsd = executionPreview?.route.suggestedClipUsd ?? null;
+  const isSizingAbovePreview =
+    buyPanelMode === "market" &&
+    parsedBuySolAmount != null &&
+    previewSuggestedClipUsd != null &&
+    parsedBuySolAmount > previewSuggestedClipUsd;
+  const routeLooksBlocked =
+    buyPanelMode === "market" &&
+    selectedMarket?.source === "kalshi" &&
+    executionPreview &&
+    !executionPreview.route.available &&
+    executionPreview.route.walletConnected;
+  const executionPreviewMetadata = executionPreview
+    ? {
+        selectedOutcome: executionPreview.market.selectedOutcome.label,
+        selectedOutcomeTicker: executionPreview.market.selectedOutcome.ticker,
+        suggestedClipUsd: executionPreview.route.suggestedClipUsd,
+        routeSummary: executionPreview.route.summary,
+        routeAvailable: executionPreview.route.available,
+        fieldRisk: executionPreview.risk.field.label,
+        resolutionRisk: executionPreview.risk.resolution.label,
+      }
+    : undefined;
+  const positionExecutionPreviewMetadata = positionExecutionPreview
+    ? {
+        closeRouteSummary: positionExecutionPreview.route.summary,
+        suggestedChunkContracts: positionExecutionPreview.route.suggestedChunkContracts,
+        chunkPlan: positionExecutionPreview.route.chunkPlan,
+      }
+    : undefined;
+  const suggestedSellChunkContracts = positionExecutionPreview?.route.suggestedChunkContracts ?? null;
+  const sellChunkPlan = positionExecutionPreview?.route.chunkPlan ?? null;
+  const sellRouteLooksBlocked =
+    buyPanelMode === "position" &&
+    sellMode &&
+    positionExecutionPreview != null &&
+    !positionExecutionPreview.route.available &&
+    positionExecutionPreview.route.walletConnected;
+  const sellAmountExceedsSuggestedChunk =
+    sellMode &&
+    parsedSellTokenAmount != null &&
+    suggestedSellChunkContracts != null &&
+    parsedSellTokenAmount > suggestedSellChunkContracts;
 
   useEffect(() => {
     const identity = publicKey?.toBase58() ?? evmAddress ?? null;
@@ -629,7 +698,17 @@ export function UnifiedBuyPanel() {
             orderMsg.toLowerCase().includes("no executable route"));
         if (!isRouteMiss) throw orderError;
 
-        const fallbackFractions = [0.75, 0.5, 0.25, 0.1];
+        const previewFraction =
+          suggestedSellChunkContracts != null && amountNum > 0
+            ? Math.min(0.95, Math.max(0.05, suggestedSellChunkContracts / amountNum))
+            : null;
+        const fallbackFractions = Array.from(
+          new Set(
+            [previewFraction, 0.75, 0.5, 0.25, 0.1]
+              .filter((value): value is number => value != null && value > 0 && value < 1)
+              .map((value) => Number(value.toFixed(4))),
+          ),
+        ).sort((left, right) => right - left);
         let recovered: Record<string, unknown> | null = null;
         for (const fraction of fallbackFractions) {
           const candidateAmount = Number((amountNum * fraction).toFixed(6));
@@ -707,6 +786,7 @@ export function UnifiedBuyPanel() {
         metadata: {
           assetType: selectedToken?.assetType ?? null,
           partialSellFilled,
+          ...positionExecutionPreviewMetadata,
         },
       });
       const realizedSummary = (() => {
@@ -757,6 +837,7 @@ export function UnifiedBuyPanel() {
         errorMessage: msg,
         metadata: {
           assetType: selectedToken?.assetType ?? null,
+          ...positionExecutionPreviewMetadata,
         },
       });
       setError(friendly);
@@ -1090,7 +1171,12 @@ export function UnifiedBuyPanel() {
     setLoading(true);
     try {
       const amount = parseUnitsToBigInt(solAmount.trim(), 6).toString();
-      const outcomeLabel = marketSide.toUpperCase();
+      const outcomeLabel =
+        marketSide === "yes"
+          ? selectedOutcomeLabel || "YES"
+          : selectedOutcomeLabel
+            ? `NO ${selectedOutcomeLabel}`
+            : "NO";
       const outcomeSymbol = `${outcomeLabel} ${selectedMarket.ticker}`;
       const outcomeName = `${selectedMarket.title} · ${outcomeLabel}`;
 
@@ -1172,6 +1258,7 @@ export function UnifiedBuyPanel() {
           executionMode: data.executionMode ?? null,
           provider: data.provider ?? null,
           settlementStatus: asyncStatus?.status ?? null,
+          ...executionPreviewMetadata,
         },
       });
       showResultModal({
@@ -1212,13 +1299,14 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         status: "failed",
         errorMessage: msg,
+        metadata: executionPreviewMetadata,
       });
       setError(friendly);
       showResultModal({
         type: "error",
         title: requiresVerification ? "Verify wallet" : "Trade failed",
         message: requiresVerification
-          ? "Verify this wallet once on DFlow, then come back and buy YES or NO again."
+          ? "Verify this wallet once on DFlow, then come back and route the outcome again."
           : friendly,
         actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
         actionHref: requiresVerification ? DFLOW_PROOF_PORTAL_URL : undefined,
@@ -1275,6 +1363,18 @@ export function UnifiedBuyPanel() {
                         ? "Pick YES or NO and enter USDC from your Polygon wallet."
                         : "Pick YES or NO and enter USDC from your Solana wallet."}
                     </p>
+                    {selectedOutcomeLabel && (
+                      <div
+                        className="mt-3 inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px] font-medium"
+                        style={{
+                          borderColor: "color-mix(in srgb, var(--accent) 34%, transparent)",
+                          background: "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))",
+                          color: "var(--text-1)",
+                        }}
+                      >
+                        Selected outcome: {selectedOutcomeLabel}
+                      </div>
+                    )}
 
                     <div className="mt-5 grid grid-cols-2 gap-3">
                       <button
@@ -1291,7 +1391,7 @@ export function UnifiedBuyPanel() {
                         }}
                       >
                         <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--text-2)" }}>
-                          YES
+                          {marketYesLabel}
                         </p>
                         <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketYesPriceUsd != null ? `${(marketYesPriceUsd * 100).toFixed(1)}c` : "—"}
@@ -1311,7 +1411,7 @@ export function UnifiedBuyPanel() {
                         }}
                       >
                         <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "no" ? "var(--down)" : "var(--text-2)" }}>
-                          NO
+                          {marketNoLabel}
                         </p>
                         <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketNoPriceUsd != null ? `${(marketNoPriceUsd * 100).toFixed(1)}c` : "—"}
@@ -1367,25 +1467,101 @@ export function UnifiedBuyPanel() {
                         style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                       />
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {(["5", "10", "25", "50", "100"] as const).map((amt) => (
+                        {Array.from(
+                          new Set(
+                            [
+                              5,
+                              10,
+                              25,
+                              50,
+                              100,
+                              previewSuggestedClipUsd != null ? Math.max(1, Math.round(previewSuggestedClipUsd)) : null,
+                            ].filter((value): value is number => value != null),
+                          ),
+                        )
+                          .sort((left, right) => left - right)
+                          .map((amt) => (
                           <button
                             key={amt}
                             type="button"
                             onClick={() => {
                               hapticLight();
-                              setSolAmount(amt);
+                              setSolAmount(String(amt));
                             }}
                             className="rounded-full px-3.5 py-2 font-mono text-[11px] font-semibold border transition-colors"
                             style={{
-                              background: solAmount === amt ? "color-mix(in srgb, var(--accent) 14%, var(--bg-elevated))" : "var(--bg-surface)",
-                              borderColor: solAmount === amt ? "var(--accent)" : "var(--border-subtle)",
+                              background: solAmount === String(amt) ? "color-mix(in srgb, var(--accent) 14%, var(--bg-elevated))" : "var(--bg-surface)",
+                              borderColor: solAmount === String(amt) ? "var(--accent)" : "var(--border-subtle)",
                               color: "var(--text-2)",
                             }}
                           >
-                            ${amt}
+                            {previewSuggestedClipUsd != null && Math.round(previewSuggestedClipUsd) === amt ? `Safe ${formatUsdWhole(amt)}` : `$${amt}`}
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    <div
+                      className="mt-4 rounded-[20px] border p-4"
+                      style={{
+                        background: "var(--bg-surface)",
+                        borderColor: routeLooksBlocked
+                          ? "color-mix(in srgb, var(--down) 30%, var(--border-subtle))"
+                          : isSizingAbovePreview
+                            ? "color-mix(in srgb, var(--yellow) 30%, var(--border-subtle))"
+                            : "var(--border-subtle)",
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Siren route read
+                        </p>
+                        {executionPreviewLoading && (
+                          <span className="inline-flex items-center gap-2 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            probing
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {executionPreview
+                          ? executionPreview.route.summary
+                          : "Siren is building a route preview for this outcome."}
+                      </p>
+                      {executionPreview && (
+                        <>
+                          <div className="mt-3 grid grid-cols-2 gap-3">
+                            <div className="rounded-[16px] border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                              <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Suggested clip</p>
+                              <p className="mt-2 font-mono text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                                {previewSuggestedClipUsd != null ? formatUsdWhole(previewSuggestedClipUsd) : "Start small"}
+                              </p>
+                            </div>
+                            <div className="rounded-[16px] border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                              <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Field risk</p>
+                              <p className="mt-2 font-body text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                                {executionPreview.risk.field.label}
+                              </p>
+                            </div>
+                          </div>
+                          <p
+                            className="mt-3 text-[11px] leading-relaxed"
+                            style={{
+                              color: routeLooksBlocked
+                                ? "var(--down)"
+                                : isSizingAbovePreview
+                                  ? "var(--yellow)"
+                                  : "var(--text-3)",
+                            }}
+                          >
+                            {routeLooksBlocked
+                              ? "Live route probes did not confirm a clean Siren path right now. Open the venue or try a different size later."
+                              : isSizingAbovePreview
+                                ? `This size is above the latest clean preview clip of ${formatUsdWhole(previewSuggestedClipUsd)}. Expect a higher chance of route failure or worse fills.`
+                                : executionPreview.route.actionable}
+                          </p>
+                        </>
+                      )}
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1438,7 +1614,7 @@ export function UnifiedBuyPanel() {
 
                     <button
                       onClick={executePredictionMarketTrade}
-                      disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked}
+                      disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked || routeLooksBlocked}
                       className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
                       style={{
                         background: marketSide === "yes" ? "var(--accent)" : "var(--down)",
@@ -1451,10 +1627,12 @@ export function UnifiedBuyPanel() {
                         </>
                       ) : predictionTradeBlocked ? (
                         "Unavailable in your region"
+                      ) : routeLooksBlocked ? (
+                        "Route not ready"
                       ) : isKalshiMarketTrade && !proofVerified && !dflowProofLoading ? (
                         "Verify wallet first"
                       ) : (
-                        `Buy ${marketSide.toUpperCase()}`
+                        `Buy ${marketSide === "yes" ? marketYesLabel : marketNoLabel}`
                       )}
                     </button>
 
@@ -1627,6 +1805,23 @@ export function UnifiedBuyPanel() {
                                 </button>
                               ))}
                             </div>
+                            {suggestedSellChunkContracts != null && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  hapticLight();
+                                  setSellAmount(String(suggestedSellChunkContracts));
+                                }}
+                                className="mb-2 inline-flex rounded-full border px-3 py-1.5 font-mono text-[11px] font-semibold transition-colors"
+                                style={{
+                                  background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
+                                  borderColor: "color-mix(in srgb, var(--accent) 34%, transparent)",
+                                  color: "var(--text-1)",
+                                }}
+                              >
+                                Safe chunk {formatTokenAmount(suggestedSellChunkContracts, 2)}
+                              </button>
+                            )}
                             <input
                               type="number"
                               step="any"
@@ -1637,6 +1832,74 @@ export function UnifiedBuyPanel() {
                               className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
                               style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                             />
+                          </div>
+                          <div
+                            className="mt-3 rounded-xl border px-3 py-3"
+                            style={{
+                              background: "var(--bg-surface)",
+                              borderColor: sellRouteLooksBlocked
+                                ? "color-mix(in srgb, var(--down) 28%, var(--border-subtle))"
+                                : sellAmountExceedsSuggestedChunk
+                                  ? "color-mix(in srgb, var(--yellow) 28%, var(--border-subtle))"
+                                  : "var(--border-subtle)",
+                            }}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
+                                Close route read
+                              </p>
+                              {positionExecutionPreviewLoading && (
+                                <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--text-3)" }}>
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  probing
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              {positionExecutionPreview
+                                ? positionExecutionPreview.route.summary
+                                : "Siren is checking what close size is likely to clear."}
+                            </p>
+                            {positionExecutionPreview && (
+                              <>
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                  <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                    <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                      Suggested chunk
+                                    </p>
+                                    <p className="mt-1 font-mono text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                                      {suggestedSellChunkContracts != null ? `${formatTokenAmount(suggestedSellChunkContracts, 2)} contracts` : "Start small"}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
+                                    <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                      Chunk plan
+                                    </p>
+                                    <p className="mt-1 font-mono text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                                      {sellChunkPlan ? `${sellChunkPlan.estimatedChunks}x` : "Single clip"}
+                                    </p>
+                                  </div>
+                                </div>
+                                <p
+                                  className="mt-3 text-[10px] leading-relaxed"
+                                  style={{
+                                    color: sellRouteLooksBlocked
+                                      ? "var(--down)"
+                                      : sellAmountExceedsSuggestedChunk
+                                        ? "var(--yellow)"
+                                        : "var(--text-3)",
+                                  }}
+                                >
+                                  {sellRouteLooksBlocked
+                                    ? "Live close probes did not confirm a clean route right now. You can still try, but expect the adaptive chunker to work harder or fail."
+                                    : sellAmountExceedsSuggestedChunk
+                                      ? `This close size is above the latest clean chunk of ${formatTokenAmount(suggestedSellChunkContracts, 2)} contracts. Smaller clips should clear more reliably.`
+                                      : sellChunkPlan
+                                        ? `Siren would work this exit in about ${sellChunkPlan.estimatedChunks} chunks of ${formatTokenAmount(sellChunkPlan.chunkContracts, 2)} contracts.`
+                                        : "This size fits inside the latest clean close probe."}
+                                </p>
+                              </>
+                            )}
                           </div>
                           <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
                             <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>
@@ -1670,6 +1933,10 @@ export function UnifiedBuyPanel() {
                               <>
                                 <Loader2 className="w-4 h-4 animate-spin" /> Closing…
                               </>
+                            ) : sellRouteLooksBlocked ? (
+                              "Try adaptive close"
+                            ) : sellAmountExceedsSuggestedChunk ? (
+                              "Close with chunking"
                             ) : (
                               "Sell position for USDC"
                             )}

@@ -155,6 +155,85 @@ function bucketFailureReason(message?: string | null): string {
   return "Other";
 }
 
+function readNumericMetadata(metadata: Record<string, unknown> | undefined, key: string): number | null {
+  const value = metadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatAttemptAmount(row: TradeAttemptFeedRow): string {
+  const parsed = row.amount != null ? Number.parseFloat(row.amount) : NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) return "—";
+
+  if (row.mode === "buy-market") {
+    return `$${fmtUsd(parsed)} ${row.inputAsset ?? "USDC"}`;
+  }
+
+  if (row.mode === "sell" || row.side === "sell") {
+    return `${fmtToken(parsed, 2)} contracts`;
+  }
+
+  return `${parsed.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${row.inputAsset ?? ""}`.trim();
+}
+
+function buildTradeAttemptNarrative(row: TradeAttemptFeedRow): {
+  title: string;
+  advice: string;
+  result: string;
+  risk: string | null;
+} {
+  const metadata = row.metadata ?? {};
+  const suggestedClipUsd = readNumericMetadata(metadata, "suggestedClipUsd");
+  const suggestedChunkContracts = readNumericMetadata(metadata, "suggestedChunkContracts");
+  const selectedOutcome =
+    typeof metadata.selectedOutcome === "string" && metadata.selectedOutcome.trim()
+      ? metadata.selectedOutcome.trim()
+      : null;
+  const resolutionRisk =
+    typeof metadata.resolutionRisk === "string" && metadata.resolutionRisk.trim()
+      ? metadata.resolutionRisk.trim()
+      : null;
+  const fieldRisk =
+    typeof metadata.fieldRisk === "string" && metadata.fieldRisk.trim()
+      ? metadata.fieldRisk.trim()
+      : null;
+  const partialSellFilled = metadata.partialSellFilled === true;
+
+  const chunkPlan = metadata.chunkPlan;
+  const estimatedChunks =
+    chunkPlan && typeof chunkPlan === "object" && !Array.isArray(chunkPlan) && typeof (chunkPlan as { estimatedChunks?: unknown }).estimatedChunks === "number"
+      ? (chunkPlan as { estimatedChunks: number }).estimatedChunks
+      : null;
+
+  const title =
+    selectedOutcome
+      ? `${row.market || "Market"} · ${selectedOutcome}`
+      : row.market || row.outputAsset || row.inputAsset || "Execution attempt";
+
+  const advice =
+    suggestedClipUsd != null
+      ? `Siren advised starting around $${fmtUsd(suggestedClipUsd)}.`
+      : suggestedChunkContracts != null
+        ? `Siren advised chunks of about ${fmtToken(suggestedChunkContracts, 2)} contracts.`
+        : "No stored Siren sizing advice for this attempt.";
+
+  const result = row.errorMessage
+    ? bucketFailureReason(row.errorMessage)
+    : partialSellFilled
+      ? "Partial fill captured after adaptive chunking."
+      : estimatedChunks && estimatedChunks > 1
+        ? `Route was expected to work in about ${estimatedChunks} chunks.`
+        : "Route completed cleanly.";
+
+  const risk = [resolutionRisk, fieldRisk].filter(Boolean).join(" · ") || null;
+
+  return { title, advice, result, risk };
+}
+
 const fmtUsd = (n: number) =>
   n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -1617,39 +1696,66 @@ export default function PortfolioPage() {
               ) : (
                 <ul className="mt-5 space-y-3">
                   {tradeAttemptData?.rows.slice(0, 6).map((row, idx) => (
-                    <li
-                      key={`${row.createdAt}-${row.txSignature ?? row.market ?? idx}`}
-                      className="rounded-xl border px-4 py-3"
-                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className="rounded-full px-2 py-0.5 font-sub text-[10px] uppercase tracking-[0.16em]"
-                              style={{
-                                background: row.status === "success" ? "color-mix(in srgb, var(--up) 16%, transparent)" : "color-mix(in srgb, var(--down) 14%, transparent)",
-                                color: row.status === "success" ? "var(--up)" : "var(--down)",
-                              }}
-                            >
-                              {row.status}
-                            </span>
-                            <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                              {row.venue} · {row.mode}
-                            </span>
+                    (() => {
+                      const narrative = buildTradeAttemptNarrative(row);
+                      return (
+                        <li
+                          key={`${row.createdAt}-${row.txSignature ?? row.market ?? idx}`}
+                          className="rounded-xl border px-4 py-3"
+                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className="rounded-full px-2 py-0.5 font-sub text-[10px] uppercase tracking-[0.16em]"
+                                  style={{
+                                    background: row.status === "success" ? "color-mix(in srgb, var(--up) 16%, transparent)" : "color-mix(in srgb, var(--down) 14%, transparent)",
+                                    color: row.status === "success" ? "var(--up)" : "var(--down)",
+                                  }}
+                                >
+                                  {row.status}
+                                </span>
+                                <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                                  {row.venue} · {row.mode}
+                                </span>
+                              </div>
+                              <p className="mt-2 font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                {narrative.title}
+                              </p>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Attempted</p>
+                                  <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                                    {formatAttemptAmount(row)}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Siren advice</p>
+                                  <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                                    {narrative.advice}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Outcome</p>
+                                  <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: row.status === "success" ? "var(--up)" : "var(--text-2)" }}>
+                                    {narrative.result}
+                                  </p>
+                                </div>
+                              </div>
+                              {narrative.risk && (
+                                <p className="mt-2 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                                  Risk context: {narrative.risk}
+                                </p>
+                              )}
+                            </div>
+                            <time className="font-sub text-[11px] text-right" style={{ color: "var(--text-3)" }} dateTime={row.createdAt}>
+                              {new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                            </time>
                           </div>
-                          <p className="mt-2 font-body text-sm" style={{ color: "var(--text-1)" }}>
-                            {row.market || row.outputAsset || row.inputAsset || "Execution attempt"}
-                          </p>
-                          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                            {row.errorMessage ? bucketFailureReason(row.errorMessage) : row.metadata?.partialSellFilled === true ? "Partial fill captured" : "Route completed cleanly"}
-                          </p>
-                        </div>
-                        <time className="font-sub text-[11px] text-right" style={{ color: "var(--text-3)" }} dateTime={row.createdAt}>
-                          {new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                        </time>
-                      </div>
-                    </li>
+                        </li>
+                      );
+                    })()
                   ))}
                 </ul>
               )}

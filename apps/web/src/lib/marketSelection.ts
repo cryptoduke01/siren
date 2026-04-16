@@ -122,5 +122,8 @@ export function toSelectedMarket(market: MarketWithVelocity): SelectedMarket {
     market_slug: market.market_slug,
     kalshi_url: market.kalshi_url,
     outcomes: market.outcomes,
+    grouped_event: market.grouped_event,
+    outcome_count: market.outcome_count,
+    selected_outcome_label: market.selected_outcome_label,
   };
 }

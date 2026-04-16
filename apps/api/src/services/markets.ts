@@ -46,6 +46,26 @@ interface DFlowEventsResponse {
   cursor?: number | null;
 }
 
+interface KalshiEventMarketMetadata {
+  ticker: string;
+  title?: string;
+  subtitle?: string;
+  yes_sub_title?: string;
+  no_sub_title?: string;
+}
+
+interface KalshiEventMetadata {
+  event_ticker: string;
+  title?: string;
+  mutually_exclusive?: boolean;
+  markets?: KalshiEventMarketMetadata[];
+}
+
+interface KalshiEventsResponse {
+  cursor?: string | null;
+  events?: KalshiEventMetadata[];
+}
+
 const headers: Record<string, string> = {
   "Content-Type": "application/json",
 };
@@ -79,7 +99,9 @@ const VELOCITY_FETCH_LIMIT = 12;
 const MARKET_ACTIVITY_CACHE_MS = 60 * 1000;
 const KALSHI_TRADES_PAGE_LIMIT = 1000;
 const KALSHI_TRADES_MAX_PAGES = 12;
-const DFLOW_TIMEOUT_MS = 5_000;
+const KALSHI_EVENTS_PAGE_LIMIT = 200;
+const KALSHI_EVENTS_MAX_PAGES = 2;
+const DFLOW_TIMEOUT_MS = 12_000;
 let marketsCache: { expiresAt: number; value: MarketWithVelocity[] } | null = null;
 let marketsInFlight: Promise<MarketWithVelocity[]> | null = null;
 const MAX_TRADE_ACTIVITY_CACHE = 200;
@@ -124,6 +146,80 @@ function clampProbability(value: number): number {
   return Math.min(100, Math.max(0, Number(value.toFixed(2))));
 }
 
+function quoteToProbability(yesBid?: string, yesAsk?: string): number {
+  const bid = parseFiniteNumber(yesBid);
+  const ask = parseFiniteNumber(yesAsk);
+  if (bid != null && ask != null) return clampProbability(((bid + ask) / 2) * 100);
+  if (bid != null) return clampProbability(bid * 100);
+  if (ask != null) return clampProbability(ask * 100);
+  return 50;
+}
+
+function normalizeKalshiOutcomeLabel(eventTitle: string, marketTitle: string, yesSubtitle?: string, subtitle?: string): string {
+  const preferred = yesSubtitle?.trim() || subtitle?.trim();
+  if (preferred) return preferred;
+
+  const cleanMarketTitle = marketTitle.trim();
+  const cleanEventTitle = eventTitle.trim();
+  if (!cleanMarketTitle) return cleanEventTitle || "Outcome";
+  if (cleanMarketTitle.toLowerCase() === cleanEventTitle.toLowerCase()) return cleanMarketTitle;
+
+  let label = cleanMarketTitle.replace(/\?+$/, "").trim();
+  label = label.replace(/^will\s+/i, "");
+  label = label.replace(/^the\s+/i, "");
+  label = label.replace(/\s+be\b.*$/i, "");
+  label = label.replace(/\s+win\b.*$/i, "");
+  label = label.replace(/\s+become\b.*$/i, "");
+  label = label.replace(/\s+have\b.*$/i, "");
+  label = label.replace(/\s+reach\b.*$/i, "");
+  label = label.replace(/\s+pass\b.*$/i, "");
+  label = label.trim();
+
+  return label || cleanMarketTitle;
+}
+
+function hasVisibleMarketSignal(market: DFlowMarketResponse): boolean {
+  return (
+    parseFiniteNumber(market.yesBid) != null ||
+    parseFiniteNumber(market.yesAsk) != null ||
+    parseFiniteNumber(market.noBid) != null ||
+    parseFiniteNumber(market.noAsk) != null ||
+    (market.volume ?? 0) > 0 ||
+    (market.openInterest ?? 0) > 0 ||
+    Object.keys(market.accounts ?? {}).length > 0
+  );
+}
+
+async function fetchKalshiEventMetadataMap(): Promise<Map<string, KalshiEventMetadata>> {
+  const byEventTicker = new Map<string, KalshiEventMetadata>();
+  let cursor: string | undefined;
+
+  for (let page = 0; page < KALSHI_EVENTS_MAX_PAGES; page += 1) {
+    const qs = new URLSearchParams({
+      with_nested_markets: "true",
+      status: "open",
+      limit: String(KALSHI_EVENTS_PAGE_LIMIT),
+    });
+    if (cursor) qs.set("cursor", cursor);
+
+    const res = await fetch(`${KALSHI_API_BASE}/events?${qs.toString()}`);
+    if (!res.ok) {
+      if (res.status === 429) throw new Error("Kalshi events API rate limited");
+      throw new Error(`Kalshi events API error: ${res.status}`);
+    }
+
+    const json = (await res.json()) as KalshiEventsResponse;
+    for (const event of json.events ?? []) {
+      if (event?.event_ticker) byEventTicker.set(event.event_ticker, event);
+    }
+
+    cursor = json.cursor?.trim() || undefined;
+    if (!cursor) break;
+  }
+
+  return byEventTicker;
+}
+
 async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["events"]>> {
   const events: NonNullable<DFlowEventsResponse["events"]> = [];
   let cursor: number | null | undefined = 0;
@@ -141,7 +237,6 @@ async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["
     try {
       res = await fetch(url, {
         headers,
-        signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
       });
     } catch (error) {
       if (events.length > 0) break;
@@ -162,34 +257,38 @@ async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["
 }
 
 async function fetchMarketVelocity1h(ticker: string): Promise<number> {
-  const endTs = Math.floor(Date.now() / 1000);
-  const startTs = endTs - 2 * 60 * 60;
-  const qs = new URLSearchParams({
-    startTs: String(startTs),
-    endTs: String(endTs),
-    periodInterval: "60",
-  });
-  const res = await fetch(`${DFLOW_METADATA_URL}/api/v1/market/${encodeURIComponent(ticker)}/candlesticks?${qs.toString()}`, {
-    headers,
-    signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
-  });
-  if (res.status === 429) return 0;
-  if (!res.ok) return 0;
-  const json = (await res.json()) as DFlowCandlestickResponse;
-  const candles = json.candlesticks ?? [];
-  const latest = candles.at(-1);
-  if (!latest?.price) return 0;
+  try {
+    const endTs = Math.floor(Date.now() / 1000);
+    const startTs = endTs - 2 * 60 * 60;
+    const qs = new URLSearchParams({
+      startTs: String(startTs),
+      endTs: String(endTs),
+      periodInterval: "60",
+    });
+    const res = await fetch(`${DFLOW_METADATA_URL}/api/v1/market/${encodeURIComponent(ticker)}/candlesticks?${qs.toString()}`, {
+      headers,
+      signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
+    });
+    if (res.status === 429) return 0;
+    if (!res.ok) return 0;
+    const json = (await res.json()) as DFlowCandlestickResponse;
+    const candles = json.candlesticks ?? [];
+    const latest = candles.at(-1);
+    if (!latest?.price) return 0;
 
-  const current =
-    parseDollarPrice(latest.price.close_dollars) ??
-    parseDollarPrice(latest.price.open_dollars);
-  const previous =
-    parseDollarPrice(candles.at(-2)?.price?.close_dollars) ??
-    parseDollarPrice(latest.price.previous_dollars) ??
-    parseDollarPrice(latest.price.open_dollars);
+    const current =
+      parseDollarPrice(latest.price.close_dollars) ??
+      parseDollarPrice(latest.price.open_dollars);
+    const previous =
+      parseDollarPrice(candles.at(-2)?.price?.close_dollars) ??
+      parseDollarPrice(latest.price.previous_dollars) ??
+      parseDollarPrice(latest.price.open_dollars);
 
-  if (!current || !previous || previous <= 0) return 0;
-  return ((current - previous) / previous) * 100;
+    if (!current || !previous || previous <= 0) return 0;
+    return ((current - previous) / previous) * 100;
+  } catch {
+    return 0;
+  }
 }
 
 export async function getMarketTradeActivity(ticker: string): Promise<MarketTradeActivity> {
@@ -277,79 +376,129 @@ export async function getMarketTradeActivity(ticker: string): Promise<MarketTrad
   return promise;
 }
 
-async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
-  const events = await fetchAllActiveEvents();
+export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
+  const [events, kalshiEventMetadata] = await Promise.all([
+    fetchAllActiveEvents(),
+    fetchKalshiEventMetadataMap().catch(() => new Map<string, KalshiEventMetadata>()),
+  ]);
   const markets: MarketWithVelocity[] = [];
 
   for (const event of events) {
     const eventMarkets = event.markets ?? [];
     const seriesTicker = event.seriesTicker ?? event.ticker?.split("-").slice(0, -1).join("-") ?? "";
-    const activeMarkets = eventMarkets.filter((m) => m.status === "active" && (m.volume ?? 0) > 0);
+    const activeMarkets = eventMarkets.filter((m) => m.status === "active" && hasVisibleMarketSignal(m));
     if (activeMarkets.length === 0) continue;
 
-    const isMultiOutcome = activeMarkets.length > 1;
-    const outcomes: MarketOutcome[] = isMultiOutcome
-      ? activeMarkets.map((m) => {
-          const yesBid = m.yesBid ? parseFloat(m.yesBid) : undefined;
-          const yesAsk = m.yesAsk ? parseFloat(m.yesAsk) : undefined;
-          const accountValues = m.accounts ? Object.values(m.accounts) : [];
-          const firstAccount = accountValues.find((a) => a.yesMint && a.noMint);
-          return {
-            label: m.title,
-            probability: clampProbability((yesBid ?? yesAsk ?? 0.5) * 100),
-            ticker: m.ticker,
-            yes_mint: firstAccount?.yesMint,
-            no_mint: firstAccount?.noMint,
-          };
-        })
-      : [];
+    const kalshiEvent = kalshiEventMetadata.get(event.ticker);
+    const eventMarketMeta = new Map(
+      (kalshiEvent?.markets ?? []).map((market) => [market.ticker, market]),
+    );
 
-    for (const m of activeMarkets) {
-      const yesBid = m.yesBid ? parseFloat(m.yesBid) : undefined;
-      const yesAsk = m.yesAsk ? parseFloat(m.yesAsk) : undefined;
-      const prob = (yesBid ?? yesAsk ?? 0.5) * 100;
-
+    const outcomes: MarketOutcome[] = activeMarkets.map((m) => {
       const accountValues = m.accounts ? Object.values(m.accounts) : [];
       const firstAccount = accountValues.find((a) => a.yesMint && a.noMint);
-      const yes_mint = firstAccount?.yesMint;
-      const no_mint = firstAccount?.noMint;
-
+      const kalshiMarket = eventMarketMeta.get(m.ticker);
+      const label = normalizeKalshiOutcomeLabel(
+        event.title,
+        m.title || kalshiMarket?.title || event.title,
+        kalshiMarket?.yes_sub_title,
+        m.subtitle || kalshiMarket?.subtitle,
+      );
+      const probability = quoteToProbability(m.yesBid, m.yesAsk);
       const seriesSlug = seriesTicker.toLowerCase();
       const marketTickerSlug = m.ticker.toLowerCase();
-      const titleSlug = (m.title || "")
+      const titleSlug = (label || m.title || event.title || "")
         .toLowerCase()
         .replace(/[^a-z0-9\s-]/g, "")
         .replace(/\s+/g, "-")
         .replace(/-+/g, "-")
         .slice(0, 60);
-      const kalshi_url = titleSlug
+      const market_url = titleSlug
         ? `https://kalshi.com/markets/${seriesSlug}/${titleSlug}/${marketTickerSlug}`
         : `https://kalshi.com/markets/${seriesSlug}/${marketTickerSlug}`;
 
+      return {
+        label,
+        probability,
+        ticker: m.ticker,
+        subtitle: m.subtitle || kalshiMarket?.subtitle,
+        market_url,
+        yes_mint: firstAccount?.yesMint,
+        no_mint: firstAccount?.noMint,
+        volume: m.volume,
+        volume_24h: parseFiniteNumber(m.volume24hFp),
+        open_interest: m.openInterest,
+      };
+    });
+
+    const isMultiOutcome = outcomes.length > 1;
+    if (isMultiOutcome) {
+      const leader = [...outcomes].sort((left, right) => {
+        const byProbability = (right.probability ?? 0) - (left.probability ?? 0);
+        if (Math.abs(byProbability) > 0.01) return byProbability;
+        const byVolume = (right.volume ?? 0) - (left.volume ?? 0);
+        if (Math.abs(byVolume) > 0) return byVolume;
+        return (right.open_interest ?? 0) - (left.open_interest ?? 0);
+      })[0];
+      if (!leader) continue;
+
+      markets.push({
+        source: "kalshi",
+        platform_id: leader.ticker ?? event.ticker,
+        market_url: leader.market_url,
+        ticker: leader.ticker ?? event.ticker,
+        event_ticker: event.ticker,
+        series_ticker: seriesTicker,
+        title: kalshiEvent?.title || event.title,
+        subtitle: `${outcomes.length} live outcomes`,
+        status: "open",
+        yes_bid: parseFiniteNumber(activeMarkets.find((market) => market.ticker === leader.ticker)?.yesBid),
+        yes_ask: parseFiniteNumber(activeMarkets.find((market) => market.ticker === leader.ticker)?.yesAsk),
+        volume: outcomes.reduce((sum, outcome) => sum + (outcome.volume ?? 0), 0),
+        volume_24h: outcomes.reduce((sum, outcome) => sum + (outcome.volume_24h ?? 0), 0),
+        liquidity: parseFiniteNumber(event.liquidity),
+        open_interest: outcomes.reduce((sum, outcome) => sum + (outcome.open_interest ?? 0), 0),
+        close_time: Math.max(...activeMarkets.map((market) => market.closeTime ?? 0)),
+        open_time: Math.min(...activeMarkets.map((market) => market.openTime ?? Number.MAX_SAFE_INTEGER)),
+        probability: leader.probability,
+        velocity_1h: 0,
+        yes_mint: leader.yes_mint,
+        no_mint: leader.no_mint,
+        kalshi_url: leader.market_url,
+        outcomes,
+        grouped_event: true,
+        outcome_count: outcomes.length,
+        selected_outcome_label: leader.label,
+      });
+      continue;
+    }
+
+    for (const m of activeMarkets) {
+      const outcome = outcomes.find((item) => item.ticker === m.ticker);
+      if (!outcome) continue;
       markets.push({
         source: "kalshi",
         platform_id: m.ticker,
-        market_url: kalshi_url,
+        market_url: outcome.market_url,
         ticker: m.ticker,
         event_ticker: m.eventTicker,
         series_ticker: seriesTicker,
-        title: isMultiOutcome ? `${event.title}: ${m.title}` : m.title,
-        subtitle: m.subtitle,
+        title: m.title || event.title,
+        subtitle: outcome.subtitle,
         status: "open",
-        yes_bid: yesBid,
-        yes_ask: yesAsk,
+        yes_bid: parseFiniteNumber(m.yesBid),
+        yes_ask: parseFiniteNumber(m.yesAsk),
         volume: m.volume,
         volume_24h: parseFiniteNumber(m.volume24hFp) ?? parseFiniteNumber(event.volume24h),
         liquidity: parseFiniteNumber(event.liquidity),
         open_interest: m.openInterest,
         close_time: m.closeTime,
         open_time: m.openTime,
-        probability: prob,
+        probability: outcome.probability,
         velocity_1h: 0,
-        yes_mint,
-        no_mint,
-        kalshi_url,
-        outcomes: isMultiOutcome ? outcomes : undefined,
+        yes_mint: outcome.yes_mint,
+        no_mint: outcome.no_mint,
+        kalshi_url: outcome.market_url,
       });
     }
   }

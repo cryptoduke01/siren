@@ -85,9 +85,11 @@ export function MarketDetailPanel() {
                     <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>{selectedMarket.subtitle}</p>
                   )}
 
-                  {selectedMarket.outcomes && selectedMarket.outcomes.length > 2 ? (
+                  {selectedMarket.outcomes && selectedMarket.outcomes.length > 1 ? (
                     <div>
-                      <p className="font-body text-xs mb-2" style={{ color: "var(--text-3)" }}>Outcomes</p>
+                      <p className="font-body text-xs mb-2" style={{ color: "var(--text-3)" }}>
+                        Outcomes{selectedMarket.selected_outcome_label ? ` · route target ${selectedMarket.selected_outcome_label}` : ""}
+                      </p>
                       <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
                         {(selectedMarket.outcomes as MarketOutcome[])
                           .sort((a, b) => b.probability - a.probability)
@@ -95,7 +97,13 @@ export function MarketDetailPanel() {
                             <div
                               key={outcome.ticker ?? idx}
                               className="flex items-center justify-between rounded-md border px-3 py-2"
-                              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+                              style={{
+                                borderColor:
+                                  outcome.label === selectedMarket.selected_outcome_label
+                                    ? "color-mix(in srgb, var(--accent) 40%, transparent)"
+                                    : "var(--border-subtle)",
+                                background: "var(--bg-elevated)",
+                              }}
                             >
                               <span className="font-body text-xs truncate pr-3" style={{ color: "var(--text-1)" }}>
                                 {outcome.label}

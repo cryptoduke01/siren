@@ -27,6 +27,9 @@ export interface SelectedMarket {
   no_token_id?: string;
   kalshi_url?: string;
   outcomes?: MarketOutcome[];
+  grouped_event?: boolean;
+  outcome_count?: number;
+  selected_outcome_label?: string;
 }
 
 export interface SelectedToken {
@@ -65,6 +68,7 @@ interface SirenState {
   openForSell: boolean;
   detailPanelOpen: boolean;
   setSelectedMarket: (m: SelectedMarket | null) => void;
+  setSelectedMarketOutcome: (ticker: string) => void;
   setSelectedSignal: (signal: PredictionSignal | null) => void;
   setSelectedToken: (t: SelectedToken | null, opts?: { openForSell?: boolean }) => void;
   setBuyPanelOpen: (open: boolean, mode?: BuyPanelMode) => void;
@@ -86,6 +90,30 @@ export const useSirenStore = create<SirenState>((set) => ({
       buyPanelOpen: false,
       detailPanelOpen: false,
       openForSell: false,
+    }),
+  setSelectedMarketOutcome: (ticker) =>
+    set((state) => {
+      const market = state.selectedMarket;
+      const outcome = market?.outcomes?.find((item) => item.ticker === ticker);
+      if (!market || !outcome) return state;
+
+      return {
+        selectedMarket: {
+          ...market,
+          ticker: outcome.ticker ?? market.ticker,
+          platform_id: outcome.ticker ?? market.platform_id,
+          market_url: outcome.market_url ?? market.market_url,
+          kalshi_url: outcome.market_url ?? market.kalshi_url,
+          probability: outcome.probability ?? market.probability,
+          yes_mint: outcome.yes_mint ?? market.yes_mint,
+          no_mint: outcome.no_mint ?? market.no_mint,
+          yes_token_id: outcome.yes_token_id ?? market.yes_token_id,
+          no_token_id: outcome.no_token_id ?? market.no_token_id,
+          selected_outcome_label: outcome.label ?? market.selected_outcome_label,
+        },
+        buyPanelOpen: false,
+        openForSell: false,
+      };
     }),
   setSelectedSignal: (signal) =>
     set({

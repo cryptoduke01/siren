@@ -67,14 +67,22 @@ export function ImmersiveMarketCard({
 }) {
   const yesPct = Math.min(100, Math.max(0, m.probability));
   const noPct = Math.min(100, Math.max(0, 100 - yesPct));
-  const multi = m.outcomes && m.outcomes.length > 2;
+  const multi = !!(m.outcomes && m.outcomes.length > 1);
   const sortedOutcomes = multi
     ? [...m.outcomes!].sort((a, b) => b.probability - a.probability)
     : [];
   const hue = tickerHue(m.ticker);
   const cat = inferMarketCategory(m);
   const pad = layout === "sheet" ? "p-3" : "p-3.5 sm:p-4";
-  const canTradeInSiren = m.source === "kalshi" ? !!(m.yes_mint || m.no_mint) : !!(m.yes_token_id || m.no_token_id);
+  const canTradeInSiren = multi
+    ? sortedOutcomes.some((outcome) =>
+        m.source === "kalshi"
+          ? !!(outcome.yes_mint || outcome.no_mint)
+          : !!(outcome.yes_token_id || outcome.no_token_id),
+      )
+    : m.source === "kalshi"
+      ? !!(m.yes_mint || m.no_mint)
+      : !!(m.yes_token_id || m.no_token_id);
 
   return (
     <button
@@ -117,7 +125,7 @@ export function ImmersiveMarketCard({
           )}
           {multi && (
             <span className="rounded-full px-2.5 py-0.5 font-body text-[9px] font-semibold" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)" }}>
-              {m.outcomes!.length} options
+              {m.outcomes!.length} outcomes
             </span>
           )}
           {!multi && (
@@ -144,11 +152,11 @@ export function ImmersiveMarketCard({
             {m.title}
           </h3>
           {(m.subtitle || formatCloseLine(m)) && (
-            <p className="mt-1 font-body text-[11px] leading-snug line-clamp-2" style={{ color: "var(--text-3)" }}>
-              {[m.subtitle, formatCloseLine(m)].filter(Boolean).join(" · ")}
-            </p>
-          )}
-        </div>
+          <p className="mt-1 font-body text-[11px] leading-snug line-clamp-2" style={{ color: "var(--text-3)" }}>
+              {[m.selected_outcome_label ? `Route target: ${m.selected_outcome_label}` : m.subtitle, formatCloseLine(m)].filter(Boolean).join(" · ")}
+          </p>
+        )}
+      </div>
 
         {multi ? (
           <div className="flex flex-wrap gap-1.5">
@@ -159,7 +167,9 @@ export function ImmersiveMarketCard({
                 style={{
                   background: "color-mix(in srgb, var(--bg-surface) 72%, transparent)",
                   color: "var(--text-2)",
-                  border: "1px solid var(--border-subtle)",
+                  border: o.label === m.selected_outcome_label
+                    ? "1px solid color-mix(in srgb, var(--accent) 42%, transparent)"
+                    : "1px solid var(--border-subtle)",
                 }}
               >
                 <span className="truncate max-w-[140px]">{o.label.length > 22 ? `${o.label.slice(0, 22)}…` : o.label}</span>

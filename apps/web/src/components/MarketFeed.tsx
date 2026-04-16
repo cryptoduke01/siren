@@ -114,7 +114,12 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         (m) =>
           m.title?.toLowerCase().includes(q) ||
           m.ticker?.toLowerCase().includes(q) ||
-          m.subtitle?.toLowerCase().includes(q)
+          m.subtitle?.toLowerCase().includes(q) ||
+          m.outcomes?.some(
+            (outcome) =>
+              outcome.label?.toLowerCase().includes(q) ||
+              outcome.ticker?.toLowerCase().includes(q),
+          )
       );
     }
 
@@ -397,7 +402,9 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 pb-6 space-y-4 snap-y snap-proximity md:px-4 md:space-y-5">
           <AnimatePresence mode="popLayout">
             {visibleMarkets.map((m, i) => {
-              const isSelected = selectedMarket?.ticker === m.ticker;
+              const isSelected = m.grouped_event
+                ? selectedMarket?.event_ticker === m.event_ticker
+                : selectedMarket?.ticker === m.ticker;
               const isHot = hotSignalTickers.has(m.platform_id ?? m.ticker);
               return (
                 <motion.li

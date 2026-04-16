@@ -19,10 +19,16 @@ export interface MarketOutcome {
   label: string;
   probability: number;
   ticker?: string;
+  subtitle?: string;
+  market_url?: string;
   yes_mint?: string;
   no_mint?: string;
   yes_token_id?: string;
   no_token_id?: string;
+  volume?: number;
+  volume_24h?: number;
+  liquidity?: number;
+  open_interest?: number;
 }
 
 export interface MarketWithVelocity extends KalshiMarket {
@@ -43,6 +49,9 @@ export interface MarketWithVelocity extends KalshiMarket {
   condition_id?: string;
   market_slug?: string;
   outcomes?: MarketOutcome[];
+  grouped_event?: boolean;
+  outcome_count?: number;
+  selected_outcome_label?: string;
 }
 
 /** Optional SPL token shape for wallet / legacy payloads (not used for market-keyword surfacing). */
