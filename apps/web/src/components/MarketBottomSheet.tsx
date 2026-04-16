@@ -108,6 +108,33 @@ export function MarketBottomSheet({
                     <div key={i} className="skeleton-card rounded-[22px]" style={{ height: 180 }} />
                   ))}
                 </div>
+              ) : filteredMarkets.length === 0 ? (
+                <div
+                  className="rounded-2xl border border-dashed p-8 text-center"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                >
+                  <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    No markets in this category
+                  </p>
+                  <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    Try a different category or switch back to All.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticLight();
+                      setActiveCategory("all");
+                    }}
+                    className="mt-4 inline-flex items-center justify-center rounded-xl border px-4 py-2 font-heading text-[11px] font-semibold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                    style={{
+                      borderColor: "var(--border-subtle)",
+                      background: "var(--bg-elevated)",
+                      color: "var(--text-2)",
+                    }}
+                  >
+                    Show all
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
                   {filteredMarkets.map((m) => (

@@ -591,6 +591,9 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
             <p className="mt-0.5 font-body text-xs" style={{ color: "var(--text-3)" }}>
               Pick an event from the left feed to see execution context and trade.
             </p>
+            <p className="mt-2 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+              Tip: use search or filter chips in the feed to jump to fast-moving markets.
+            </p>
           </motion.div>
         )}
       </AnimatePresence>

@@ -181,6 +181,18 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
   const kalshiUp = signalStatus.find((s) => s.source === "kalshi")?.connected;
   const polyUp = signalStatus.find((s) => s.source === "polymarket")?.connected;
   const filterActive = activeFilterCount(timePreset, category, source, sortMode);
+  const hasQuery = searchQuery.trim().length > 0;
+  const hasRecoveryActions = hasQuery || filterActive > 0;
+
+  const resetDiscovery = () => {
+    hapticLight();
+    setSearchQuery("");
+    setTimePreset("all");
+    setCategory("all");
+    setSource("all");
+    setSortMode("hot");
+    setShownCount(INITIAL_SHOWN);
+  };
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0" style={{ background: "var(--bg-base)" }}>
@@ -316,7 +328,10 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           </button>
         </div>
       ) : isLoading ? (
-        <div className="flex flex-col gap-3 px-3">
+        <div className="flex flex-col gap-3 px-3 md:px-4" aria-live="polite" aria-busy="true">
+          <p className="px-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+            Loading live markets...
+          </p>
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="skeleton-card rounded-[22px]" style={{ height: 200 }} />
           ))}
@@ -372,10 +387,45 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             </li>
           )}
           {filtered.length === 0 && !isLoading && (
-            <li className="rounded-2xl border border-dashed p-10 text-center" style={{ borderColor: "var(--border-subtle)" }}>
-              <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-                Nothing matched that search yet. Try fewer filters.
+            <li className="rounded-2xl border border-dashed p-8 text-center md:p-10" style={{ borderColor: "var(--border-subtle)" }}>
+              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                No markets match your view
               </p>
+              <p className="mt-1 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                {hasRecoveryActions
+                  ? "Clear search and filters to return to the live feed."
+                  : "No markets are available right now. Refresh to try again."}
+              </p>
+              {hasRecoveryActions ? (
+                <button
+                  type="button"
+                  onClick={resetDiscovery}
+                  className="mt-4 inline-flex items-center justify-center rounded-xl border px-4 py-2 font-heading text-[11px] font-semibold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background: "var(--bg-surface)",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  Reset view
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticLight();
+                    refetch();
+                  }}
+                  className="mt-4 inline-flex items-center justify-center rounded-xl border px-4 py-2 font-heading text-[11px] font-semibold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background: "var(--bg-surface)",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  Refresh markets
+                </button>
+              )}
             </li>
           )}
         </ul>
