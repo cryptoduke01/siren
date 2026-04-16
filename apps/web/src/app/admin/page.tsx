@@ -88,6 +88,21 @@ type VolumeData = {
   byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }>;
 };
 
+type ExecutionSummary = {
+  attempts: number;
+  successes: number;
+  failures: number;
+  successRate: number;
+  sellAttempts: number;
+  successfulSells: number;
+  sellSuccessRate: number;
+  partialFills: number;
+  uniqueWallets: number;
+  byVenue: Array<{ venue: string; attempts: number; successes: number; failures: number }>;
+  topFailureReasons: Array<{ reason: string; count: number }>;
+  topMarkets: Array<{ market: string; count: number }>;
+};
+
 type DispatchResult = {
   sent: number;
   failed: number;
@@ -335,6 +350,7 @@ export default function AdminPage() {
   const [solPriceUsd, setSolPriceUsd] = useState(0);
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
   const [volumeLoading, setVolumeLoading] = useState(false);
+  const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
   const [audienceEmailInput, setAudienceEmailInput] = useState("");
   const [audienceEmailResult, setAudienceEmailResult] = useState<DispatchResult | null>(null);
   const [waitlistPage, setWaitlistPage] = useState(1);
@@ -549,6 +565,17 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadExecutionSummary = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/execution/summary?days=7`, { credentials: "omit" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load execution summary");
+      setExecutionSummary(data.data ?? null);
+    } catch {
+      setExecutionSummary(null);
+    }
+  }, []);
+
   const loadUserStats = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/users/stats`, { credentials: "omit" });
@@ -605,14 +632,18 @@ export default function AdminPage() {
   useEffect(() => {
     if (!hasAccess || tab !== "volume") return;
     void loadVolume();
-  }, [hasAccess, tab, loadVolume]);
+    void loadExecutionSummary();
+  }, [hasAccess, tab, loadExecutionSummary, loadVolume]);
 
   const refresh = () => {
     void loadUserStats();
     void loadDailyVolume();
     if (tab === "waitlist") void loadWaitlist();
     else if (tab === "audience") void loadAudience();
-    else if (tab === "volume") void loadVolume();
+    else if (tab === "volume") {
+      void loadVolume();
+      void loadExecutionSummary();
+    }
   };
 
   const handleExportDashboard = async () => {
@@ -1087,7 +1118,8 @@ export default function AdminPage() {
                 border: tab === "volume" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
               }}
             >
-              Volume
+              <Gauge className="w-4 h-4" />
+              Execution
             </button>
           </div>
 
@@ -1397,10 +1429,10 @@ export default function AdminPage() {
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Volume intelligence
+                    Execution and volume intelligence
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    7d, 30d, and all-time flow, with the leaderboard paginated for easier review.
+                    Attempt-level execution reporting plus the existing volume layer. This is the first operator view of Siren’s execution wedge.
                   </p>
                 </div>
                 <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -1411,6 +1443,109 @@ export default function AdminPage() {
                 <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
               ) : volumeData ? (
                 <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <MetricCard
+                      label="7d attempts"
+                      value={formatCompactNumber(executionSummary?.attempts ?? 0)}
+                      hint="Persisted route attempts over the last 7 days."
+                      icon={<Activity className="h-5 w-5" />}
+                    />
+                    <MetricCard
+                      label="Route success"
+                      value={formatPercent(executionSummary?.successRate ?? 0)}
+                      hint="All attempts marked successful versus failed."
+                      icon={<Gauge className="h-5 w-5" />}
+                    />
+                    <MetricCard
+                      label="Sell success"
+                      value={formatPercent(executionSummary?.sellSuccessRate ?? 0)}
+                      hint="Core KPI for whether exit-side execution is actually improving."
+                      icon={<TrendingUp className="h-5 w-5" />}
+                    />
+                    <MetricCard
+                      label="Partial fills"
+                      value={formatCompactNumber(executionSummary?.partialFills ?? 0)}
+                      hint="Successful trades where only part of the requested sell size cleared."
+                      icon={<Sparkles className="h-5 w-5" />}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                    <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Venue breakdown</p>
+                          <p className="mt-1 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                            Success and failure counts by route source.
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border px-3 py-2" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                          <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>
+                            {formatCompactNumber(executionSummary?.uniqueWallets ?? 0)}
+                          </p>
+                          <p className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>active wallets</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {(executionSummary?.byVenue?.length ?? 0) === 0 ? (
+                          <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
+                            No persisted execution attempts yet.
+                          </p>
+                        ) : (
+                          executionSummary?.byVenue.map((row) => (
+                            <div key={row.venue} className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{row.venue}</p>
+                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>{row.attempts} attempts</p>
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-3 font-body text-[11px]">
+                                <span style={{ color: "var(--up)" }}>Success {row.successes}</span>
+                                <span style={{ color: "var(--down)" }}>Failed {row.failures}</span>
+                                <span style={{ color: "var(--text-3)" }}>
+                                  {row.attempts > 0 ? `${Math.round((row.successes / row.attempts) * 100)}% success` : "—"}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4">
+                      <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                        <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Top failure reasons</p>
+                        <div className="mt-4 space-y-3">
+                          {(executionSummary?.topFailureReasons?.length ?? 0) === 0 ? (
+                            <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>No failures grouped yet.</p>
+                          ) : (
+                            executionSummary?.topFailureReasons.map((row) => (
+                              <div key={row.reason} className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>{row.reason}</p>
+                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>{row.count}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                        <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Most attempted markets</p>
+                        <div className="mt-4 space-y-3">
+                          {(executionSummary?.topMarkets?.length ?? 0) === 0 ? (
+                            <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>No market-level execution data yet.</p>
+                          ) : (
+                            executionSummary?.topMarkets.map((row) => (
+                              <div key={row.market} className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>{row.market}</p>
+                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>{row.count}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
                     <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Platform volume</p>
                     <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>

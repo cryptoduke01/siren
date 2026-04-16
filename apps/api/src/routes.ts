@@ -81,6 +81,22 @@ type SirenContactRow = {
   access_code_used_at: string | null;
 };
 
+type TradeAttemptRow = {
+  wallet: string | null;
+  venue: string;
+  mode: string;
+  market: string | null;
+  side: string | null;
+  input_asset: string | null;
+  output_asset: string | null;
+  amount: string | null;
+  status: string;
+  tx_signature: string | null;
+  error_message: string | null;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+};
+
 function normalizeEmailAddress(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
@@ -105,6 +121,34 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return Array.from(
     new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value)),
   );
+}
+
+function bucketTradeFailureReason(message?: string | null): string {
+  const lower = message?.toLowerCase().trim() ?? "";
+  if (!lower) return "Unknown";
+  if (lower.includes("insufficient")) return "Insufficient balance";
+  if (
+    lower.includes("verify") ||
+    lower.includes("proof") ||
+    lower.includes("jurisdiction") ||
+    lower.includes("unverified")
+  ) {
+    return "Verification or compliance";
+  }
+  if (
+    lower.includes("thin") ||
+    lower.includes("depth") ||
+    lower.includes("no bid") ||
+    lower.includes("partial fill")
+  ) {
+    return "Thin liquidity";
+  }
+  if (lower.includes("route")) return "No route available";
+  if (lower.includes("slippage") || lower.includes("price moved")) return "Price moved or slippage";
+  if (lower.includes("expired") || lower.includes("pending") || lower.includes("settlement")) {
+    return "Settlement or expiry";
+  }
+  return "Other execution error";
 }
 
 function buildUnifiedAudience(
@@ -1219,6 +1263,72 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get<{ Querystring: { wallet?: string; limit?: string } }>("/api/trade-attempts", async (req, reply) => {
+    const wallet = req.query.wallet?.trim().toLowerCase();
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "25", 10) || 25, 1), 100);
+    if (!wallet) {
+      return reply.status(400).send({ success: false, error: "wallet required" });
+    }
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from("siren_trade_attempts")
+        .select("wallet,venue,mode,market,side,input_asset,output_asset,amount,status,tx_signature,error_message,created_at,metadata")
+        .eq("wallet", wallet)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        if (error.message?.toLowerCase().includes("siren_trade_attempts")) {
+          return reply.send({
+            success: true,
+            data: {
+              rows: [],
+              summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 },
+            },
+          });
+        }
+        return reply.status(503).send({ success: false, error: error.message || "Failed to fetch trade attempts" });
+      }
+
+      const rows = ((data ?? []) as TradeAttemptRow[]).map((row) => {
+        const metadata = normalizeMetadata(row.metadata);
+        return {
+          wallet: row.wallet,
+          venue: row.venue,
+          mode: row.mode,
+          market: row.market,
+          side: row.side,
+          inputAsset: row.input_asset,
+          outputAsset: row.output_asset,
+          amount: row.amount,
+          status: row.status,
+          txSignature: row.tx_signature,
+          errorMessage: row.error_message,
+          createdAt: row.created_at,
+          metadata,
+        };
+      });
+
+      const successCount = rows.filter((row) => row.status === "success").length;
+      const failedCount = rows.filter((row) => row.status !== "success").length;
+      const partialCount = rows.filter((row) => row.metadata?.partialSellFilled === true).length;
+      const successRate = rows.length > 0 ? (successCount / rows.length) * 100 : 0;
+
+      return reply.send({
+        success: true,
+        data: {
+          rows,
+          summary: { attempts: rows.length, successCount, failedCount, partialCount, successRate },
+        },
+      });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch trade attempts" });
+    }
+  });
+
   app.get<{ Querystring: { address?: string } }>("/api/dflow/proof-status", async (req, reply) => {
     const address = req.query.address?.trim();
     if (!address) {
@@ -1883,6 +1993,114 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch user stats" });
+    }
+  });
+
+  /** Admin: execution summary from persisted trade attempts. */
+  app.get<{ Querystring: { days?: string } }>("/api/admin/execution/summary", async (req, reply) => {
+    const days = Math.min(Math.max(parseInt(req.query.days || "7", 10) || 7, 1), 30);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from("siren_trade_attempts")
+        .select("wallet,venue,mode,market,side,status,error_message,created_at,metadata")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(2000);
+
+      if (error) {
+        if (error.message?.toLowerCase().includes("siren_trade_attempts")) {
+          return reply.send({
+            success: true,
+            data: {
+              attempts: 0,
+              successes: 0,
+              failures: 0,
+              successRate: 0,
+              sellAttempts: 0,
+              successfulSells: 0,
+              sellSuccessRate: 0,
+              partialFills: 0,
+              uniqueWallets: 0,
+              byVenue: [],
+              topFailureReasons: [],
+              topMarkets: [],
+            },
+          });
+        }
+        return reply.status(503).send({ success: false, error: error.message || "Failed to fetch execution summary" });
+      }
+
+      const rows = (data ?? []) as TradeAttemptRow[];
+      const wallets = new Set<string>();
+      const venueMap = new Map<string, { venue: string; attempts: number; successes: number; failures: number }>();
+      const failureMap = new Map<string, number>();
+      const marketMap = new Map<string, number>();
+      let attempts = 0;
+      let successes = 0;
+      let failures = 0;
+      let sellAttempts = 0;
+      let successfulSells = 0;
+      let partialFills = 0;
+
+      for (const row of rows) {
+        attempts += 1;
+        if (row.wallet) wallets.add(row.wallet);
+        const metadata = normalizeMetadata(row.metadata);
+        const isSuccess = row.status === "success";
+        const isSell = row.side === "sell" || row.mode.toLowerCase().includes("sell");
+
+        if (isSuccess) successes += 1;
+        else failures += 1;
+        if (isSell) {
+          sellAttempts += 1;
+          if (isSuccess) successfulSells += 1;
+        }
+        if (metadata.partialSellFilled === true) partialFills += 1;
+
+        const venueEntry = venueMap.get(row.venue) || { venue: row.venue, attempts: 0, successes: 0, failures: 0 };
+        venueEntry.attempts += 1;
+        if (isSuccess) venueEntry.successes += 1;
+        else venueEntry.failures += 1;
+        venueMap.set(row.venue, venueEntry);
+
+        if (row.market?.trim()) {
+          marketMap.set(row.market, (marketMap.get(row.market) || 0) + 1);
+        }
+        if (!isSuccess) {
+          const bucket = bucketTradeFailureReason(row.error_message);
+          failureMap.set(bucket, (failureMap.get(bucket) || 0) + 1);
+        }
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          attempts,
+          successes,
+          failures,
+          successRate: attempts > 0 ? (successes / attempts) * 100 : 0,
+          sellAttempts,
+          successfulSells,
+          sellSuccessRate: sellAttempts > 0 ? (successfulSells / sellAttempts) * 100 : 0,
+          partialFills,
+          uniqueWallets: wallets.size,
+          byVenue: Array.from(venueMap.values()).sort((a, b) => b.attempts - a.attempts),
+          topFailureReasons: Array.from(failureMap.entries())
+            .map(([reason, count]) => ({ reason, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5),
+          topMarkets: Array.from(marketMap.entries())
+            .map(([market, count]) => ({ market, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5),
+        },
+      });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch execution summary" });
     }
   });
 

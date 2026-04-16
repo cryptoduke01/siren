@@ -56,6 +56,39 @@ interface Position {
   marketValueUsd?: number;
 }
 
+interface TradeAttemptFeedRow {
+  venue: string;
+  mode: string;
+  market: string | null;
+  side: string | null;
+  inputAsset: string | null;
+  outputAsset: string | null;
+  amount: string | null;
+  status: string;
+  txSignature: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+}
+
+interface TradeAttemptFeedData {
+  rows: TradeAttemptFeedRow[];
+  summary: {
+    attempts: number;
+    successCount: number;
+    failedCount: number;
+    partialCount: number;
+    successRate: number;
+  };
+}
+
+type RiskCluster = {
+  label: string;
+  positions: Position[];
+  exposureUsd: number;
+  pnlUsd: number;
+};
+
 function computePositionPnl(p: Position): { usd: number; pct: number } {
   const shares = p.quantity ?? p.balance ?? 0;
   const entry = p.mint ? getPositionEntry(p.mint) : null;
@@ -78,6 +111,48 @@ function positionMarketValueUsd(position: Position): number {
   const shares = position.quantity ?? position.balance ?? 0;
   const cents = position.currentPrice ?? position.probability ?? 0;
   return shares * (cents / 100);
+}
+
+const RISK_THEME_PATTERNS: Array<{ label: string; match: RegExp }> = [
+  { label: "Bitcoin", match: /\bbtc\b|\bbitcoin\b/ },
+  { label: "Ethereum", match: /\beth\b|\bethereum\b/ },
+  { label: "Solana", match: /\bsol\b|\bsolana\b/ },
+  { label: "Trump", match: /\btrump\b/ },
+  { label: "Election", match: /\belection\b|\bvote\b|\bpresident\b/ },
+  { label: "Federal Reserve", match: /\bfed\b|\brate cut\b|\bpowell\b|\binterest rate\b/ },
+  { label: "Inflation", match: /\bcpi\b|\binflation\b/ },
+  { label: "NBA", match: /\bnba\b|\bplayoffs\b|\bfinals\b/ },
+  { label: "NFL", match: /\bnfl\b|\bsuper bowl\b/ },
+];
+
+function inferRiskTags(position: Position): string[] {
+  const haystack = `${position.title} ${position.ticker}`.toLowerCase();
+  const matches = RISK_THEME_PATTERNS
+    .filter((item) => item.match.test(haystack))
+    .map((item) => item.label);
+
+  if (matches.length > 0) return matches;
+
+  const fallback = position.title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 3 && !["will", "with", "that", "this", "from", "into", "over", "under"].includes(word))
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1));
+
+  return fallback.length > 0 ? [fallback.join(" ")] : [];
+}
+
+function bucketFailureReason(message?: string | null): string {
+  const lower = message?.toLowerCase().trim() ?? "";
+  if (!lower) return "Unknown";
+  if (lower.includes("insufficient")) return "Insufficient balance";
+  if (lower.includes("verify") || lower.includes("proof") || lower.includes("jurisdiction")) return "Verification";
+  if (lower.includes("route")) return "No route";
+  if (lower.includes("thin") || lower.includes("depth") || lower.includes("partial")) return "Thin liquidity";
+  if (lower.includes("slippage") || lower.includes("price")) return "Price moved";
+  return "Other";
 }
 
 const fmtUsd = (n: number) =>
@@ -1097,6 +1172,36 @@ export default function PortfolioPage() {
       }, null),
     [openPositions],
   );
+  const correlatedRiskClusters = useMemo(() => {
+    const clusterMap = new Map<string, RiskCluster>();
+    for (const position of openPositions) {
+      for (const tag of inferRiskTags(position)) {
+        const existing = clusterMap.get(tag) || { label: tag, positions: [], exposureUsd: 0, pnlUsd: 0 };
+        existing.positions.push(position);
+        existing.exposureUsd += positionMarketValueUsd(position);
+        existing.pnlUsd += computePositionPnl(position).usd;
+        clusterMap.set(tag, existing);
+      }
+    }
+    return Array.from(clusterMap.values())
+      .filter((cluster) => cluster.positions.length > 1)
+      .sort((a, b) => b.exposureUsd - a.exposureUsd)
+      .slice(0, 4);
+  }, [openPositions, entryEpoch]);
+
+  const { data: tradeAttemptData } = useQuery({
+    queryKey: ["trade-attempts-feed", walletKey],
+    queryFn: async () => {
+      if (!walletKey) return { rows: [], summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 } } as TradeAttemptFeedData;
+      const res = await fetch(`${API_URL}/api/trade-attempts?wallet=${encodeURIComponent(walletKey)}&limit=12`, { credentials: "omit" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || "Unable to load trade attempts.");
+      return (payload?.data ?? { rows: [], summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 } }) as TradeAttemptFeedData;
+    },
+    enabled: !!walletKey,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
 
   // ── Identity ──────────────────────────────────────────────────
 
@@ -1438,6 +1543,117 @@ export default function PortfolioPage() {
                 ))}
               </ul>
             )}
+          </div>
+        )}
+
+        {connected && (
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Correlated risk groups
+              </h2>
+              <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                Positions that appear to lean on the same narrative. This is the first pass at concentration awareness.
+              </p>
+              {correlatedRiskClusters.length === 0 ? (
+                <p className="mt-6 py-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                  No strong overlap detected yet. As your open book grows, Siren will cluster related exposure here.
+                </p>
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {correlatedRiskClusters.map((cluster) => (
+                    <div
+                      key={cluster.label}
+                      className="rounded-xl border px-4 py-3"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{cluster.label}</p>
+                          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                            {cluster.positions.length} open positions share this narrative
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
+                            ${fmtUsd(cluster.exposureUsd)}
+                          </p>
+                          <p className="mt-1 font-mono text-[11px] tabular-nums" style={{ color: pnlColor(cluster.pnlUsd) }}>
+                            {cluster.pnlUsd >= 0 ? "+" : "-"}${fmtUsd(Math.abs(cluster.pnlUsd))}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Post-trade reports
+              </h2>
+              <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                Recent route outcomes from Siren’s attempt log. This is the base layer for execution reporting.
+              </p>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {[
+                  { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
+                  { label: "Success rate", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
+                  { label: "Partial fills", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
+                    <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>{item.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {(tradeAttemptData?.rows?.length ?? 0) === 0 ? (
+                <p className="mt-6 py-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                  No persisted execution reports yet. Once trades are logged through Supabase, your recent outcomes will show here.
+                </p>
+              ) : (
+                <ul className="mt-5 space-y-3">
+                  {tradeAttemptData?.rows.slice(0, 6).map((row, idx) => (
+                    <li
+                      key={`${row.createdAt}-${row.txSignature ?? row.market ?? idx}`}
+                      className="rounded-xl border px-4 py-3"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className="rounded-full px-2 py-0.5 font-sub text-[10px] uppercase tracking-[0.16em]"
+                              style={{
+                                background: row.status === "success" ? "color-mix(in srgb, var(--up) 16%, transparent)" : "color-mix(in srgb, var(--down) 14%, transparent)",
+                                color: row.status === "success" ? "var(--up)" : "var(--down)",
+                              }}
+                            >
+                              {row.status}
+                            </span>
+                            <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                              {row.venue} · {row.mode}
+                            </span>
+                          </div>
+                          <p className="mt-2 font-body text-sm" style={{ color: "var(--text-1)" }}>
+                            {row.market || row.outputAsset || row.inputAsset || "Execution attempt"}
+                          </p>
+                          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                            {row.errorMessage ? bucketFailureReason(row.errorMessage) : row.metadata?.partialSellFilled === true ? "Partial fill captured" : "Route completed cleanly"}
+                          </p>
+                        </div>
+                        <time className="font-sub text-[11px] text-right" style={{ color: "var(--text-3)" }} dateTime={row.createdAt}>
+                          {new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        </time>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 
