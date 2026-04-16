@@ -161,6 +161,18 @@ function logTradeFailure(context: Record<string, unknown>) {
   });
 }
 
+function logTradeAttempt(context: Record<string, unknown>) {
+  void fetch(`${API_URL}/api/trade-attempts/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "omit",
+    keepalive: true,
+    body: JSON.stringify(context),
+  }).catch(() => {
+    // Best-effort analytics only.
+  });
+}
+
 type DflowAsyncStatus = {
   status?: "pending" | "expired" | "failed" | "open" | "pendingClose" | "closed";
   error?: string;
@@ -681,6 +693,22 @@ export function UnifiedBuyPanel() {
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
       setBuyPanelOpen(false);
+      logTradeAttempt({
+        wallet: publicKey?.toBase58(),
+        venue: tokenRouteLabel,
+        mode: isSell ? "sell" : "buy",
+        market: selectedToken?.marketTicker ?? null,
+        side: isSell ? "sell" : "buy",
+        inputAsset: isSell ? tokenDisplaySymbol : "USDC",
+        outputAsset: isSell ? "USDC" : tokenDisplaySymbol,
+        amount: isSell ? sellAmount : solAmount,
+        status: "success",
+        txSignature: sig,
+        metadata: {
+          assetType: selectedToken?.assetType ?? null,
+          partialSellFilled,
+        },
+      });
       const realizedSummary = (() => {
         if (!isPredictionToken || !selectedToken.mint) return null;
         const entry = getPositionEntry(selectedToken.mint);
@@ -715,6 +743,21 @@ export function UnifiedBuyPanel() {
         amount: isSell ? sellAmount : solAmount,
         wallet: publicKey?.toBase58(),
         message: msg,
+      });
+      logTradeAttempt({
+        wallet: publicKey?.toBase58(),
+        venue: tokenRouteLabel,
+        mode: isSell ? "sell" : "buy",
+        market: selectedToken?.marketTicker ?? null,
+        side: isSell ? "sell" : "buy",
+        inputAsset: isSell ? tokenDisplaySymbol : "USDC",
+        outputAsset: isSell ? "USDC" : tokenDisplaySymbol,
+        amount: isSell ? sellAmount : solAmount,
+        status: "failed",
+        errorMessage: msg,
+        metadata: {
+          assetType: selectedToken?.assetType ?? null,
+        },
       });
       setError(friendly);
       showResultModal({
@@ -926,6 +969,18 @@ export function UnifiedBuyPanel() {
       queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
 
       setBuyPanelOpen(false);
+      logTradeAttempt({
+        wallet: evmAddress,
+        venue: "polymarket",
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "Polygon USDC",
+        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+        amount: solAmount,
+        status: "success",
+        txSignature,
+      });
       showResultModal({
         type: "success",
         title: "Polymarket order sent",
@@ -962,6 +1017,18 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         wallet: evmAddress,
         message: msg,
+      });
+      logTradeAttempt({
+        wallet: evmAddress,
+        venue: "polymarket",
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "Polygon USDC",
+        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+        amount: solAmount,
+        status: "failed",
+        errorMessage: msg,
       });
       setError(friendly);
       showResultModal({
@@ -1090,6 +1157,23 @@ export function UnifiedBuyPanel() {
 
       setBuyPanelOpen(false);
       setSuccess(null);
+      logTradeAttempt({
+        wallet: publicKey?.toBase58(),
+        venue: selectedMarket.source,
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "USDC",
+        outputAsset: `${outcomeLabel} ${selectedMarket.ticker}`,
+        amount: solAmount,
+        status: "success",
+        txSignature: sig,
+        metadata: {
+          executionMode: data.executionMode ?? null,
+          provider: data.provider ?? null,
+          settlementStatus: asyncStatus?.status ?? null,
+        },
+      });
       showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Trade complete",
@@ -1116,6 +1200,18 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         wallet: publicKey?.toBase58(),
         message: msg,
+      });
+      logTradeAttempt({
+        wallet: publicKey?.toBase58(),
+        venue: selectedMarket.source,
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "USDC",
+        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+        amount: solAmount,
+        status: "failed",
+        errorMessage: msg,
       });
       setError(friendly);
       showResultModal({

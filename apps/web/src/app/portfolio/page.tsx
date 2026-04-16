@@ -71,6 +71,15 @@ function computePositionPnl(p: Position): { usd: number; pct: number } {
   return { usd: p.pnlUsd ?? 0, pct: p.pnlPct ?? 0 };
 }
 
+function positionMarketValueUsd(position: Position): number {
+  if (typeof position.marketValueUsd === "number" && Number.isFinite(position.marketValueUsd)) {
+    return position.marketValueUsd;
+  }
+  const shares = position.quantity ?? position.balance ?? 0;
+  const cents = position.currentPrice ?? position.probability ?? 0;
+  return shares * (cents / 100);
+}
+
 const fmtUsd = (n: number) =>
   n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -1080,6 +1089,14 @@ export default function PortfolioPage() {
     () => positions.reduce((sum, p) => sum + computePositionPnl(p).usd, 0),
     [positions, entryEpoch],
   );
+  const largestOpenPosition = useMemo(
+    () =>
+      openPositions.reduce<Position | null>((largest, position) => {
+        if (!largest) return position;
+        return positionMarketValueUsd(position) > positionMarketValueUsd(largest) ? position : largest;
+      }, null),
+    [openPositions],
+  );
 
   // ── Identity ──────────────────────────────────────────────────
 
@@ -1304,6 +1321,61 @@ export default function PortfolioPage() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+
+        <div
+          className="mt-4 rounded-xl border p-4"
+          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
+                Portfolio command
+              </p>
+              <h2 className="mt-1 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                Live exposure, realized outcomes, and execution readiness in one glance.
+              </h2>
+            </div>
+            <div
+              className="rounded-xl border px-3 py-2"
+              style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+            >
+              <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
+                Largest live line
+              </p>
+              <p className="mt-1 max-w-[220px] truncate font-body text-sm font-medium" style={{ color: "var(--text-1)" }}>
+                {largestOpenPosition?.title ?? "No open positions"}
+              </p>
+              <p className="mt-1 font-money text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
+                {largestOpenPosition ? `$${fmtUsd(positionMarketValueUsd(largestOpenPosition))}` : "Waiting for your first fill"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+            {[
+              { label: "Open book", value: String(openPositions.length), detail: "positions live", tone: "var(--text-1)" },
+              { label: "Settled", value: String(settledPositions.length), detail: "resolved lines", tone: "var(--text-1)" },
+              { label: "Net P&L", value: `${totalPnl >= 0 ? "+" : "-"}$${fmtUsd(Math.abs(totalPnl))}`, detail: "across tracked positions", tone: pnlColor(totalPnl) },
+              { label: "Execution", value: verified ? "Kalshi ready" : "ID check", detail: verified ? "verification complete" : "complete venue verification", tone: verified ? "var(--up)" : "var(--accent)" },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border px-3 py-3"
+                style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+              >
+                <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                  {item.label}
+                </p>
+                <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
+                  {item.value}
+                </p>
+                <p className="mt-1 font-body text-[11px] leading-snug" style={{ color: "var(--text-3)" }}>
+                  {item.detail}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
 

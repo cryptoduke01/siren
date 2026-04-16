@@ -1169,6 +1169,56 @@ export function registerRoutes(app: FastifyInstance) {
     }
   );
 
+  app.post<{
+    Body: {
+      wallet?: string;
+      venue?: string;
+      mode?: string;
+      market?: string;
+      side?: string;
+      inputAsset?: string;
+      outputAsset?: string;
+      amount?: string;
+      status?: string;
+      txSignature?: string;
+      errorMessage?: string;
+      metadata?: Record<string, unknown>;
+    };
+  }>("/api/trade-attempts/log", async (req, reply) => {
+    const body = req.body ?? {};
+    const payload = {
+      wallet: typeof body.wallet === "string" ? body.wallet.trim().toLowerCase() : null,
+      venue: typeof body.venue === "string" && body.venue.trim() ? body.venue.trim() : "unknown",
+      mode: typeof body.mode === "string" && body.mode.trim() ? body.mode.trim() : "unknown",
+      market: typeof body.market === "string" && body.market.trim() ? body.market.trim() : null,
+      side: typeof body.side === "string" && body.side.trim() ? body.side.trim() : null,
+      input_asset: typeof body.inputAsset === "string" && body.inputAsset.trim() ? body.inputAsset.trim() : null,
+      output_asset: typeof body.outputAsset === "string" && body.outputAsset.trim() ? body.outputAsset.trim() : null,
+      amount: typeof body.amount === "string" && body.amount.trim() ? body.amount.trim() : null,
+      status: typeof body.status === "string" && body.status.trim() ? body.status.trim() : "unknown",
+      tx_signature: typeof body.txSignature === "string" && body.txSignature.trim() ? body.txSignature.trim() : null,
+      error_message: typeof body.errorMessage === "string" && body.errorMessage.trim() ? body.errorMessage.trim() : null,
+      metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata) ? body.metadata : {},
+    };
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { error } = await supabase.from("siren_trade_attempts").insert(payload);
+      if (error) {
+        app.log.warn({ err: error, payload }, "siren_trade_attempts insert skipped");
+        return reply.status(202).send({ success: true, persisted: false, warning: error.message || "Trade attempt log skipped" });
+      }
+      return reply.send({ success: true, persisted: true });
+    } catch (e) {
+      app.log.warn({ err: e, payload }, "siren_trade_attempts insert skipped with exception");
+      return reply.status(202).send({
+        success: true,
+        persisted: false,
+        warning: (e as Error).message || "Trade attempt log skipped",
+      });
+    }
+  });
+
   app.get<{ Querystring: { address?: string } }>("/api/dflow/proof-status", async (req, reply) => {
     const address = req.query.address?.trim();
     if (!address) {

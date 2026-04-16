@@ -12,20 +12,23 @@ import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 import { useSignals } from "@/hooks/useSignals";
 
-const NAV = [
+const PRIMARY_NAV = [
   { href: "/", label: "Terminal", icon: Rocket },
   { href: "/leaderboard", label: "Ranks", icon: Trophy },
 ];
+const SECONDARY_NAV = [
+  { href: "/watchlist", label: "Watchlist", icon: Star },
+  { href: "/portfolio", label: "Portfolio", icon: User },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
 const LIVE_SIGNAL_WINDOW_MS = 30 * 60 * 1000;
-const PRODUCT_MODE_LABEL = "Prediction OS";
-
 export function TopBar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useThemeStore();
   const showSignalSummary = pathname === "/";
   const { signals } = useSignals({ enabled: showSignalSummary });
   const [menuOpen, setMenuOpen] = useState(false);
-  const navItems = NAV;
+  const navItems = PRIMARY_NAV;
   const liveSignals = signals.filter((signal) => Date.now() - Date.parse(signal.timestamp) <= LIVE_SIGNAL_WINDOW_MS);
   const kalshiCount = liveSignals.filter((signal) => signal.source === "kalshi").length;
   const polymarketCount = liveSignals.filter((signal) => signal.source === "polymarket").length;
@@ -48,23 +51,13 @@ export function TopBar() {
           borderBottom: "1px solid var(--border-subtle)",
         }}
       >
-        <Link href="/" onClick={() => hapticLight()} className="flex items-center gap-2 py-2 topbar-logo-wrap min-w-0">
+        <Link href="/" onClick={() => hapticLight()} className="flex items-center py-2 topbar-logo-wrap min-w-0">
           <img
             src="/brand/mark.svg"
             alt="Siren"
             className="h-6 w-auto md:h-8 topbar-logo"
             style={{ display: "block" }}
           />
-          <span
-            className="hidden sm:inline-flex items-center rounded-full border px-2 py-0.5 font-heading text-[9px] font-semibold uppercase tracking-[0.14em]"
-            style={{
-              borderColor: "color-mix(in srgb, var(--accent) 30%, transparent)",
-              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
-              color: "var(--accent)",
-            }}
-          >
-            {PRODUCT_MODE_LABEL}
-          </span>
         </Link>
         <nav className="hidden md:flex items-center gap-6">
           {navItems.map(({ href, label }) => {
@@ -103,46 +96,36 @@ export function TopBar() {
               <span style={{ color: "#5B8AFF" }}>{polymarketCount}</span>
             </span>
             <span className="flex items-center gap-1">
-              <img src="/brand/kalshi/logo-green.svg" alt="" className="h-2.5 w-auto" />
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#09C285" }} />
               <span style={{ color: "#09C285" }}>{kalshiCount}</span>
             </span>
           </div>
         )}
         <div className="hidden md:flex items-center gap-2">
           <NavbarBalance />
-          <Link
-            href="/watchlist"
-            onClick={() => hapticLight()}
-            className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-all hover:bg-[var(--bg-hover)] active:scale-95"
-            style={{ color: pathname === "/watchlist" ? "var(--accent)" : "var(--text-2)" }}
-            aria-label="Watchlist"
+          <div
+            className="flex items-center gap-1 rounded-2xl border p-1.5"
+            style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-elevated) 92%, transparent)" }}
           >
-            <Star className="w-4 h-4" />
-          </Link>
-          <Link
-            href="/portfolio"
-            onClick={() => hapticLight()}
-            className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:ring-2 hover:ring-[var(--accent)]/30 active:scale-95"
-            style={{
-              background: pathname === "/portfolio"
-                ? "linear-gradient(135deg, var(--accent), #00C853)"
-                : "var(--bg-elevated)",
-              color: pathname === "/portfolio" ? "var(--bg-base)" : "var(--text-2)",
-              border: "1px solid var(--border-subtle)",
-            }}
-            aria-label="Portfolio"
-          >
-            <User className="w-3.5 h-3.5" />
-          </Link>
-          <Link
-            href="/settings"
-            onClick={() => hapticLight()}
-            className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-all hover:bg-[var(--bg-hover)] active:scale-95"
-            style={{ color: pathname === "/settings" ? "var(--accent)" : "var(--text-2)" }}
-            aria-label="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </Link>
+            {SECONDARY_NAV.map(({ href, label, icon: Icon }) => {
+              const isActive = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => hapticLight()}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl transition-all hover:bg-[var(--bg-hover)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                  style={{
+                    background: isActive ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
+                    color: isActive ? "var(--accent)" : "var(--text-2)",
+                  }}
+                  aria-label={label}
+                >
+                  <Icon className="w-4 h-4" />
+                </Link>
+              );
+            })}
+          </div>
           <button
             type="button"
             onClick={() => { hapticLight(); toggleTheme(); }}
@@ -191,19 +174,7 @@ export function TopBar() {
               }}
             >
               <div className="flex items-center justify-between h-12 px-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-heading font-semibold text-sm uppercase" style={{ color: "var(--text-1)" }}>Menu</span>
-                  <span
-                    className="inline-flex items-center rounded-full border px-2 py-0.5 font-heading text-[9px] font-semibold uppercase tracking-[0.14em]"
-                    style={{
-                      borderColor: "color-mix(in srgb, var(--accent) 30%, transparent)",
-                      background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
-                      color: "var(--accent)",
-                    }}
-                  >
-                    {PRODUCT_MODE_LABEL}
-                  </span>
-                </div>
+                <span className="font-heading font-semibold text-sm uppercase" style={{ color: "var(--text-1)" }}>Menu</span>
                 <button
                   type="button"
                   onClick={() => { hapticLight(); setMenuOpen(false); }}
@@ -215,6 +186,9 @@ export function TopBar() {
                 </button>
               </div>
               <nav className="flex-1 p-4 flex flex-col gap-1 overflow-y-auto">
+                <p className="px-3 pb-1 pt-1 font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
+                  Navigate
+                </p>
                 {navItems.map(({ href, label, icon: Icon }) => {
                   const isActive = pathname === href || (href === "/" && pathname === "/");
                   const className = "font-body font-medium text-sm py-3 px-3 rounded-[8px]";
@@ -234,30 +208,26 @@ export function TopBar() {
                     </Link>
                   );
                 })}
-                <Link
-                  href="/watchlist"
-                  onClick={() => { hapticLight(); setMenuOpen(false); }}
-                  className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
-                  style={{ color: pathname === "/watchlist" ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
-                >
-                  Watchlist
-                </Link>
-                <Link
-                  href="/portfolio"
-                  onClick={() => { hapticLight(); setMenuOpen(false); }}
-                  className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
-                  style={{ color: pathname === "/portfolio" ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
-                >
-                  Portfolio
-                </Link>
-                <Link
-                  href="/settings"
-                  onClick={() => { hapticLight(); setMenuOpen(false); }}
-                  className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
-                  style={{ color: pathname === "/settings" ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
-                >
-                  Settings
-                </Link>
+                <p className="px-3 pb-1 pt-4 font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
+                  Workspace
+                </p>
+                {SECONDARY_NAV.map(({ href, label, icon: Icon }) => {
+                  const isActive = pathname === href;
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => { hapticLight(); setMenuOpen(false); }}
+                      className="font-body font-medium text-sm py-3 px-3 rounded-[8px]"
+                      style={{ color: isActive ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Icon className="w-4 h-4" />
+                        {label}
+                      </span>
+                    </Link>
+                  );
+                })}
                 <div className="flex items-center justify-between py-3 px-3 rounded-[8px] mt-2" style={{ background: "var(--bg-elevated)" }}>
                   <span className="font-body text-sm" style={{ color: "var(--text-2)" }}>Theme</span>
                   <button

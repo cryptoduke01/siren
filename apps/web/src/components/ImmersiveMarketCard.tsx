@@ -45,7 +45,7 @@ function SourceMini({ source }: { source?: string }) {
         border: "1px solid color-mix(in srgb, var(--kalshi) 28%, transparent)",
       }}
     >
-      <img src="/brand/kalshi/logo-green.svg" alt="" className="h-2.5 w-auto" />
+      <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--kalshi)" }} />
       Kalshi
     </span>
   );
