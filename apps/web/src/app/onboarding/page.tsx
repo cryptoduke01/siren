@@ -111,7 +111,7 @@ export default function OnboardingPage() {
             </h1>
 
             <p className="font-body text-sm mb-10" style={{ color: "var(--text-3)" }}>
-              Prediction markets + meme tokens. One terminal.
+              Execution and risk intelligence for prediction markets. Kalshi, Polymarket, Solana.
             </p>
 
             {PRIVY_APP_ID ? (

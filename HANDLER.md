@@ -53,7 +53,7 @@ This guide tells you exactly what to configure and deploy. Everything else is do
 
 | Service        | Env vars / config |
 |----------------|-------------------|
-| API (Render)   | `RESEND_API_KEY`, `SIREN_EMAIL_FROM`, `SIREN_APP_URL`, `SUPABASE_*`, `SIREN_ACCESS_CODE`, DFlow/Bags/Jupiter keys |
+| API (Render)   | `RESEND_API_KEY`, `SIREN_EMAIL_FROM`, `SIREN_APP_URL`, `SUPABASE_*`, `SIREN_ACCESS_CODE`, DFlow/Jupiter keys |
 | Web (Vercel)   | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`, `NEXT_PUBLIC_PRIVY_APP_ID`, `NEXT_PUBLIC_ADMIN_PASSCODE` |
 
 ---

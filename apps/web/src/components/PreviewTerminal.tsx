@@ -10,7 +10,7 @@ const MOCK_MARKETS = [
 ];
 
 const MOCK_TOKENS = [
-  { symbol: "JPOW", name: "JPOW Meme", price: 0.0023, vol: "12.4K" },
+  { symbol: "JPOW", name: "JPOW", price: 0.0023, vol: "12.4K" },
   { symbol: "TRUMP", name: "Trump Coin", price: 0.0018, vol: "8.2K" },
   { symbol: "BONK", name: "Bonk Inu", price: 0.00004, vol: "1.2M" },
 ];

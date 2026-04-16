@@ -1,6 +1,6 @@
 /**
  * Builds trader leaderboards from `siren_trades` (Supabase), **prediction markets only**
- * (Kalshi-style tickers, Polymarket rows, etc.). Meme-token swaps are excluded.
+ * (Kalshi-style tickers, Polymarket rows, etc.). Generic SPL swaps are excluded.
  * Volume = sum(token_amount * price_usd).
  * Win rate: FIFO cost basis per wallet+mint; each sell matched to prior buys → win if realized PnL > 0.
  */
@@ -177,7 +177,7 @@ function isLikelyMarketTicker(symbol: string | null | undefined): boolean {
   return false;
 }
 
-/** Logged trades that count as prediction-market activity (not SPL meme swaps). */
+/** Logged trades that count as prediction-market activity (not generic SPL swaps). */
 export function isPredictionMarketTrade(t: SirenTradeRow): boolean {
   const sym = (t.token_symbol || "").trim();
   if (isLikelyMarketTicker(sym)) return true;
@@ -297,7 +297,7 @@ export async function buildLeaderboard(params: {
       metric,
       entries: [],
       emptyReason:
-        "No prediction market volume in this window yet. Trade Kalshi or Polymarket events from Siren — meme-token swaps are not ranked here.",
+        "No prediction market volume in this window yet. Trade Kalshi or Polymarket events from Siren — generic token swaps are not ranked here.",
     };
   }
 

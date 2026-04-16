@@ -3,7 +3,7 @@ import { SocialCard } from "./social-card";
 import { getSocialCardFonts } from "./social-card-fonts";
 
 export const runtime = "nodejs";
-export const alt = "Siren trading terminal social preview";
+export const alt = "Siren — execution and risk intelligence for prediction markets";
 export const size = {
   width: 1200,
   height: 630,
@@ -15,9 +15,9 @@ export default async function OpenGraphImage() {
   return new ImageResponse(
     (
       <SocialCard
-        eyebrow="Kalshi • Polymarket • Siren"
-        title="Trade market moves before the timeline cools off."
-        subtitle="Siren turns live prediction market action into one simple trading flow."
+        eyebrow="Execution & risk · Kalshi · Polymarket · Solana"
+        title="Act on prediction markets with clarity."
+        subtitle="Live signals, sizing context, and execution in one terminal."
       />
     ),
     {

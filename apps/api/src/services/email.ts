@@ -7,7 +7,7 @@ const APP_URL = (process.env.SIREN_APP_URL || "https://onsiren.xyz").replace(/\/
 const DOCS_URL = "https://docs.onsiren.xyz";
 const X_URL = "https://x.com/sirenmarketsxyz";
 const LAUNCH_THREAD_URL = "https://x.com/cryptoduke01/status/2037410069109768374";
-const LAUNCH_THREAD_TITLE = "Prediction Markets, Memes, and The Madness";
+const LAUNCH_THREAD_TITLE = "Prediction Markets, Execution, and Risk";
 const LAUNCH_THREAD_PREVIEW =
   "There is a particular kind of suffering that belongs only to the man who sees what is coming and cannot make anyone believe him.";
 const LAUNCH_THREAD_IMAGE_URL = `${APP_URL}/emails/launch-thread-cover.jpg`;
@@ -103,7 +103,7 @@ export async function sendWelcomeWithAccessCode(params: {
                       ${greeting},
                     </p>
                     <p style="margin:0 0 28px;font-size:16px;line-height:1.65;color:#a1a1aa;">
-                      You're among the first to access Siren - the event-driven meme token terminal on Solana. Use your one-time access code below to unlock the app.
+                      You're among the first to access Siren — execution and risk intelligence for prediction markets on Solana. Use your one-time access code below to unlock the app.
                     </p>
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:28px;">
                       <tr>
@@ -119,7 +119,7 @@ export async function sendWelcomeWithAccessCode(params: {
                       <li>Go to <a href="${APP_URL}" style="color:#22c55e;text-decoration:none;">onsiren.xyz</a></li>
                       <li>Enter your 6-digit code when prompted</li>
                       <li>Connect your wallet or sign in with Google or GitHub</li>
-                      <li>Browse Kalshi prediction markets and trade meme tokens</li>
+                      <li>Browse Kalshi and Polymarket markets with execution-aware tooling</li>
                     </ol>
                     <a href="${APP_URL}" style="display:inline-block;background:#22c55e;color:#0c0c0e;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">
                       Open Siren ->
@@ -132,7 +132,7 @@ export async function sendWelcomeWithAccessCode(params: {
                       <a href="${DOCS_URL}" style="color:#71717a;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#71717a;text-decoration:underline;">X @sirenmarketsxyz</a>
                     </p>
                     <p style="margin:0;font-size:12px;color:#52525b;">
-                      (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
+                      (c) ${new Date().getFullYear()} Siren · onsiren.xyz
                     </p>
                   </td>
                 </tr>
@@ -152,7 +152,7 @@ export async function sendWelcomeWithAccessCode(params: {
     "You're in - welcome to Siren.",
     `Your one-time access code is: ${params.code}`,
     `Open Siren: ${APP_URL}`,
-    "Enter your 6-digit code, connect your wallet or sign in, and start exploring event-driven meme tokens on Solana.",
+    "Enter your 6-digit code, connect your wallet or sign in, and start trading prediction markets with execution-aware tooling on Solana.",
   ].join("\n\n");
 
   return sendEmailWithRetry({
@@ -312,7 +312,7 @@ export async function sendLaunchThreadEmail(params: {
                       Thread Contest Coming Soon
                     </p>
                     <p style="margin:0 0 12px;font-size:17px;line-height:1.75;color:#0f172a;">
-                      We’re teeing up a thread contest for the waitlist next. Start warming up your takes, your memes, your charts, and your timeline game now.
+                      We’re teeing up a thread contest for the waitlist next. Start warming up your takes, your charts, and your timeline game now.
                     </p>
                     <p style="margin:0;font-size:15px;line-height:1.75;color:#475569;">
                       More details soon. For now, gear up and stay close.
@@ -342,7 +342,7 @@ export async function sendLaunchThreadEmail(params: {
                 <a href="${DOCS_URL}" style="color:#475569;text-decoration:underline;">Docs</a> · <a href="${X_URL}" style="color:#475569;text-decoration:underline;">X @sirenmarketsxyz</a>
               </p>
               <p style="margin:0;font-size:12px;color:#94a3b8;">
-                (c) ${new Date().getFullYear()} Siren · Event-driven meme terminal
+                (c) ${new Date().getFullYear()} Siren · onsiren.xyz
               </p>
             </td>
           </tr>
@@ -556,7 +556,7 @@ export async function sendTradingLiveAnnouncementEmail(params: {
                 You are receiving this because you joined the Siren waitlist or shared your email with us.
               </p>
               <p class="text-soft" style="margin:0;font-size:12px;color:#94a3b8;">
-                (c) ${new Date().getFullYear()} Siren. Event-driven meme terminal.
+                (c) ${new Date().getFullYear()} Siren · onsiren.xyz
               </p>
             </td>
           </tr>
@@ -638,7 +638,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
                       Prediction traders, this scoreboard is yours.
                     </h1>
                     <p style="margin:18px 0 0;font-size:17px;line-height:1.65;color:#cbd5e1;">
-                      ${greeting}, we just flipped on the <strong style="color:#f8fafc;">public leaderboard</strong> inside Siren. It ranks <strong style="color:#f8fafc;">wallets</strong> by how much prediction-market notional they push and how often their realized closes land green. Not meme-coin noise, not random mints. If you have been trading Kalshi- and Polymarket-linked outcomes through the terminal, your volume finally has a place to flex.
+                      ${greeting}, we just flipped on the <strong style="color:#f8fafc;">public leaderboard</strong> inside Siren. It ranks <strong style="color:#f8fafc;">wallets</strong> by how much prediction-market notional they push and how often their realized closes land green. Not random Solana mints outside prediction-market flows. If you have been trading Kalshi- and Polymarket-linked outcomes through the terminal, your volume finally has a place to flex.
                     </p>
                     <p style="margin:16px 0 0;font-size:17px;line-height:1.65;color:#cbd5e1;">
                       Open the board, pick <strong style="color:#f8fafc;">7 days</strong>, <strong style="color:#f8fafc;">30 days</strong>, or <strong style="color:#f8fafc;">all time</strong>, then toggle <strong style="color:#f8fafc;">sort by volume</strong> versus <strong style="color:#f8fafc;">sort by win rate</strong>. Same names, two stories: who is size, and who is sharp.
@@ -718,7 +718,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
                 You are receiving this because you joined the Siren waitlist or shared your email with us.
               </p>
               <p style="margin:0;font-size:12px;color:#475569;">
-                (c) ${new Date().getFullYear()} Siren · Event-driven prediction &amp; meme terminal
+                (c) ${new Date().getFullYear()} Siren · onsiren.xyz
               </p>
             </td>
           </tr>
@@ -735,7 +735,7 @@ export async function sendLeaderboardSpotlightEmail(params: {
     "",
     `${greeting},`,
     "The Siren leaderboard is live at " + LEADERBOARD_URL,
-    "It ranks prediction-market traders (Kalshi / Polymarket-style trades through Siren) by notional volume and by win rate. Meme-token swaps are excluded.",
+    "It ranks prediction-market traders (Kalshi / Polymarket-style trades through Siren) by notional volume and by win rate. Swaps that are not prediction-market activity are excluded.",
     "Every week and every month we spotlight the top three traders on X (@sirenmarketsxyz) with rewards and partner drops. Details post with each season.",
     "",
     `Open: ${APP_URL}`,

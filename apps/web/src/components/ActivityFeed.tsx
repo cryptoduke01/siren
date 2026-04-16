@@ -89,8 +89,8 @@ export function ActivityFeed() {
                 ctMentions: t.ctMentions,
               });
             }}
-            className="font-body text-[11px] px-3 py-2 rounded-[6px] truncate max-w-[120px] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:border-[var(--bags)]"
-            style={{ color: "var(--bags)", border: "1px solid var(--border-subtle)" }}
+            className="font-body text-[11px] px-3 py-2 rounded-[6px] truncate max-w-[120px] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:border-[var(--accent)]"
+            style={{ color: "var(--accent)", border: "1px solid var(--border-subtle)" }}
           >
             ${t.symbol}
           </button>

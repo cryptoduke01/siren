@@ -18,7 +18,7 @@ export default function TermsPage() {
       <h2>Non-custodial; third-party services</h2>
       <p>
         Siren does not custody your funds. Transactions are executed using third-party protocols and infrastructure (wallets, RPCs,
-        DFlow, Jupiter, Bags, Solana). Your use of third-party services is governed by their terms.
+        DFlow, Jupiter, Polymarket, Solana). Your use of third-party services is governed by their terms.
       </p>
       <h2>Acceptable use</h2>
       <ul>

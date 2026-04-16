@@ -1,6 +1,6 @@
 /**
  * Tag library: maps Kalshi market categories → CT-relevant keywords.
- * Used to surface Bags tokens when a Kalshi market heats up.
+ * Used to surface related Solana tokens when a Kalshi market heats up.
  */
 
 export interface TagCategory {

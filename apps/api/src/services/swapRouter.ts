@@ -1,8 +1,7 @@
 /**
- * Swap router: DFlow for prediction market tokens, Bags for Bags tokens, Jupiter fallback.
+ * Swap router: DFlow for prediction market tokens, Jupiter fallback for everything else.
  * DFlow: Kalshi prediction market tokens only (geo-fenced).
- * Bags: Tokens launched on Bags (mint ends with "BAGS").
- * Jupiter: All SPL tokens, MEV-protected routing.
+ * Jupiter: SPL tokens, MEV-protected routing.
  */
 
 import { PublicKey } from "@solana/web3.js";
@@ -10,16 +9,11 @@ import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { getDflowOrderWithSettlementFallback } from "./dflow.js";
 import { getMarketsWithVelocity } from "./markets.js";
 import { shouldBlockByCountry } from "../lib/geo-fence.js";
-import { getBagsTradeQuote, createBagsSwapTransaction } from "./bags.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const DFLOW_METADATA_URL = process.env.DFLOW_METADATA_API_URL || "https://dev-prediction-markets-api.dflow.net";
-
-function isBagsMint(mint: string): boolean {
-  return mint.endsWith("BAGS");
-}
 
 let marketMintsCache: Set<string> = new Set();
 let marketMintsCacheTs = 0;
@@ -89,7 +83,7 @@ async function explainPredictionSellRouteFailure(inputMint: string): Promise<str
   }
 }
 
-export type SwapProvider = "dflow" | "bags" | "jupiter";
+export type SwapProvider = "dflow" | "jupiter";
 
 export interface SwapOrderParams {
   inputMint: string;
@@ -175,23 +169,6 @@ export async function getSwapOrder(params: SwapOrderParams): Promise<SwapOrderRe
       transaction: "",
       error: dflow.error || "Prediction market routing is unavailable right now.",
     };
-  }
-
-  const inputIsBags = isBagsMint(inputMint);
-  const outputIsBags = isBagsMint(outputMint);
-  if ((inputIsBags || outputIsBags) && process.env.BAGS_API_KEY) {
-    try {
-      const quote = await getBagsTradeQuote({
-        inputMint,
-        outputMint,
-        amount,
-        slippageMode: "manual",
-        slippageBps,
-      });
-      const tx = await createBagsSwapTransaction(quote, userPublicKey);
-      if (tx) return { provider: "bags", transaction: tx };
-    } catch {
-    }
   }
 
   const key = process.env.JUPITER_API_KEY;

@@ -73,8 +73,8 @@ export default function WaitlistPage() {
                 className="font-body text-sm md:text-base max-w-xl"
                 style={{ color: "var(--text-2)" }}
               >
-                Be first to access the event-driven meme terminal — prediction markets, Bags launches,
-                and MEV-safe swaps in one screen.
+                Be first to access execution and risk intelligence for prediction markets — live
+                Kalshi and Polymarket signals, Solana execution, and portfolio context in one screen.
               </p>
             </div>
             <div className="rounded-xl overflow-hidden border transition-all duration-200" style={{ borderColor: "var(--border-subtle)", boxShadow: "0 2px 12px rgba(0,0,0,0.3)" }}>
@@ -92,9 +92,9 @@ export default function WaitlistPage() {
             </div>
             <ul className="space-y-3">
               {[
-                "Live Kalshi market data routed through DFlow.",
-                "Token surfacing that actually tracks real-world events.",
-                "Creator tools via Bags with fee-sharing built in.",
+                "Live Kalshi and Polymarket market data with DFlow-aware execution.",
+                "Risk and portfolio context next to the signal, not buried in tabs.",
+                "Jupiter-powered swaps when you want Solana token exposure next to the signal.",
               ].map((text) => (
                 <li key={text} className="flex items-start gap-3">
                   <span

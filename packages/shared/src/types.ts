@@ -45,7 +45,8 @@ export interface MarketWithVelocity extends KalshiMarket {
   outcomes?: MarketOutcome[];
 }
 
-export interface BagsToken {
+/** Core fields for a surfaced Solana token (DexScreener / Jupiter metadata). */
+export interface SurfacedTokenFields {
   mint: string;
   name: string;
   symbol: string;
@@ -63,12 +64,12 @@ export interface BagsToken {
 }
 
 /** Launchpad identifier (mint suffix). */
-export type LaunchpadId = "bags" | "pump" | "bonk" | "moonshot" | "other";
+export type LaunchpadId = "pump" | "bonk" | "moonshot" | "other";
 
-export interface SurfacedToken extends BagsToken {
+export interface SurfacedToken extends SurfacedTokenFields {
   relevanceScore: number;
   matchType: "name" | "volume" | "ct";
-  /** Launchpad detected from mint (Bags, Pump.fun, Bonk.fun, etc.). */
+  /** Launchpad detected from mint suffix (Pump.fun, Bonk.fun, etc.). */
   launchpad?: LaunchpadId;
   liquidityUsd?: number;
   fdvUsd?: number;

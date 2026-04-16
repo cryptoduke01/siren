@@ -1,7 +1,7 @@
 {
   "name": "Siren",
   "short_name": "Siren",
-  "description": "Event-driven meme token terminal. Kalshi markets, Bags tokens.",
+  "description": "Execution and risk intelligence for prediction markets. Kalshi, Polymarket, Solana.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
