@@ -175,6 +175,130 @@ function formatCompactNumber(value?: number, digits = 1): string {
   }).format(value);
 }
 
+function getHoursUntilClose(value?: number | null): number | null {
+  if (!value || !Number.isFinite(value)) return null;
+  const timestampMs = value < 1_000_000_000_000 ? value * 1000 : value;
+  return (timestampMs - Date.now()) / (1000 * 60 * 60);
+}
+
+function formatResolutionWindow(value?: number | null): string {
+  const hours = getHoursUntilClose(value);
+  if (hours == null) return "Open-ended";
+  if (hours <= 0) return "Resolving now";
+  if (hours < 1) return "< 1h left";
+  if (hours < 24) return `${Math.round(hours)}h left`;
+  const days = hours / 24;
+  if (days < 7) return `${Math.round(days)}d left`;
+  return formatTimestampLabel(value);
+}
+
+function ExecutionIntelligencePanel({ market }: { market: SelectedMarket }) {
+  const hasNativeRoute = canTradeSelectedMarketInSiren(market);
+  const closeHours = getHoursUntilClose(market.close_time);
+  const liquidity = typeof market.liquidity === "number" ? market.liquidity : null;
+  const fastMove = Math.abs(market.velocity_1h ?? 0) >= 4;
+
+  let routeLabel = "Routable now";
+  let routeTone = "var(--accent)";
+  let routeCopy = "Route exists inside Siren. Normal-sized orders should have a cleaner path than research-only markets.";
+
+  if (!hasNativeRoute) {
+    routeLabel = "Venue only";
+    routeTone = "var(--text-2)";
+    routeCopy = "This market is visible in Siren, but no native execution route is mapped here yet. Use the venue page for now.";
+  } else if (liquidity != null && liquidity < 50_000) {
+    routeLabel = "Thin size";
+    routeTone = "var(--yellow)";
+    routeCopy = "Route exists, but displayed liquidity looks light. Expect better outcomes with smaller clips or more patience.";
+  }
+
+  let riskLabel = "Standard watch";
+  let riskTone = "var(--text-2)";
+  let riskCopy = "Resolution is not immediate, so execution risk is more about size and timing than a closing window.";
+
+  if (closeHours != null && closeHours <= 24) {
+    riskLabel = "Resolution window";
+    riskTone = "var(--down)";
+    riskCopy = "This event is close to resolution. Books can thin quickly, so plan exits before the last-minute scramble.";
+  } else if (fastMove) {
+    riskLabel = "Fast tape";
+    riskTone = "var(--yellow)";
+    riskCopy = "Recent move is sharp enough to matter. Recheck odds and route quality before leaning into size.";
+  }
+
+  const failureCopy = !hasNativeRoute
+    ? "If the trade is blocked, the issue is route availability rather than your wallet. Open the venue and monitor for Siren support."
+    : liquidity != null && liquidity < 50_000
+      ? "If size fails, the most likely reason is thin depth. Reduce order size, retry later, or split execution."
+      : "If a trade fails here, it is more likely to be wallet, quote freshness, or venue-side availability than obvious market depth.";
+
+  return (
+    <section
+      className="mb-5 overflow-hidden rounded-[22px] border"
+      style={{
+        borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
+        background:
+          "radial-gradient(circle at bottom right, color-mix(in srgb, var(--kalshi) 8%, transparent), transparent 34%), linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 92%, transparent), var(--bg-base))",
+      }}
+    >
+      <div className="grid gap-3 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+            Execution intelligence
+          </p>
+          <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+            What Siren sees before you size this trade
+          </h3>
+          <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+            A derived read from route availability, venue metadata, velocity, and the resolution window. This is the product direction in miniature: feasibility first, then risk.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <CompactMarketStat label="Route" value={routeLabel} tone={routeTone} />
+            <CompactMarketStat label="Resolution" value={formatResolutionWindow(market.close_time)} tone={riskTone} />
+            <CompactMarketStat
+              label={market.source === "kalshi" ? "Velocity 1h" : "Liquidity"}
+              value={
+                market.source === "kalshi"
+                  ? `${market.velocity_1h >= 0 ? "+" : ""}${market.velocity_1h.toFixed(1)}%`
+                  : formatCompactNumber(liquidity ?? undefined, 1)
+              }
+              tone={fastMove ? "var(--yellow)" : "var(--text-1)"}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Feasibility read
+            </p>
+            <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+              {routeCopy}
+            </p>
+          </div>
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Risk watch
+            </p>
+            <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+              {riskCopy}
+            </p>
+          </div>
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              If it fails
+            </p>
+            <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+              {failureCopy}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PredictionMarketFocusPanel({
   market,
   onPrimaryAction,
@@ -518,24 +642,27 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
             exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
             transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
-            <PredictionMarketFocusPanel
-              market={selectedMarket}
-              onPrimaryAction={() => {
-                hapticLight();
-                if (canTradeSelectedMarketInSiren(selectedMarket)) {
-                  setBuyPanelOpen(true, "market");
-                  return;
-                }
-                window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
-              }}
-              onOpenVenue={() => {
-                hapticLight();
-                window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
-              }}
-              onShareCard={() => exportSelectedMarket("share")}
-              onDownloadCard={() => exportSelectedMarket("download")}
-              exportingCard={exportingCard}
-            />
+            <>
+              <PredictionMarketFocusPanel
+                market={selectedMarket}
+                onPrimaryAction={() => {
+                  hapticLight();
+                  if (canTradeSelectedMarketInSiren(selectedMarket)) {
+                    setBuyPanelOpen(true, "market");
+                    return;
+                  }
+                  window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
+                }}
+                onOpenVenue={() => {
+                  hapticLight();
+                  window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
+                }}
+                onShareCard={() => exportSelectedMarket("share")}
+                onDownloadCard={() => exportSelectedMarket("download")}
+                exportingCard={exportingCard}
+              />
+              <ExecutionIntelligencePanel market={selectedMarket} />
+            </>
           </motion.div>
         ) : selectedMarket && compactMode ? (
           <motion.div

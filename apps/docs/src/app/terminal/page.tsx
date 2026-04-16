@@ -1,23 +1,40 @@
 export default function Terminal() {
   return (
-    <>
-      <h1>Terminal</h1>
-      <p>The terminal is your hub for prediction markets and tokens.</p>
-      <h2>Browsing markets</h2>
-      <p>
-        Markets are organized by category (Politics, Crypto, Sports, etc.). Each market shows
-        live probability, volume, and velocity.
-      </p>
-      <h2>Surfacing tokens</h2>
-      <p>
-        Tap a market to see Solana tokens that match its keywords, with DexScreener-backed context and
-        Jupiter pricing where available.
-      </p>
-      <h2>Trading</h2>
-      <p>
-        Buy YES or NO on markets via DFlow, or swap tokens via Jupiter. Trading may be
-        restricted in some jurisdictions.
-      </p>
-    </>
+    <div className="docs-page">
+      <section className="docs-hero">
+        <p className="docs-eyebrow">Execution surface</p>
+        <h1>The terminal is where feasibility and risk meet the trade.</h1>
+        <p>
+          Siren’s main surface is no longer about discovery for discovery’s sake. It is where a selected market turns into route context, sizing judgment, and clearer action.
+        </p>
+      </section>
+
+      <section className="docs-grid">
+        <article className="docs-card">
+          <h2>Selected market focus</h2>
+          <p>
+            Opening a market surfaces the venue, outcome pricing, close time, recent activity, and the primary action Siren can support right now.
+          </p>
+        </article>
+        <article className="docs-card">
+          <h2>Execution intelligence</h2>
+          <p>
+            Siren derives a quick read from route availability, close window, velocity, and visible liquidity. The goal is to warn before a trader learns the hard way.
+          </p>
+        </article>
+        <article className="docs-card">
+          <h2>Route clarity</h2>
+          <p>
+            Markets can be fully routable in Siren, venue-only, or thin enough that the playbook should shift to smaller clips and more patience.
+          </p>
+        </article>
+        <article className="docs-card">
+          <h2>Failure guidance</h2>
+          <p>
+            A failed order should point somewhere useful: route missing, depth thin, wallet issue, quote stale, or venue-side availability.
+          </p>
+        </article>
+      </section>
+    </div>
   );
 }

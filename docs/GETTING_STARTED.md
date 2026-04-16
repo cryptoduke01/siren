@@ -63,6 +63,7 @@ Edit `.env` and fill only what you have:
 - **For real trading:** Set `DFLOW_API_KEY` and `JUPITER_API_KEY` (for Solana swaps).
 - **For DB/Redis later:** Set `DATABASE_URL` and `REDIS_URL` when you add Postgres/Redis.
 - **For waitlist:** Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (from Supabase → Settings → API). Create the `waitlist_signups` table in the SQL editor; see `docs/WAITLIST_SETUP.md`.
+- **For email sends:** Set `RESEND_API_KEY`, `SIREN_EMAIL_FROM`, and `SIREN_APP_URL` so access-code and audience campaigns can send correctly.
 ### Frontend (`apps/web`)
 
 ```bash

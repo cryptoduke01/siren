@@ -594,6 +594,222 @@ export async function sendTradingLiveAnnouncementEmail(params: {
   });
 }
 
+/** Current campaign: Siren's execution and risk intelligence direction. */
+export async function sendExecutionRiskUpdateEmail(params: {
+  to: string;
+  name?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!resend) return { ok: false, error: "Email not configured" };
+
+  const greeting = params.name ? `Hi ${params.name}` : "Hi there";
+  const logoUrl = `${APP_URL}/brand/mark.svg`;
+  const subject = "What we learned about Siren’s wedge after PMF analysis";
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>${subject}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      supported-color-schemes: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      body, .mail-shell {
+        background: #050507 !important;
+      }
+      .mail-card {
+        background: #101117 !important;
+        border-color: #1d2030 !important;
+      }
+      .mail-hero {
+        background: #0c1510 !important;
+        border-bottom-color: #1d2030 !important;
+      }
+      .mail-panel {
+        background: #141823 !important;
+        border-color: #202738 !important;
+      }
+      .mail-footer {
+        background: #0d1018 !important;
+        border-top-color: #1d2030 !important;
+      }
+      .text-main {
+        color: #f4f6fb !important;
+      }
+      .text-body {
+        color: #c7cfdf !important;
+      }
+      .text-soft {
+        color: #8d97aa !important;
+      }
+      .button-main {
+        background: #00ff85 !important;
+        color: #04110a !important;
+      }
+      .button-secondary {
+        background: #151926 !important;
+        color: #f4f6fb !important;
+        border-color: #283043 !important;
+      }
+    }
+  </style>
+</head>
+<body class="mail-shell" style="margin:0;padding:0;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#edf7f0;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    After product-market-fit analysis and conversations with founders and prediction-market power users, Siren is being refocused around execution and risk intelligence.
+  </div>
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" bgcolor="#edf7f0" style="background-color:#edf7f0;">
+    <tr>
+      <td align="center" style="padding:28px 14px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-card" bgcolor="#ffffff" style="max-width:680px;border-radius:30px;overflow:hidden;border:1px solid #d7e6dc;background-color:#ffffff;">
+          <tr>
+            <td style="padding:0;border-top:4px solid #00ff85;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-hero" bgcolor="#f5fff8" style="background-color:#f5fff8;border-bottom:1px solid #d7e6dc;">
+                <tr>
+                  <td style="padding:34px 30px 28px;">
+                    <img src="${logoUrl}" alt="Siren" width="118" height="30" style="display:block;height:30px;width:auto;border:0;" />
+                    <p style="margin:22px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#067847;font-weight:800;">
+                      Product update
+                    </p>
+                    <h1 class="text-main" style="margin:10px 0 0;font-size:34px;line-height:1.04;font-weight:800;letter-spacing:-0.04em;color:#071018;">
+                      Siren is getting sharper.
+                    </h1>
+                    <p class="text-body" style="margin:18px 0 0;font-size:17px;line-height:1.72;color:#334155;">
+                      ${greeting}, over the last stretch we stepped back and studied where Siren was finding real pull, where users felt pain, and what prediction traders actually needed help with every day.
+                    </p>
+                    <p class="text-body" style="margin:14px 0 0;font-size:17px;line-height:1.72;color:#334155;">
+                      After looking hard at product-market fit, talking with a few founders, and reaching out to prediction-market maxis and active traders, the pattern became clear: people do not mainly need another market-listing surface. They need help with execution reliability, liquidity reality, and risk clarity.
+                    </p>
+                    <p class="text-body" style="margin:14px 0 0;font-size:17px;line-height:1.72;color:#334155;">
+                      That is what pushed us into a sharper category for Siren: <strong style="color:#071018;">execution and risk intelligence for prediction markets</strong>. We are not trying to replace venues like Kalshi or Polymarket. We want to sit above them and answer the hard questions traders actually feel in real time: can this order clear, why did it fail, how exposed am I into resolution, and what should I do next?
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 30px 10px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-panel" bgcolor="#f8fbf9" style="background-color:#f8fbf9;border:1px solid #d7e6dc;border-radius:22px;">
+                <tr>
+                  <td style="padding:22px 22px 18px;">
+                    <p class="text-soft" style="margin:0 0 12px;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#5f7088;font-weight:800;">
+                      What is shipping
+                    </p>
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td class="text-body" style="padding:0 0 10px;font-size:16px;line-height:1.7;color:#334155;">
+                          <span style="display:inline-block;min-width:24px;font-weight:800;color:#00b96f;">1.</span> Feasibility-first market views before you submit size.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td class="text-body" style="padding:0 0 10px;font-size:16px;line-height:1.7;color:#334155;">
+                          <span style="display:inline-block;min-width:24px;font-weight:800;color:#00b96f;">2.</span> Better route explanations when liquidity is thin or a trade cannot clear.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td class="text-body" style="padding:0 0 10px;font-size:16px;line-height:1.7;color:#334155;">
+                          <span style="display:inline-block;min-width:24px;font-weight:800;color:#00b96f;">3.</span> Risk guardrails that highlight concentration and resolution-window danger earlier.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td class="text-body" style="font-size:16px;line-height:1.7;color:#334155;">
+                          <span style="display:inline-block;min-width:24px;font-weight:800;color:#00b96f;">4.</span> Post-trade context so traders can learn from fills, partial fills, and failed attempts.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 30px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="mail-panel" bgcolor="#0c1117" style="background-color:#0c1117;border:1px solid #18212c;border-radius:22px;">
+                <tr>
+                  <td style="padding:22px;">
+                    <p style="margin:0 0 8px;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#00ff85;font-weight:800;">
+                      The category
+                    </p>
+                    <p style="margin:0;font-size:20px;line-height:1.5;color:#f4f6fb;font-weight:700;">
+                      Execution and risk intelligence for prediction markets.
+                    </p>
+                    <p style="margin:14px 0 0;font-size:15px;line-height:1.72;color:#b9c4d5;">
+                      Keep an eye on execution feasibility, adaptive sizing, route explanation, and clearer risk framing into resolution. Same Siren brand. Much sharper wedge.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:20px 30px 10px;">
+              <a href="${APP_URL}" class="button-main" style="display:inline-block;background:#00ff85;color:#04110a;font-size:17px;font-weight:800;text-align:center;text-decoration:none;padding:16px 30px;border-radius:14px;">
+                Open Siren
+              </a>
+              <a href="${DOCS_URL}" class="button-secondary" style="display:inline-block;background:#ffffff;color:#071018;font-size:17px;font-weight:700;text-align:center;text-decoration:none;padding:16px 30px;border-radius:14px;border:1px solid #d7e6dc;margin-top:12px;">
+                Read the docs
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td class="mail-footer" bgcolor="#fbfefc" style="padding:18px 30px 24px;border-top:1px solid #e6efe8;background-color:#fbfefc;">
+              <p class="text-soft" style="margin:0 0 8px;font-size:12px;line-height:1.5;color:#64748b;">
+                You are receiving this because you joined the Siren waitlist or signed in to the Siren app with an email-linked account.
+              </p>
+              <p class="text-soft" style="margin:0;font-size:12px;color:#94a3b8;">
+                Docs: <a href="${DOCS_URL}" style="color:#071018;font-weight:600;">docs.onsiren.xyz</a>
+                &nbsp;·&nbsp;
+                X: <a href="${X_URL}" style="color:#071018;font-weight:600;">@sirenmarketsxyz</a>
+                &nbsp;·&nbsp;
+                (c) ${new Date().getFullYear()} Siren
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`.trim();
+
+  const text = [
+    subject,
+    "",
+    `${greeting},`,
+    "We stepped back and studied where Siren was actually finding pull.",
+    "After product-market-fit analysis, conversations with a few founders, and outreach to prediction-market maxis and active traders, the signal was clear: traders do not mainly need another listing surface. They need help with execution reliability, liquidity reality, and risk clarity.",
+    "",
+    "That is why Siren is being refocused around execution and risk intelligence for prediction markets.",
+    "We are not trying to replace venues like Kalshi or Polymarket. We want to sit above them and answer the real trading questions: can this order clear, why did it fail, how thin is the route, how exposed am I into resolution, and what should I do next?",
+    "",
+    "What to keep an eye on:",
+    "1. Feasibility-first market views before you submit size.",
+    "2. Better route explanations when liquidity is thin or a trade cannot clear.",
+    "3. Risk guardrails for concentration and resolution-window danger.",
+    "4. Post-trade context so traders can learn from fills, partial fills, and failed attempts.",
+    "",
+    "Same Siren brand. Same domain. Much sharper wedge.",
+    `Open Siren: ${APP_URL}`,
+    `Docs: ${DOCS_URL}`,
+    `X: ${X_URL}`,
+  ].join("\n");
+
+  return sendEmailWithRetry({
+    to: params.to,
+    subject,
+    html,
+    text,
+  });
+}
+
 const LEADERBOARD_URL = `${APP_URL}/leaderboard`;
 
 /** Announcement: public prediction-market leaderboard + weekly / monthly spotlight program. */

@@ -40,6 +40,15 @@ Admins can generate per-user 6-digit codes from the admin panel. Users enter the
 - `SIREN_EMAIL_FROM` — e.g. `Siren <hello@onsiren.xyz>` (verify the domain in Resend)
 - `SIREN_APP_URL` — e.g. `https://onsiren.xyz`
 
+## Unified audience
+
+Waitlist emails are now only one side of the mailing audience. App-user emails can also be captured when auth-backed users sign in, then merged with waitlist signups in the admin panel.
+
+- Waitlist rows still live in `waitlist_signups`.
+- App-user emails are stored in `users.metadata.email` when available from auth.
+- The admin panel dedupes both sources into one audience list for campaign sends.
+- To make that audience durable in Supabase too, run `apps/api/sql/siren_contacts.sql`. It adds `users.metadata` if missing and creates the `public.siren_contacts` view.
+
 ## 2. API env vars
 
 In `apps/api/.env`:

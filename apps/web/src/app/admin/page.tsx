@@ -18,7 +18,6 @@ import {
   Rocket,
   Sparkles,
   TrendingUp,
-  Trophy,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -48,20 +47,26 @@ type WaitlistRow = {
   access_code_used_at: string | null;
 };
 
-type AppUserRow = {
-  id: string;
-  wallet: string | null;
-  auth_user_id: string | null;
-  created_at: string;
-  last_seen_at: string | null;
+type AudienceRow = {
+  email: string;
+  name: string | null;
+  source: "waitlist" | "app" | "both";
+  source_labels: string[];
+  waitlist_id: string | null;
+  app_user_id: string | null;
+  wallets: string[];
   signup_source: string | null;
   country: string | null;
-  metadata: Record<string, unknown> | null;
+  created_at: string;
+  last_seen_at: string | null;
+  access_code: string | null;
+  access_code_used_at: string | null;
 };
 
 const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
 const STORAGE_KEY = "siren-admin-pass-ok";
 const APP_PUBLIC_URL = "https://onsiren.xyz";
+const DOCS_PUBLIC_URL = "https://docs.onsiren.xyz";
 const TABLE_PAGE_SIZE = 25;
 const PANEL_BG =
   "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, white 6%) 0%, color-mix(in srgb, var(--bg-elevated) 96%, transparent) 100%)";
@@ -74,7 +79,7 @@ const BADGE_BG = "color-mix(in srgb, var(--accent-dim) 70%, var(--bg-elevated) 3
 const TOOLTIP_BG = "color-mix(in srgb, var(--bg-base) 94%, var(--bg-surface) 6%)";
 const GRID_STROKE = "color-mix(in srgb, var(--border-subtle) 52%, transparent)";
 const TAB_ACTIVE_BG = "color-mix(in srgb, var(--bg-elevated) 82%, white 18%)";
-type Tab = "waitlist" | "app-users" | "volume";
+type Tab = "waitlist" | "audience" | "volume";
 
 type VolumeData = {
   platform7d: number;
@@ -319,23 +324,21 @@ export default function AdminPage() {
   const [input, setInput] = useState("");
   const [tab, setTab] = useState<Tab>("waitlist");
   const [waitlistRows, setWaitlistRows] = useState<WaitlistRow[]>([]);
-  const [appUsers, setAppUsers] = useState<AppUserRow[]>([]);
+  const [audienceRows, setAudienceRows] = useState<AudienceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendAllLoading, setSendAllLoading] = useState(false);
   const [codeEmailResult, setCodeEmailResult] = useState<DispatchResult | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [productEmailLoading, setProductEmailLoading] = useState(false);
+  const [audienceSearchQuery, setAudienceSearchQuery] = useState("");
+  const [audienceEmailLoading, setAudienceEmailLoading] = useState(false);
   const [solPriceUsd, setSolPriceUsd] = useState(0);
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
   const [volumeLoading, setVolumeLoading] = useState(false);
-  const [productEmailInput, setProductEmailInput] = useState("");
-  const [productEmailResult, setProductEmailResult] = useState<DispatchResult | null>(null);
-  const [leaderboardEmailLoading, setLeaderboardEmailLoading] = useState(false);
-  const [leaderboardEmailInput, setLeaderboardEmailInput] = useState("");
-  const [leaderboardEmailResult, setLeaderboardEmailResult] = useState<DispatchResult | null>(null);
+  const [audienceEmailInput, setAudienceEmailInput] = useState("");
+  const [audienceEmailResult, setAudienceEmailResult] = useState<DispatchResult | null>(null);
   const [waitlistPage, setWaitlistPage] = useState(1);
-  const [appUsersPage, setAppUsersPage] = useState(1);
+  const [audiencePage, setAudiencePage] = useState(1);
   const [volumePage, setVolumePage] = useState(1);
 
   type UserStats = {
@@ -365,12 +368,25 @@ export default function AdminPage() {
     return filteredWaitlist.slice(start, start + TABLE_PAGE_SIZE);
   }, [filteredWaitlist, safeWaitlistPage]);
 
-  const appUsersTotalPages = pageCount(appUsers.length, TABLE_PAGE_SIZE);
-  const safeAppUsersPage = Math.min(appUsersPage, appUsersTotalPages);
-  const paginatedAppUsers = useMemo(() => {
-    const start = (safeAppUsersPage - 1) * TABLE_PAGE_SIZE;
-    return appUsers.slice(start, start + TABLE_PAGE_SIZE);
-  }, [appUsers, safeAppUsersPage]);
+  const filteredAudience = audienceSearchQuery.trim()
+    ? audienceRows.filter((row) => {
+        const query = audienceSearchQuery.toLowerCase();
+        return (
+          row.email.toLowerCase().includes(query) ||
+          row.name?.toLowerCase().includes(query) ||
+          row.wallets.some((wallet) => wallet.toLowerCase().includes(query)) ||
+          row.source_labels.some((source) => source.toLowerCase().includes(query)) ||
+          row.signup_source?.toLowerCase().includes(query)
+        );
+      })
+    : audienceRows;
+
+  const audienceTotalPages = pageCount(filteredAudience.length, TABLE_PAGE_SIZE);
+  const safeAudiencePage = Math.min(audiencePage, audienceTotalPages);
+  const paginatedAudience = useMemo(() => {
+    const start = (safeAudiencePage - 1) * TABLE_PAGE_SIZE;
+    return filteredAudience.slice(start, start + TABLE_PAGE_SIZE);
+  }, [filteredAudience, safeAudiencePage]);
 
   const volumeRows = volumeData?.byWallet ?? [];
   const volumeTotalPages = pageCount(volumeRows.length, TABLE_PAGE_SIZE);
@@ -421,6 +437,20 @@ export default function AdminPage() {
     };
   }, [waitlistDailySeries, waitlistRows]);
 
+  const audienceInsights = useMemo(() => {
+    const both = audienceRows.filter((row) => row.source === "both").length;
+    const appOnly = audienceRows.filter((row) => row.source === "app").length;
+    const waitlistOnly = audienceRows.filter((row) => row.source === "waitlist").length;
+    const active = audienceRows.filter((row) => !!row.last_seen_at).length;
+    return {
+      both,
+      appOnly,
+      waitlistOnly,
+      active,
+      contactable: audienceRows.length,
+    };
+  }, [audienceRows]);
+
   const usageInsights = useMemo(() => {
     const totalUsers = userStats?.totalUsers ?? 0;
     const newUsers7d = userStats?.newUsers7d ?? 0;
@@ -467,12 +497,16 @@ export default function AdminPage() {
   }, [searchQuery]);
 
   useEffect(() => {
+    setAudiencePage(1);
+  }, [audienceSearchQuery]);
+
+  useEffect(() => {
     if (waitlistPage > waitlistTotalPages) setWaitlistPage(waitlistTotalPages);
   }, [waitlistPage, waitlistTotalPages]);
 
   useEffect(() => {
-    if (appUsersPage > appUsersTotalPages) setAppUsersPage(appUsersTotalPages);
-  }, [appUsersPage, appUsersTotalPages]);
+    if (audiencePage > audienceTotalPages) setAudiencePage(audienceTotalPages);
+  }, [audiencePage, audienceTotalPages]);
 
   useEffect(() => {
     if (volumePage > volumeTotalPages) setVolumePage(volumeTotalPages);
@@ -537,16 +571,16 @@ export default function AdminPage() {
     }
   }, []);
 
-  const loadAppUsers = useCallback(async () => {
+  const loadAudience = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/users?limit=500`);
+      const res = await fetch(`${API_URL}/api/admin/audience?limit=500`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load app users.");
-      setAppUsers(data.data ?? []);
+      if (!res.ok) throw new Error(data.error || "Failed to load audience.");
+      setAudienceRows(data.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load app users.");
+      setError(err instanceof Error ? err.message : "Failed to load audience.");
     } finally {
       setLoading(false);
     }
@@ -559,14 +593,14 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!hasAccess) return;
+    void loadAudience();
+  }, [hasAccess, loadAudience]);
+
+  useEffect(() => {
+    if (!hasAccess) return;
     void loadUserStats();
     void loadDailyVolume();
   }, [hasAccess, loadUserStats, loadDailyVolume]);
-
-  useEffect(() => {
-    if (!hasAccess || tab !== "app-users") return;
-    void loadAppUsers();
-  }, [hasAccess, tab, loadAppUsers]);
 
   useEffect(() => {
     if (!hasAccess || tab !== "volume") return;
@@ -577,7 +611,7 @@ export default function AdminPage() {
     void loadUserStats();
     void loadDailyVolume();
     if (tab === "waitlist") void loadWaitlist();
-    else if (tab === "app-users") void loadAppUsers();
+    else if (tab === "audience") void loadAudience();
     else if (tab === "volume") void loadVolume();
   };
 
@@ -644,15 +678,15 @@ export default function AdminPage() {
     }
   };
 
-  const handleSendProductEmail = async () => {
+  const handleSendAudienceEmail = async () => {
     hapticLight();
-    setProductEmailResult(null);
-    setProductEmailLoading(true);
+    setAudienceEmailResult(null);
+    setAudienceEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-trading-live-email`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/admin/audience/send-execution-update-email`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send product announcement emails");
-      setProductEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send audience update emails");
+      setAudienceEmailResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -661,15 +695,15 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send product announcement emails");
+      setError(e instanceof Error ? e.message : "Failed to send audience update emails");
     } finally {
-      setProductEmailLoading(false);
+      setAudienceEmailLoading(false);
     }
   };
 
-  const handleSendProductEmailManual = async () => {
+  const handleSendAudienceEmailManual = async () => {
     hapticLight();
-    const raw = productEmailInput
+    const raw = audienceEmailInput
       .split(/[\n,]+/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
@@ -677,17 +711,17 @@ export default function AdminPage() {
       setError("Paste one or more emails first.");
       return;
     }
-    setProductEmailResult(null);
-    setProductEmailLoading(true);
+    setAudienceEmailResult(null);
+    setAudienceEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-trading-live-email-by-email`, {
+      const res = await fetch(`${API_URL}/api/admin/audience/send-execution-update-email-by-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emails: raw }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send product announcement emails");
-      setProductEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send audience update emails");
+      setAudienceEmailResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -696,67 +730,9 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send product announcement emails");
+      setError(e instanceof Error ? e.message : "Failed to send audience update emails");
     } finally {
-      setProductEmailLoading(false);
-    }
-  };
-
-  const handleSendLeaderboardSpotlightEmail = async () => {
-    hapticLight();
-    setLeaderboardEmailResult(null);
-    setLeaderboardEmailLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-leaderboard-spotlight-email`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send leaderboard spotlight emails");
-      setLeaderboardEmailResult({
-        sent: data.sent,
-        failed: data.failed,
-        skipped: data.skipped,
-        total: data.total,
-        failedEmails: data.failedEmails ?? [],
-        skippedEmails: data.skippedEmails ?? [],
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send leaderboard spotlight emails");
-    } finally {
-      setLeaderboardEmailLoading(false);
-    }
-  };
-
-  const handleSendLeaderboardSpotlightEmailManual = async () => {
-    hapticLight();
-    const raw = leaderboardEmailInput
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    if (raw.length === 0) {
-      setError("Paste one or more emails first.");
-      return;
-    }
-    setLeaderboardEmailResult(null);
-    setLeaderboardEmailLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-leaderboard-spotlight-email-by-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails: raw }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send leaderboard spotlight emails");
-      setLeaderboardEmailResult({
-        sent: data.sent,
-        failed: data.failed,
-        skipped: data.skipped,
-        total: data.total,
-        failedEmails: data.failedEmails ?? [],
-        skippedEmails: data.skippedEmails ?? [],
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send leaderboard spotlight emails");
-    } finally {
-      setLeaderboardEmailLoading(false);
+      setAudienceEmailLoading(false);
     }
   };
 
@@ -863,7 +839,7 @@ export default function AdminPage() {
               </div>
               <h1 className="font-heading text-[30px] leading-none tracking-[-0.04em] md:text-[42px]">Siren Admin</h1>
               <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                Waitlist, activations, and volume for the prediction-markets terminal—plus email tools in one place.
+                Waitlist operations, unified audience sends, and volume intelligence for the prediction-markets terminal.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1090,16 +1066,16 @@ export default function AdminPage() {
             </button>
             <button
               type="button"
-              onClick={() => { hapticLight(); setTab("app-users"); }}
+              onClick={() => { hapticLight(); setTab("audience"); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-heading transition-colors"
               style={{
-                background: tab === "app-users" ? TAB_ACTIVE_BG : "transparent",
-                color: tab === "app-users" ? "var(--text-1)" : "var(--text-3)",
-                border: tab === "app-users" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
+                background: tab === "audience" ? TAB_ACTIVE_BG : "transparent",
+                color: tab === "audience" ? "var(--text-1)" : "var(--text-3)",
+                border: tab === "audience" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
               }}
             >
               <Users className="w-4 h-4" />
-              App Users ({appUsers.length})
+              Audience ({audienceRows.length})
             </button>
             <button
               type="button"
@@ -1165,10 +1141,10 @@ export default function AdminPage() {
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Waitlist &amp; email
+                    Waitlist operations
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Search the queue, send access codes, and broadcast the current Siren update to opted-in emails.
+                    Search the queue, manage access codes, and monitor onboarding conversion.
                   </p>
                 </div>
                 <div className="relative">
@@ -1195,22 +1171,26 @@ export default function AdminPage() {
                 >
                   <div className="p-5 md:p-6">
                     <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                      <Mail className="h-3.5 w-3.5" />
-                      Siren update
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      Queue operations
                     </div>
                     <h3 className="font-heading text-2xl leading-tight tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      New X account and login update
+                      Keep the waitlist moving cleanly.
                     </h3>
                     <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Sends the HTML campaign announcing @sirenmarketsxyz, confirming that all user funds and data are safe, pointing users to Telegram, and explaining that X login is being removed by 12:00 AM WAT today. Recipients must be on the waitlist with a valid email.
+                      This tab is now focused on onboarding operations only: queue review, code generation, resends, and conversion tracking. Broadcast emails now live on the unified audience tab so the panel is not mixing old campaigns with waitlist work.
                     </p>
                     <ul className="mt-4 list-disc pl-5 font-body text-sm space-y-1" style={{ color: "var(--text-3)" }}>
-                      <li>Confirms that funds and account data are safe.</li>
-                      <li>Points people to the new X account, Telegram community, and founder account.</li>
-                      <li>Explains that X login is being removed to reduce platform risk.</li>
+                      <li>Generate or resend one-time access codes.</li>
+                      <li>Watch activation rate and code usage.</li>
+                      <li>Use the audience tab for deduped app-user + waitlist broadcasts.</li>
                     </ul>
 
                     <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Queue size</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistRows.length.toLocaleString()}</p>
+                      </div>
                       <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
                         <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Emails on file</p>
                         <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.contactable.toLocaleString()}</p>
@@ -1218,10 +1198,6 @@ export default function AdminPage() {
                       <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
                         <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Codes used</p>
                         <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.activated.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Queue size</p>
-                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistRows.length.toLocaleString()}</p>
                       </div>
                     </div>
 
@@ -1235,100 +1211,18 @@ export default function AdminPage() {
                       >
                         Open terminal
                       </a>
-                      <button
-                        type="button"
-                        onClick={handleSendProductEmail}
-                        disabled={productEmailLoading || waitlistRows.length === 0}
-                        className="flex items-center gap-2 rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
-                      >
-                        {productEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
-                        {productEmailLoading ? "Sending…" : "Send to all waitlist emails"}
-                      </button>
                     </div>
-                    <InlineDispatchStatus result={productEmailResult} label="Announcement result" />
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Manual resend
-                    </p>
-                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Retry selected addresses
-                    </h3>
-                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Paste emails that must be on the waitlist. Sends the same Siren update to matches only.
-                    </p>
-                    <textarea
-                      value={productEmailInput}
-                      onChange={(e) => setProductEmailInput(e.target.value)}
-                      className="mt-4 min-h-[132px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
-                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
-                      placeholder={"one@example.com\ntwo@example.com"}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSendProductEmailManual}
-                      disabled={productEmailLoading}
-                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                    >
-                      {productEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <TrendingUp className="h-4 w-4" />}
-                      Send to pasted emails
-                    </button>
-                  </div>
-
-                  <DispatchSummary result={productEmailResult} accentLabel="Siren update email" />
-
-                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Leaderboard spotlight
-                    </p>
-                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Announce rankings + weekly / monthly top 3
-                    </h3>
-                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Sends the dark-theme campaign: prediction-only leaderboard, volume and win rate, spotlight program for top traders. Same waitlist rules as other blasts.
-                    </p>
-                    <textarea
-                      value={leaderboardEmailInput}
-                      onChange={(e) => setLeaderboardEmailInput(e.target.value)}
-                      className="mt-4 min-h-[100px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
-                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
-                      placeholder={"optional: one@example.com per line"}
-                    />
-                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={handleSendLeaderboardSpotlightEmail}
-                        disabled={leaderboardEmailLoading || waitlistRows.length === 0}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
-                      >
-                        {leaderboardEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Trophy className="h-4 w-4" />}
-                        {leaderboardEmailLoading ? "Sending…" : "Send to all waitlist"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSendLeaderboardSpotlightEmailManual}
-                        disabled={leaderboardEmailLoading}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                        style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                      >
-                        {leaderboardEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
-                        Send to pasted only
-                      </button>
-                    </div>
-                    <InlineDispatchStatus result={leaderboardEmailResult} label="Leaderboard email result" />
-                  </div>
-
-                  <DispatchSummary result={leaderboardEmailResult} accentLabel="Leaderboard spotlight email" />
-
-                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
+                      <Mail className="h-3.5 w-3.5" />
                       Access code dispatch
+                    </div>
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      Onboarding
                     </p>
                     <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
                       Keep onboarding moving
@@ -1595,44 +1489,161 @@ export default function AdminPage() {
             </section>
           )}
 
-          {tab === "app-users" && (
+          {tab === "audience" && (
             <section>
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    App users
+                    Unified audience
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Wallet-connected users with a cleaner table layout and pagination.
+                    One deduped list across waitlist signups and app users with captured auth emails.
                   </p>
                 </div>
-                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                  {appUsers.length.toLocaleString()} users loaded
-                </p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
+                  <input
+                    type="text"
+                    placeholder="Search email, source, wallet..."
+                    value={audienceSearchQuery}
+                    onChange={(e) => setAudienceSearchQuery(e.target.value)}
+                    className="w-full rounded-2xl border py-3 pl-9 pr-4 font-body text-xs sm:w-80"
+                    style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
+                  />
+                </div>
               </div>
+
+              <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr,0.9fr]">
+                <div className="overflow-hidden rounded-[28px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                  <div className="p-5 md:p-6">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
+                      <Mail className="h-3.5 w-3.5" />
+                      Current campaign
+                    </div>
+                    <h3 className="font-heading text-2xl leading-tight tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+                      Execution and risk intelligence update
+                    </h3>
+                    <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
+                      This is the new core product email. It explains the Siren repositioning, the execution-feasibility wedge, risk guardrails, and the docs/app refresh. It goes to the merged audience, not just the waitlist.
+                    </p>
+                    <ul className="mt-4 list-disc pl-5 font-body text-sm space-y-1" style={{ color: "var(--text-3)" }}>
+                      <li>Explains the new Siren category clearly.</li>
+                      <li>Moves all old campaign sends out of the way.</li>
+                      <li>Uses one deduped audience for cleaner emailing.</li>
+                    </ul>
+                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-4">
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Reachable</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.contactable.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Both sources</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.both.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>App only</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.appOnly.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Seen in app</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.active.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSendAudienceEmail}
+                        disabled={audienceEmailLoading || audienceRows.length === 0}
+                        className="flex items-center gap-2 rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                      >
+                        {audienceEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
+                        {audienceEmailLoading ? "Sending…" : "Send to all audience"}
+                      </button>
+                      <a
+                        href={DOCS_PUBLIC_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em]"
+                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
+                      >
+                        Preview docs
+                      </a>
+                    </div>
+                    <InlineDispatchStatus result={audienceEmailResult} label="Audience email result" />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      Manual resend
+                    </p>
+                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+                      Retry specific contacts
+                    </h3>
+                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
+                      Paste emails from either source. The API checks them against the unified audience and only sends to exact matches.
+                    </p>
+                    <textarea
+                      value={audienceEmailInput}
+                      onChange={(e) => setAudienceEmailInput(e.target.value)}
+                      className="mt-4 min-h-[140px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
+                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
+                      placeholder={"one@example.com\ntwo@example.com"}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendAudienceEmailManual}
+                      disabled={audienceEmailLoading}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                    >
+                      {audienceEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <TrendingUp className="h-4 w-4" />}
+                      Send to pasted emails
+                    </button>
+                  </div>
+
+                  <DispatchSummary result={audienceEmailResult} accentLabel="Execution update email" />
+                </div>
+              </div>
+
               <div className="overflow-hidden rounded-[24px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                <div className="flex flex-col gap-2 border-b px-4 py-4 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
+                  <div>
+                    <h3 className="font-heading text-base" style={{ color: "var(--text-1)" }}>Audience table</h3>
+                    <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                      Deduped by email. Source tells you whether the address came from waitlist, app auth, or both.
+                    </p>
+                  </div>
+                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                    {filteredAudience.length.toLocaleString()} matching contacts
+                  </p>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-xs font-body">
                     <thead>
                       <tr style={{ background: "var(--bg-elevated)" }}>
                         <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Created</th>
+                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Email</th>
+                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider md:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Name</th>
+                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Source</th>
                         <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Last seen</th>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider md:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Source</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider lg:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Country</th>
+                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider lg:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallets</th>
+                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider xl:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Country</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedAppUsers.length === 0 ? (
+                      {paginatedAudience.length === 0 ? (
                         <tr>
-                          <td className="px-4 py-6 text-center text-sm" colSpan={5} style={{ color: "var(--text-3)" }}>
-                            No app users yet.
+                          <td className="px-4 py-6 text-center text-sm" colSpan={7} style={{ color: "var(--text-3)" }}>
+                            No audience contacts yet.
                           </td>
                         </tr>
                       ) : (
-                        paginatedAppUsers.map((row, idx) => (
+                        paginatedAudience.map((row, idx) => (
                           <tr
-                            key={row.id}
+                            key={row.email}
                             className="border-t transition-colors hover:bg-[var(--bg-elevated)]"
                             style={{
                               borderColor: "var(--border-subtle)",
@@ -1640,17 +1651,47 @@ export default function AdminPage() {
                             }}
                           >
                             <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{new Date(row.created_at).toLocaleString()}</td>
+                            <CopyableCell value={row.email} />
+                            <td className="hidden px-4 py-3 md:table-cell" style={{ color: row.name ? "var(--text-2)" : "var(--text-3)" }}>{row.name || "—"}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-1.5">
+                                {row.source_labels.map((source) => (
+                                  <span
+                                    key={`${row.email}-${source}`}
+                                    className="rounded-full border px-2 py-1 text-[10px] font-heading uppercase tracking-[0.14em]"
+                                    style={{
+                                      borderColor: source === "app" ? "color-mix(in srgb, var(--kalshi) 35%, transparent)" : "color-mix(in srgb, var(--accent) 35%, transparent)",
+                                      background: source === "app" ? "color-mix(in srgb, var(--kalshi) 12%, transparent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                      color: source === "app" ? "var(--kalshi)" : "var(--accent)",
+                                    }}
+                                  >
+                                    {source}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
                             <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : "—"}</td>
-                            <CopyableCell value={row.wallet} mono />
-                            <td className="hidden px-4 py-3 md:table-cell">{row.signup_source || "—"}</td>
-                            <CopyableCell value={row.country} className="hidden lg:table-cell" />
+                            <td className="hidden px-4 py-3 lg:table-cell">
+                              <div className="flex flex-col gap-1">
+                                {row.wallets.length === 0 ? (
+                                  <span style={{ color: "var(--text-3)" }}>—</span>
+                                ) : (
+                                  row.wallets.slice(0, 2).map((wallet) => (
+                                    <div key={`${row.email}-${wallet}`} className="flex items-center gap-2">
+                                      <span className="font-mono text-[11px]" style={{ color: "var(--text-2)" }}>{wallet}</span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </td>
+                            <CopyableCell value={row.country} className="hidden xl:table-cell" />
                           </tr>
                         ))
                       )}
                     </tbody>
                   </table>
                 </div>
-                <PaginationControls page={safeAppUsersPage} totalItems={appUsers.length} pageSize={TABLE_PAGE_SIZE} onPageChange={setAppUsersPage} />
+                <PaginationControls page={safeAudiencePage} totalItems={filteredAudience.length} pageSize={TABLE_PAGE_SIZE} onPageChange={setAudiencePage} />
               </div>
             </section>
           )}

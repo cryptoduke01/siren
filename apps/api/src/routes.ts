@@ -11,6 +11,7 @@ import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
   sendTradingLiveAnnouncementEmail,
+  sendExecutionRiskUpdateEmail,
   sendLeaderboardSpotlightEmail,
   canSendEmail,
 } from "./services/email.js";
@@ -26,6 +27,213 @@ const SOL_PRICE_ROUTE_TIMEOUT_MS = 4_500;
 const SOL_PRICE_CACHE_MS = 60_000;
 const DFLOW_PROOF_ROUTE_TIMEOUT_MS = 5_000;
 const DFLOW_PROOF_VERIFY_URL = process.env.DFLOW_PROOF_VERIFY_URL?.trim() || "https://proof.dflow.net/verify";
+
+type WaitlistAudienceRow = {
+  id: string;
+  email: string | null;
+  wallet: string | null;
+  name: string | null;
+  created_at: string;
+  access_code: string | null;
+  access_code_used_at: string | null;
+};
+
+type AppUserAudienceRow = {
+  id: string;
+  wallet: string | null;
+  auth_user_id: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  signup_source: string | null;
+  country: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+type UnifiedAudienceRow = {
+  email: string;
+  name: string | null;
+  source: "waitlist" | "app" | "both";
+  source_labels: string[];
+  waitlist_id: string | null;
+  app_user_id: string | null;
+  wallets: string[];
+  signup_source: string | null;
+  country: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  access_code: string | null;
+  access_code_used_at: string | null;
+};
+
+type SirenContactRow = {
+  email: string;
+  name: string | null;
+  source: "waitlist" | "app" | "both";
+  source_labels: string[] | null;
+  waitlist_id: string | null;
+  app_user_id: string | null;
+  wallets: string[] | null;
+  signup_source: string | null;
+  country: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  access_code: string | null;
+  access_code_used_at: string | null;
+};
+
+function normalizeEmailAddress(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || !normalized.includes("@")) return null;
+  return normalized;
+}
+
+function normalizeMetadata(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function pickMetadataString(metadata: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value)),
+  );
+}
+
+function buildUnifiedAudience(
+  waitlistRows: WaitlistAudienceRow[],
+  appUserRows: AppUserAudienceRow[],
+): UnifiedAudienceRow[] {
+  const byEmail = new Map<string, UnifiedAudienceRow>();
+
+  for (const row of waitlistRows) {
+    const email = normalizeEmailAddress(row.email);
+    if (!email) continue;
+    byEmail.set(email, {
+      email,
+      name: row.name?.trim() || null,
+      source: "waitlist",
+      source_labels: ["waitlist"],
+      waitlist_id: row.id,
+      app_user_id: null,
+      wallets: uniqueStrings([row.wallet]),
+      signup_source: null,
+      country: null,
+      created_at: row.created_at,
+      last_seen_at: null,
+      access_code: row.access_code,
+      access_code_used_at: row.access_code_used_at,
+    });
+  }
+
+  for (const row of appUserRows) {
+    const metadata = normalizeMetadata(row.metadata);
+    const email = normalizeEmailAddress(
+      pickMetadataString(metadata, ["email", "contact_email", "primary_email"]),
+    );
+    if (!email) continue;
+
+    const existing = byEmail.get(email);
+    const name =
+      pickMetadataString(metadata, ["display_name", "full_name", "name", "username"]) ||
+      existing?.name ||
+      null;
+
+    if (!existing) {
+      byEmail.set(email, {
+        email,
+        name,
+        source: "app",
+        source_labels: ["app"],
+        waitlist_id: null,
+        app_user_id: row.id,
+        wallets: uniqueStrings([row.wallet]),
+        signup_source: row.signup_source,
+        country: row.country,
+        created_at: row.created_at,
+        last_seen_at: row.last_seen_at,
+        access_code: null,
+        access_code_used_at: null,
+      });
+      continue;
+    }
+
+    existing.name = existing.name || name;
+    existing.source = "both";
+    existing.source_labels = uniqueStrings([...existing.source_labels, "waitlist", "app"]);
+    existing.app_user_id = existing.app_user_id || row.id;
+    existing.wallets = uniqueStrings([...existing.wallets, row.wallet]);
+    existing.signup_source = existing.signup_source || row.signup_source;
+    existing.country = existing.country || row.country;
+    existing.last_seen_at = existing.last_seen_at || row.last_seen_at;
+  }
+
+  return Array.from(byEmail.values()).sort((a, b) => {
+    const left = new Date(a.last_seen_at || a.created_at).getTime();
+    const right = new Date(b.last_seen_at || b.created_at).getTime();
+    return right - left;
+  });
+}
+
+async function fetchUnifiedAudience(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  limit = 500,
+): Promise<UnifiedAudienceRow[]> {
+  const { data, error } = await supabase
+    .from("siren_contacts")
+    .select("email,name,source,source_labels,waitlist_id,app_user_id,wallets,signup_source,country,created_at,last_seen_at,access_code,access_code_used_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (!error && Array.isArray(data)) {
+    return (data as SirenContactRow[]).map((row) => ({
+      email: row.email,
+      name: row.name,
+      source: row.source,
+      source_labels: row.source_labels ?? [row.source],
+      waitlist_id: row.waitlist_id,
+      app_user_id: row.app_user_id,
+      wallets: row.wallets ?? [],
+      signup_source: row.signup_source,
+      country: row.country,
+      created_at: row.created_at,
+      last_seen_at: row.last_seen_at,
+      access_code: row.access_code,
+      access_code_used_at: row.access_code_used_at,
+    }));
+  }
+
+  const [{ data: waitlistRows, error: waitlistError }, { data: appUserRows, error: appUserError }] =
+    await Promise.all([
+      supabase
+        .from("waitlist_signups")
+        .select("id,email,wallet,name,created_at,access_code,access_code_used_at")
+        .order("created_at", { ascending: false })
+        .range(0, limit - 1),
+      supabase
+        .from("users")
+        .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,metadata")
+        .order("created_at", { ascending: false })
+        .range(0, limit - 1),
+    ]);
+
+  if (waitlistError || appUserError) {
+    const fallbackError = waitlistError || appUserError || error;
+    throw new Error(fallbackError?.message || "Failed to build audience");
+  }
+
+  return buildUnifiedAudience(
+    (waitlistRows ?? []) as WaitlistAudienceRow[],
+    (appUserRows ?? []) as AppUserAudienceRow[],
+  );
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -1246,16 +1454,18 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   // Track or upsert a user by wallet / auth id
-  app.post<{ Body: { wallet?: string; authUserId?: string; signupSource?: string } }>(
+  app.post<{ Body: { wallet?: string; authUserId?: string; signupSource?: string; email?: string; name?: string } }>(
     "/api/users/track",
     async (req, reply) => {
-      const { wallet, authUserId, signupSource } = req.body || {};
+      const { wallet, authUserId, signupSource, email, name } = req.body || {};
       if (!wallet && !authUserId) {
         return reply.status(400).send({ success: false, error: "wallet or authUserId required" });
       }
 
       const normalizedWallet =
         typeof wallet === "string" && wallet.trim().length > 0 ? wallet.trim().toLowerCase() : null;
+      const normalizedEmail = normalizeEmailAddress(email);
+      const normalizedName = typeof name === "string" && name.trim().length > 0 ? name.trim().slice(0, 80) : null;
 
       // Auto-detect country from IP geo headers (no user permission needed)
       const country =
@@ -1274,7 +1484,7 @@ export function registerRoutes(app: FastifyInstance) {
 
         const { data: existing, error: selectError } = await supabase
           .from("users")
-          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name,metadata")
           .or(filters.join(","))
           .limit(1)
           .maybeSingle();
@@ -1295,11 +1505,17 @@ export function registerRoutes(app: FastifyInstance) {
           if (normalizedWallet) insertPayload.wallet = normalizedWallet;
           if (authUserId) insertPayload.auth_user_id = authUserId;
           if (countryCode) insertPayload.country = countryCode;
+          if (normalizedEmail || normalizedName) {
+            insertPayload.metadata = {
+              ...(normalizedEmail ? { email: normalizedEmail } : {}),
+              ...(normalizedName ? { name: normalizedName } : {}),
+            };
+          }
 
           const { data: inserted, error: insertError } = await supabase
             .from("users")
             .insert(insertPayload)
-            .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
+            .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name,metadata")
             .single();
 
           if (insertError) {
@@ -1317,12 +1533,20 @@ export function registerRoutes(app: FastifyInstance) {
         if (!existing.auth_user_id && authUserId) updatePayload.auth_user_id = authUserId;
         if (!existing.signup_source && signupSource) updatePayload.signup_source = signupSource;
         if (countryCode) updatePayload.country = countryCode;
+        if (normalizedEmail || normalizedName) {
+          const existingMetadata = normalizeMetadata(existing.metadata);
+          updatePayload.metadata = {
+            ...existingMetadata,
+            ...(normalizedEmail ? { email: normalizedEmail } : {}),
+            ...(normalizedName ? { name: normalizedName } : {}),
+          };
+        }
 
         const { data: updated, error: updateError } = await supabase
           .from("users")
           .update(updatePayload)
           .eq("id", existing.id)
-          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name,metadata")
           .single();
 
         if (updateError) {
@@ -1737,6 +1961,114 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch app users" });
+    }
+  });
+
+  /** Admin: unified email audience across waitlist + app users with email-bearing auth metadata. */
+  app.get<{ Querystring: { limit?: string } }>("/api/admin/audience", async (req, reply) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "500", 10) || 500, 1), 2000);
+    try {
+      const supabase = getSupabaseAdminClient();
+      const audience = await fetchUnifiedAudience(supabase, limit);
+      return reply.send({ success: true, data: audience });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch audience" });
+    }
+  });
+
+  /** Admin: current email campaign to all deduped contacts. */
+  app.post("/api/admin/audience/send-execution-update-email", async (_req, reply) => {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const audience = await fetchUnifiedAudience(supabase, 2000);
+
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+
+      for (const row of audience) {
+        if (!row.email?.trim()) {
+          skipped += 1;
+          skippedEmails.push(row.email || "");
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped += 1;
+          skippedEmails.push(row.email);
+          continue;
+        }
+        const result = await sendExecutionRiskUpdateEmail({ to: row.email, name: row.name });
+        if (result.ok) {
+          sent += 1;
+        } else {
+          failed += 1;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send execution update email");
+        }
+      }
+
+      return reply.send({ success: true, sent, failed, skipped, total: audience.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send execution update emails" });
+    }
+  });
+
+  /** Admin: current email campaign to pasted contacts that exist in the unified audience. */
+  app.post<{ Body: { emails?: string[] } }>("/api/admin/audience/send-execution-update-email-by-email", async (req, reply) => {
+    try {
+      const requested = Array.isArray(req.body?.emails) ? req.body.emails : [];
+      const normalized = Array.from(
+        new Set(
+          requested
+            .map((email) => normalizeEmailAddress(email))
+            .filter((email): email is string => !!email),
+        ),
+      );
+      if (normalized.length === 0) {
+        return reply.status(400).send({ success: false, error: "No valid emails provided" });
+      }
+
+      const supabase = getSupabaseAdminClient();
+      const audienceByEmail = new Map(
+        (await fetchUnifiedAudience(supabase, 2000)).map((row) => [row.email, row] as const),
+      );
+
+      const failedEmails: string[] = [];
+      const skippedEmails: string[] = [];
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+
+      for (const email of normalized) {
+        const row = audienceByEmail.get(email);
+        if (!row) {
+          skipped += 1;
+          skippedEmails.push(email);
+          continue;
+        }
+        if (!canSendEmail()) {
+          skipped += 1;
+          skippedEmails.push(email);
+          continue;
+        }
+        const result = await sendExecutionRiskUpdateEmail({ to: row.email, name: row.name });
+        if (result.ok) {
+          sent += 1;
+        } else {
+          failed += 1;
+          failedEmails.push(row.email);
+          app.log.warn({ email: row.email, err: result.error }, "Failed to send execution update email (manual)");
+        }
+      }
+
+      return reply.send({ success: true, sent, failed, skipped, total: normalized.length, failedEmails, skippedEmails });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to send execution update emails" });
     }
   });
 

@@ -20,6 +20,16 @@ function signupSourceFromProvider(provider: Provider): string {
   return "oauth";
 }
 
+function getSessionDisplayName(session: Session): string | null {
+  const metadata = session.user.user_metadata ?? {};
+  const candidate =
+    metadata.full_name ||
+    metadata.name ||
+    metadata.user_name ||
+    metadata.preferred_username;
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +57,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({
             authUserId: session.user.id,
             signupSource: signupSourceFromProvider(provider),
+            email: session.user.email ?? null,
+            name: getSessionDisplayName(session),
           }),
         }).catch(() => {});
       }
