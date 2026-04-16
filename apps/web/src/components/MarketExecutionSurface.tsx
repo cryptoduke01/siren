@@ -578,22 +578,46 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
         ) : (
           <motion.div
             key="surface-empty"
-            className="mb-4 rounded-xl border px-4 py-3"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+            className="mb-4 overflow-hidden rounded-[22px] border"
+            style={{
+              borderColor: "color-mix(in srgb, var(--accent) 22%, var(--border-subtle))",
+              background:
+                "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+            }}
             initial={reduceMotion ? false : { opacity: 0, scale: 0.98 }}
             animate={reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
             exit={reduceMotion ? { opacity: 1 } : { opacity: 0, scale: 0.99 }}
             transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
-            <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Select a prediction market
-            </p>
-            <p className="mt-0.5 font-body text-xs" style={{ color: "var(--text-3)" }}>
-              Pick an event from the left feed to see execution context and trade.
-            </p>
-            <p className="mt-2 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-              Tip: use search or filter chips in the feed to jump to fast-moving markets.
-            </p>
+            <div className="px-5 py-5">
+              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                Execution surface
+              </p>
+              <p className="mt-2 font-heading text-[1.05rem] font-semibold tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+                Select a market to trade
+              </p>
+              <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                Choose an event from the market rail to load outcomes, routing context, and portfolio-aware actions.
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                  <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                    Tip
+                  </p>
+                  <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                    Use the <span className="font-semibold" style={{ color: "var(--text-1)" }}>Live movers</span> strip to jump straight to what’s moving.
+                  </p>
+                </div>
+                <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                  <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                    Shortcut
+                  </p>
+                  <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                    Search by <span className="font-semibold" style={{ color: "var(--text-1)" }}>question</span> or <span className="font-semibold" style={{ color: "var(--text-1)" }}>ticker</span> to route faster.
+                  </p>
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

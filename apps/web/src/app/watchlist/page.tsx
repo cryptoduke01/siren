@@ -13,7 +13,7 @@ import { toSelectedMarket } from "@/lib/marketSelection";
 
 export default function WatchlistPage() {
   const router = useRouter();
-  const { starredMarketTickers, starredTokenMints } = useWatchlistStore();
+  const { starredMarketTickers } = useWatchlistStore();
   const { data: markets = [] } = useMarkets();
   const { setSelectedMarket } = useSirenStore();
 
@@ -29,16 +29,6 @@ export default function WatchlistPage() {
         <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
           Starred prediction markets. Click to open execution context on the terminal.
         </p>
-
-        {starredTokenMints.length > 0 && (
-          <div
-            className="rounded-[8px] border p-4 mb-6 font-body text-sm"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
-          >
-            Solana token stars from a previous version are no longer used. Siren is prediction-market execution only — star
-            markets from the terminal feed.
-          </div>
-        )}
 
         {starredMarkets.length === 0 ? (
           <div

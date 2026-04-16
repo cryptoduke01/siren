@@ -1211,7 +1211,7 @@ export default function PortfolioPage() {
             </div>
           </div>
 
-          {/* Right column: tokens + username + identity */}
+          {/* Right column: balances + username + identity */}
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <TokenRow symbol="SOL" balance={sol} usdValue={solUsd} />
@@ -1338,7 +1338,7 @@ export default function PortfolioPage() {
               Recent activity
             </h2>
             <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Your recent swaps, token buys, and market trades. Saved on this device only.
+              Your recent swaps and market trades. Saved on this device only.
             </p>
             {localActivity.length === 0 ? (
               <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>

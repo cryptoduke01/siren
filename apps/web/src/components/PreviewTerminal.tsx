@@ -9,10 +9,10 @@ const MOCK_MARKETS = [
   { ticker: "SOL5", title: "Solana above $500", probability: 22, velocity: 3.4 },
 ];
 
-const MOCK_TOKENS = [
-  { symbol: "JPOW", name: "JPOW", price: 0.0023, vol: "12.4K" },
-  { symbol: "TRUMP", name: "Trump Coin", price: 0.0018, vol: "8.2K" },
-  { symbol: "BONK", name: "Bonk Inu", price: 0.00004, vol: "1.2M" },
+const MOCK_OUTCOMES = [
+  { symbol: "YES", name: "Fed Cuts", price: 0.72, vol: "24m vol" },
+  { symbol: "NO", name: "Trump Wins", price: 0.42, vol: "11m vol" },
+  { symbol: "YES", name: "SOL > $500", price: 0.22, vol: "6m vol" },
 ];
 
 export function PreviewTerminal() {
@@ -57,31 +57,31 @@ export function PreviewTerminal() {
       </aside>
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden p-2" style={{ background: "var(--bg-void)" }}>
         <h2 className="font-heading font-semibold text-[11px] flex-shrink-0 mb-1.5" style={{ color: "var(--text-1)" }}>
-          Tokens
+          Outcomes
         </h2>
         <input
           type="text"
-          placeholder="Search tokens..."
+          placeholder="Search outcomes..."
           readOnly
           className="w-full font-body text-[10px] h-6 px-2 rounded-[4px] border flex-shrink-0 mb-2"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
         />
         <div className="grid grid-cols-3 gap-1.5 min-h-0 overflow-auto flex-1 content-start">
-          {MOCK_TOKENS.map((t) => (
+          {MOCK_OUTCOMES.map((t) => (
             <div
-              key={t.symbol}
+              key={`${t.symbol}-${t.name}`}
               className="rounded-[4px] p-1.5 border flex-shrink-0"
               style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
             >
               <p className="font-heading font-bold text-[10px] truncate mb-0.5" style={{ color: "var(--text-1)" }}>
-                ${t.symbol}
+                {t.symbol}
               </p>
               <p className="font-body text-[9px] truncate mb-0.5" style={{ color: "var(--text-2)" }}>
                 {t.name}
               </p>
               <div className="flex justify-between items-center">
                 <span className="font-mono text-[9px] tabular-nums" style={{ color: "var(--text-1)" }}>
-                  ${t.price.toFixed(4)}
+                  {(t.price * 100).toFixed(0)}%
                 </span>
                 <span className="font-mono text-[9px] tabular-nums" style={{ color: "var(--text-3)" }}>
                   {t.vol}

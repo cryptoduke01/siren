@@ -29,7 +29,7 @@ export default function TermsPage() {
 
             <h2 className="font-heading font-semibold text-lg mt-8 mb-2" style={{ color: "var(--text-1)" }}>2. No financial advice</h2>
             <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-              Siren provides software and information for exploring markets and tokens. Nothing on the Service constitutes financial,
+              Siren provides software and information for exploring prediction markets. Nothing on the Service constitutes financial,
               investment, legal, or tax advice. You are solely responsible for your decisions and any transactions you initiate.
             </p>
 

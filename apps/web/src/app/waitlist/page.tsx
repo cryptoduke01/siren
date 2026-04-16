@@ -94,7 +94,7 @@ export default function WaitlistPage() {
               {[
                 "Live Kalshi and Polymarket market data with DFlow-aware execution.",
                 "Risk and portfolio context next to the signal, not buried in tabs.",
-                "Jupiter-powered swaps when you want Solana token exposure next to the signal.",
+                "Outcome-first trade flows designed for speed and lower execution friction.",
               ].map((text) => (
                 <li key={text} className="flex items-start gap-3">
                   <span

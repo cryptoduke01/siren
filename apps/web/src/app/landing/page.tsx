@@ -24,14 +24,14 @@ export default function LandingPage() {
           style={{ color: "var(--text-2)" }}
         >
           Execution and risk intelligence for prediction traders. Live Kalshi and Polymarket signals,
-          Solana execution with clearer routes and outcomes, portfolio context, and optional token surfacing for event-linked narratives.
+          Solana execution with clearer routes and outcomes, and portfolio context in one terminal.
         </p>
         <ul className="font-body text-sm text-left max-w-md mx-auto mb-10 space-y-2" style={{ color: "var(--text-2)" }}>
           <li>• Live Kalshi + Polymarket signal feed</li>
-          <li>• Prediction and token execution with route context</li>
+          <li>• Prediction execution with route context</li>
           <li>• Portfolio and activity in one place</li>
           <li>• Privy social onboarding with embedded wallets</li>
-          <li>• MEV-protected swaps via Jupiter where applicable</li>
+          <li>• DFlow-first execution on supported outcomes</li>
         </ul>
         <div className="flex flex-wrap justify-center gap-4 mb-12">
           <Link

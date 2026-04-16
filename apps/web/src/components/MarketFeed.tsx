@@ -209,6 +209,27 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0" style={{ background: "var(--bg-base)" }}>
       <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2.5 md:px-4 md:pt-4">
+        <div className="flex items-end justify-between gap-3 px-0.5">
+          <div className="min-w-0">
+            <p className="font-heading text-sm font-bold tracking-[-0.02em] leading-none" style={{ color: "var(--text-1)" }}>
+              Markets
+            </p>
+            <p className="mt-1 font-body text-[10px] md:text-[11px]" style={{ color: "var(--text-3)" }}>
+              {filtered.length.toLocaleString()} shown{shownCount < filtered.length ? ` • ${shownCount.toLocaleString()} loaded` : ""} • {signalCount.toLocaleString()} moving
+            </p>
+          </div>
+          {hasRecoveryActions && (
+            <button
+              type="button"
+              onClick={resetDiscovery}
+              className="shrink-0 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors hover:border-[var(--border-active)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-2">
           <div
             className="flex-1 flex items-center gap-2.5 h-10 md:h-11 px-3 md:px-3.5 rounded-2xl border"
@@ -258,9 +279,33 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         </div>
 
         <div className="flex items-center justify-between gap-2 px-0.5">
-          <p className="font-body text-[10px] md:text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Scan markets quickly, tap once, and route execution without context switching.
-          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {source !== "all" && (
+              <span className="inline-flex items-center rounded-full border px-2 py-1 font-body text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                {source}
+              </span>
+            )}
+            {timePreset !== "all" && (
+              <span className="inline-flex items-center rounded-full border px-2 py-1 font-body text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                {timePreset.replaceAll("_", " ")}
+              </span>
+            )}
+            {category !== "all" && (
+              <span className="inline-flex items-center rounded-full border px-2 py-1 font-body text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                {category.replaceAll("_", " ")}
+              </span>
+            )}
+            {sortMode !== "hot" && timePreset !== "popular" && (
+              <span className="inline-flex items-center rounded-full border px-2 py-1 font-body text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}>
+                {sortMode.replaceAll("_", " ")}
+              </span>
+            )}
+            {!hasRecoveryActions && (
+              <p className="font-body text-[10px] md:text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                Search + filters route you to execution faster.
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {kalshiUp != null && (
               <span className="flex items-center gap-1 font-body text-[9px]" style={{ color: "var(--text-3)" }}>
@@ -274,17 +319,20 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                 <img src="/brand/polymarket/icon-white.svg" alt="" className="h-2.5 w-2.5 opacity-75" />
               </span>
             )}
-            {signalCount > 0 && (
-              <span className="font-body text-[9px] tabular-nums font-semibold" style={{ color: "var(--up)" }}>
-                {signalCount} moving
-              </span>
-            )}
           </div>
         </div>
       </div>
 
       {liveSignals.length > 0 && (
         <div className="flex-shrink-0 px-3 pb-2">
+          <div className="flex items-center justify-between px-0.5 pb-1">
+            <p className="font-body text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+              Live movers
+            </p>
+            <p className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>
+              top {Math.min(8, topLiveSignals.length)}
+            </p>
+          </div>
           <div className="flex gap-2 overflow-x-auto scrollbar-hidden pb-1 snap-x snap-mandatory">
             {topLiveSignals.map((sig) => (
                 <button

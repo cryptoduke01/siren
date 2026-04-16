@@ -359,7 +359,7 @@ export function SocialCard({ title, subtitle, eyebrow }: SocialCardProps) {
                   letterSpacing: "-0.03em",
                 }}
               >
-                Match tokens below
+                Route execution below
               </span>
             </div>
 

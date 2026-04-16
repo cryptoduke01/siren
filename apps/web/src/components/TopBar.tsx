@@ -17,6 +17,7 @@ const NAV = [
   { href: "/leaderboard", label: "Ranks", icon: Trophy },
 ];
 const LIVE_SIGNAL_WINDOW_MS = 30 * 60 * 1000;
+const PRODUCT_MODE_LABEL = "Prediction OS";
 
 export function TopBar() {
   const pathname = usePathname();
@@ -47,13 +48,23 @@ export function TopBar() {
           borderBottom: "1px solid var(--border-subtle)",
         }}
       >
-        <Link href="/" onClick={() => hapticLight()} className="flex items-center gap-2 py-2 topbar-logo-wrap">
+        <Link href="/" onClick={() => hapticLight()} className="flex items-center gap-2 py-2 topbar-logo-wrap min-w-0">
           <img
             src="/brand/mark.svg"
             alt="Siren"
             className="h-6 w-auto md:h-8 topbar-logo"
             style={{ display: "block" }}
           />
+          <span
+            className="hidden sm:inline-flex items-center rounded-full border px-2 py-0.5 font-heading text-[9px] font-semibold uppercase tracking-[0.14em]"
+            style={{
+              borderColor: "color-mix(in srgb, var(--accent) 30%, transparent)",
+              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
+              color: "var(--accent)",
+            }}
+          >
+            {PRODUCT_MODE_LABEL}
+          </span>
         </Link>
         <nav className="hidden md:flex items-center gap-6">
           {navItems.map(({ href, label }) => {
@@ -180,7 +191,19 @@ export function TopBar() {
               }}
             >
               <div className="flex items-center justify-between h-12 px-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                <span className="font-heading font-semibold text-sm uppercase" style={{ color: "var(--text-1)" }}>Menu</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-heading font-semibold text-sm uppercase" style={{ color: "var(--text-1)" }}>Menu</span>
+                  <span
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 font-heading text-[9px] font-semibold uppercase tracking-[0.14em]"
+                    style={{
+                      borderColor: "color-mix(in srgb, var(--accent) 30%, transparent)",
+                      background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
+                      color: "var(--accent)",
+                    }}
+                  >
+                    {PRODUCT_MODE_LABEL}
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => { hapticLight(); setMenuOpen(false); }}
