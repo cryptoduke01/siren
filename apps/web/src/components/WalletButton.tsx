@@ -71,7 +71,7 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
         <button
           type="button"
           onClick={() => { hapticLight(); setDropdownOpen((o) => !o); }}
-        className={`font-body text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] flex items-center gap-1.5 ${fullWidth ? "w-full justify-between" : ""}`}
+        className={`flex h-10 items-center gap-1.5 rounded-[14px] px-3 font-body text-xs transition-all duration-[120ms] ease hover:border-[var(--border-active)] ${fullWidth ? "w-full justify-between" : ""}`}
           style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)", color: "var(--text-2)" }}
         >
           <span>{short}</span>
@@ -106,13 +106,13 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          hapticLight();
-          router.push("/onboarding");
-        }}
-        className={`font-body text-xs px-3 py-2 rounded-[6px] transition-all duration-[120ms] ease hover:border-[var(--border-active)] ${fullWidth ? "w-full" : ""}`}
+        <button
+          type="button"
+          onClick={() => {
+            hapticLight();
+            router.push("/onboarding");
+          }}
+        className={`h-10 rounded-[14px] px-3 font-body text-xs transition-all duration-[120ms] ease hover:border-[var(--border-active)] ${fullWidth ? "w-full" : ""}`}
         style={{
           background: "var(--bg-elevated)",
           border: "1px solid var(--border-default)",

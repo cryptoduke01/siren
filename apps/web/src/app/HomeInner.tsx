@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { MarketFeed } from "@/components/MarketFeed";
 import { MarketExecutionSurface } from "@/components/MarketExecutionSurface";
-import { TerminalRightPanel } from "@/components/TerminalRightPanel";
 import { MobileStickyMarket } from "@/components/MobileStickyMarket";
 import { MarketBottomSheet } from "@/components/MarketBottomSheet";
 import { TokensForMarketSheet } from "@/components/TokensForMarketSheet";
@@ -123,7 +122,6 @@ export function HomeInner() {
           <MarketExecutionSurface />
         </div>
       </main>
-      <TerminalRightPanel />
       <TokensForMarketSheet isOpen={tokensSheetOpen} onClose={() => setTokensSheetOpen(false)} />
       <MarketBottomSheet
         isOpen={sheetOpen}

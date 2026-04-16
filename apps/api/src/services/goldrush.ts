@@ -45,7 +45,14 @@ export type GoldRushWalletIntelligence = {
     nativeSolUsd: number;
     totalQuotedUsd: number;
     concentrationPct: number;
+    riskScore: number;
+    riskLabel: "low" | "moderate" | "high";
   };
+  alerts: Array<{
+    level: "info" | "warn" | "high";
+    label: string;
+    summary: string;
+  }>;
   holdings: GoldRushHolding[];
   narrative: {
     reserveRead: string;
@@ -115,6 +122,51 @@ export async function getGoldRushWalletIntelligence(wallet: string): Promise<Gol
     const nativeSolUsd = holdings.filter((holding) => holding.isNative).reduce((sum, holding) => sum + holding.quoteUsd, 0);
     const topHoldingUsd = holdings[0]?.quoteUsd ?? 0;
     const concentrationPct = totalQuotedUsd > 0 ? Number(((topHoldingUsd / totalQuotedUsd) * 100).toFixed(1)) : 0;
+    const alerts: GoldRushWalletIntelligence["alerts"] = [];
+
+    if (stablecoinUsd < 25) {
+      alerts.push({
+        level: "warn",
+        label: "Low stable reserve",
+        summary: "Visible stablecoin balance is light, which limits fast clip testing and reactive execution sizing.",
+      });
+    }
+
+    if (nativeSolUsd < 10) {
+      alerts.push({
+        level: "warn",
+        label: "Thin SOL runway",
+        summary: "Native SOL balance looks light for repeated routing attempts and network fee buffers.",
+      });
+    }
+
+    if (concentrationPct >= 60) {
+      alerts.push({
+        level: "high",
+        label: "Concentrated wallet",
+        summary: "One holding dominates visible wallet value, so headline balance overstates flexible execution capital.",
+      });
+    } else if (concentrationPct >= 35) {
+      alerts.push({
+        level: "info",
+        label: "Moderate concentration",
+        summary: "A single holding still carries a meaningful share of wallet value, so sizing should stay aware of concentration drift.",
+      });
+    }
+
+    const riskScore = Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(
+          (concentrationPct >= 60 ? 40 : concentrationPct >= 35 ? 22 : 8) +
+          (stablecoinUsd < 25 ? 28 : stablecoinUsd < 100 ? 16 : 4) +
+          (nativeSolUsd < 10 ? 22 : nativeSolUsd < 25 ? 10 : 2),
+        ),
+      ),
+    );
+    const riskLabel: GoldRushWalletIntelligence["summary"]["riskLabel"] =
+      riskScore >= 65 ? "high" : riskScore >= 35 ? "moderate" : "low";
 
     const reserveRead =
       stablecoinUsd > 0
@@ -141,7 +193,10 @@ export async function getGoldRushWalletIntelligence(wallet: string): Promise<Gol
         nativeSolUsd: Number(nativeSolUsd.toFixed(2)),
         totalQuotedUsd: Number(totalQuotedUsd.toFixed(2)),
         concentrationPct,
+        riskScore,
+        riskLabel,
       },
+      alerts,
       holdings: holdings.slice(0, 5),
       narrative: {
         reserveRead,

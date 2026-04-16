@@ -45,17 +45,17 @@ export function TopBar() {
   return (
     <>
       <header
-        className="sticky top-0 z-50 h-12 flex items-center justify-between px-3 md:px-4 flex-shrink-0"
+        className="sticky top-0 z-50 flex h-14 items-center justify-between px-4 md:h-16 md:px-5 flex-shrink-0"
         style={{
           background: "var(--bg-base)",
           borderBottom: "1px solid var(--border-subtle)",
         }}
       >
-        <Link href="/" onClick={() => hapticLight()} className="flex items-center py-2 topbar-logo-wrap min-w-0">
+        <Link href="/" onClick={() => hapticLight()} className="flex min-w-0 items-center py-2 topbar-logo-wrap">
           <img
             src="/brand/mark.svg"
             alt="Siren"
-            className="h-6 w-auto md:h-8 topbar-logo"
+            className="h-7 w-auto md:h-8 topbar-logo"
             style={{ display: "block" }}
           />
         </Link>
@@ -101,11 +101,11 @@ export function TopBar() {
             </span>
           </div>
         )}
-        <div className="hidden md:flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2.5">
           <NavbarBalance />
           <div
-            className="flex items-center gap-1 rounded-2xl border p-1.5"
-            style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-elevated) 92%, transparent)" }}
+            className="flex items-center gap-1 rounded-[18px] border p-1"
+            style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--bg-elevated) 94%, transparent)" }}
           >
             {SECONDARY_NAV.map(({ href, label, icon: Icon }) => {
               const isActive = pathname === href;
@@ -114,7 +114,7 @@ export function TopBar() {
                   key={href}
                   href={href}
                   onClick={() => hapticLight()}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl transition-all hover:bg-[var(--bg-hover)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                  className="flex h-10 w-10 items-center justify-center rounded-[14px] transition-all hover:bg-[var(--bg-hover)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                   style={{
                     background: isActive ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
                     color: isActive ? "var(--accent)" : "var(--text-2)",
@@ -129,8 +129,8 @@ export function TopBar() {
           <button
             type="button"
             onClick={() => { hapticLight(); toggleTheme(); }}
-            className="w-8 h-8 rounded-[6px] flex items-center justify-center font-mono text-sm transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
-            style={{ color: "var(--text-2)" }}
+            className="flex h-10 w-10 items-center justify-center rounded-[14px] border font-mono text-sm transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
+            style={{ color: "var(--text-2)", borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

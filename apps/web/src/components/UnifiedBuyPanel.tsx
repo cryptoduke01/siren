@@ -1439,7 +1439,9 @@ export function UnifiedBuyPanel() {
                         <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
                           {selectedMarket.source === "polymarket"
                             ? formatCompactNumber(selectedMarket.liquidity, 1)
-                            : formatCompactNumber(marketActivity?.recentTrades?.length, 0)}
+                            : marketActivity?.tradeCount24h && marketActivity.tradeCount24h > 0
+                              ? formatCompactNumber(marketActivity.tradeCount24h, 0)
+                              : "—"}
                         </p>
                       </div>
                       <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>

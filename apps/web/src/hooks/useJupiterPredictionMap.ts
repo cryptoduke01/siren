@@ -12,6 +12,7 @@ export type JupiterPredictionMap = {
       title: string;
       subtitle: string | null;
       slug: string | null;
+      eventUrl: string | null;
       series: string | null;
       closeTime: string | null;
       imageUrl: string | null;

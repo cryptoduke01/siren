@@ -220,7 +220,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               Markets
             </p>
             <p className="mt-1 font-body text-[10px] md:text-[11px]" style={{ color: "var(--text-3)" }}>
-              {filtered.length.toLocaleString()} shown{shownCount < filtered.length ? ` • ${shownCount.toLocaleString()} loaded` : ""} • {signalCount.toLocaleString()} moving
+              {filtered.length.toLocaleString()} markets tracked{shownCount < filtered.length ? ` • ${shownCount.toLocaleString()} loaded` : ""} • {signalCount.toLocaleString()} moving
             </p>
           </div>
           {hasRecoveryActions && (

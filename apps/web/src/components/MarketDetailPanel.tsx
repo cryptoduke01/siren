@@ -139,7 +139,9 @@ export function MarketDetailPanel() {
                     <div className="rounded-xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                       <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Trades (24h)</p>
                       <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>
-                        {formatCompactNumber(marketActivity?.recentTrades?.length)}
+                        {marketActivity?.tradeCount24h && marketActivity.tradeCount24h > 0
+                          ? formatCompactNumber(marketActivity.tradeCount24h)
+                          : "—"}
                       </p>
                     </div>
                     <div className="rounded-xl border p-3.5" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>

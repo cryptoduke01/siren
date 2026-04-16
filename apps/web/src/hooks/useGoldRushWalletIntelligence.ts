@@ -13,7 +13,14 @@ export type GoldRushWalletIntelligence = {
     nativeSolUsd: number;
     totalQuotedUsd: number;
     concentrationPct: number;
+    riskScore: number;
+    riskLabel: "low" | "moderate" | "high";
   };
+  alerts: Array<{
+    level: "info" | "warn" | "high";
+    label: string;
+    summary: string;
+  }>;
   holdings: Array<{
     symbol: string;
     name: string;

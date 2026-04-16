@@ -308,6 +308,11 @@ function ExecutionIntelligencePanel({ market }: { market: SelectedMarket }) {
   );
 }
 
+function formatTradeCount(value?: number | null): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return "—";
+  return formatCompactNumber(value, 0);
+}
+
 function ExecutionPreviewPanel({
   market,
   walletKey,
@@ -606,9 +611,21 @@ function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
                             {event.title}
                           </p>
                           {event.subtitle && (
-                            <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                          <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
                               {event.subtitle}
                             </p>
+                          )}
+                          {event.eventUrl && (
+                            <a
+                              href={event.eventUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center gap-1 font-body text-[11px] underline decoration-transparent transition-colors hover:decoration-current"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              Open venue
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
                           )}
                         </div>
                         <div className="text-right">
@@ -810,7 +827,7 @@ function PredictionMarketFocusPanel({
               label={market.source === "kalshi" ? "Trades 24h" : "Liquidity"}
               value={
                 market.source === "kalshi"
-                  ? formatCompactNumber(marketActivity?.recentTrades?.length, 0)
+                  ? formatTradeCount(marketActivity?.tradeCount24h)
                   : formatCompactNumber(market.liquidity, 1)
               }
             />

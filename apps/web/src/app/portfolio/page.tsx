@@ -1809,7 +1809,7 @@ export default function PortfolioPage() {
                       { label: "Idle stables", value: `$${fmtUsd(goldRushIntelligence.summary.stablecoinUsd)}`, tone: "var(--accent)" },
                       { label: "Visible wallet", value: `$${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}`, tone: "var(--text-1)" },
                       { label: "Open book", value: `$${fmtUsd(openBookUsd)}`, tone: "var(--text-1)" },
-                      { label: "Concentration", value: `${goldRushIntelligence.summary.concentrationPct.toFixed(1)}%`, tone: "var(--up)" },
+                      { label: "Risk", value: `${goldRushIntelligence.summary.riskScore}/100`, tone: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)" },
                     ].map((item) => (
                       <div
                         key={item.label}
@@ -1840,6 +1840,9 @@ export default function PortfolioPage() {
                       <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                         {goldRushIntelligence.narrative.readiness}
                       </p>
+                      <div className="mt-3 inline-flex items-center rounded-full border px-3 py-1.5 font-sub text-[10px] uppercase tracking-[0.16em]" style={{ borderColor: "var(--border-subtle)", color: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)", background: "var(--bg-surface)" }}>
+                        {goldRushIntelligence.summary.riskLabel} execution risk
+                      </div>
                     </div>
 
                     <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
@@ -1866,6 +1869,30 @@ export default function PortfolioPage() {
                       </div>
                     </div>
                   </div>
+
+                  {goldRushIntelligence.alerts.length > 0 && (
+                    <div className="mt-4 grid gap-2">
+                      {goldRushIntelligence.alerts.map((alert) => (
+                        <div
+                          key={alert.label}
+                          className="rounded-xl border px-4 py-3"
+                          style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
+                              {alert.label}
+                            </p>
+                            <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "var(--yellow)" : "var(--accent)" }}>
+                              {alert.level}
+                            </span>
+                          </div>
+                          <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            {alert.summary}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart2, Users } from "lucide-react";
+import { BarChart2, Layers3 } from "lucide-react";
 import type { MarketWithVelocity } from "@siren/shared";
 import {
   inferMarketCategory,
@@ -12,6 +12,11 @@ import {
 function formatCompact(value?: number): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function formatMetric(value?: number | null): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return "—";
+  return formatCompact(value);
 }
 
 function formatCloseLine(m: MarketWithVelocity): string {
@@ -80,9 +85,13 @@ export function ImmersiveMarketCard({
           ? !!(outcome.yes_mint || outcome.no_mint)
           : !!(outcome.yes_token_id || outcome.no_token_id),
       )
-    : m.source === "kalshi"
+      : m.source === "kalshi"
       ? !!(m.yes_mint || m.no_mint)
       : !!(m.yes_token_id || m.no_token_id);
+  const primaryMetricLabel = "24h volume";
+  const primaryMetricValue = formatMetric(m.volume_24h ?? m.volume);
+  const secondaryMetricLabel = m.source === "polymarket" ? "Liquidity" : "Open interest";
+  const secondaryMetricValue = formatMetric(m.source === "polymarket" ? m.liquidity : m.open_interest);
 
   return (
     <button
@@ -211,15 +220,25 @@ export function ImmersiveMarketCard({
           </div>
         )}
 
-        <div className="flex items-center gap-4 font-body text-[10px]" style={{ color: "var(--text-3)" }}>
-          <span className="inline-flex items-center gap-1 tabular-nums">
-            <BarChart2 className="w-3.5 h-3.5 shrink-0 opacity-80" aria-hidden />
-            ${formatCompact(m.volume ?? m.volume_24h)}
-          </span>
-          <span className="inline-flex items-center gap-1 tabular-nums">
-            <Users className="w-3.5 h-3.5 shrink-0 opacity-80" aria-hidden />
-            {formatCompact(m.liquidity ?? m.open_interest ?? m.volume_24h ?? 0)}
-          </span>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl border px-3 py-2.5" style={{ background: "color-mix(in srgb, var(--bg-surface) 70%, transparent)", borderColor: "var(--border-subtle)" }}>
+            <p className="flex items-center gap-1.5 font-body text-[9px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              <BarChart2 className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              {primaryMetricLabel}
+            </p>
+            <p className="mt-1 font-mono text-sm font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+              {primaryMetricValue === "—" ? "—" : `$${primaryMetricValue}`}
+            </p>
+          </div>
+          <div className="rounded-xl border px-3 py-2.5" style={{ background: "color-mix(in srgb, var(--bg-surface) 70%, transparent)", borderColor: "var(--border-subtle)" }}>
+            <p className="flex items-center gap-1.5 font-body text-[9px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              <Layers3 className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              {secondaryMetricLabel}
+            </p>
+            <p className="mt-1 font-mono text-sm font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+              {secondaryMetricValue}
+            </p>
+          </div>
         </div>
 
         <div

@@ -61,7 +61,7 @@ export function NavbarBalance() {
     <button
       type="button"
       onClick={refreshBalances}
-      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-mono text-xs hover:brightness-110 transition-all"
+      className="hidden h-10 items-center gap-1.5 rounded-[14px] px-3 sm:flex font-mono text-xs hover:brightness-110 transition-all"
       style={{
         background: "var(--bg-elevated)",
         border: "1px solid var(--border-subtle)",

@@ -82,6 +82,7 @@ export type JupiterPredictionComparableEvent = {
   title: string;
   subtitle: string | null;
   slug: string | null;
+  eventUrl: string | null;
   series: string | null;
   closeTime: string | null;
   imageUrl: string | null;
@@ -160,6 +161,11 @@ export async function searchJupiterPredictionEvents({
       title: event.metadata?.title?.trim() || "Untitled event",
       subtitle: event.metadata?.subtitle?.trim() || null,
       slug: event.metadata?.slug?.trim() || null,
+      eventUrl: event.metadata?.slug?.trim()
+        ? provider === "polymarket"
+          ? `https://polymarket.com/event/${event.metadata.slug.trim()}`
+          : `https://kalshi.com/markets/${event.metadata.slug.trim()}`
+        : null,
       series: event.metadata?.series?.trim() || null,
       closeTime: event.metadata?.closeTime?.trim() || null,
       imageUrl: event.metadata?.imageUrl?.trim() || null,
