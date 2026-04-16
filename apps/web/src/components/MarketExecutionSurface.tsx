@@ -15,15 +15,21 @@ import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
 import type { PredictionSignal } from "@siren/shared";
 
 function SignalSourcePill({ source }: { source: PredictionSignal["source"] }) {
+  const isKalshi = source === "kalshi";
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-[0.12em]"
       style={{
-        background: source === "kalshi" ? "#00B2FF" : "#6B3FDB",
-        color: "#FFFFFF",
+        background: isKalshi
+          ? "color-mix(in srgb, var(--kalshi) 18%, var(--bg-surface))"
+          : "color-mix(in srgb, var(--polymarket) 18%, var(--bg-surface))",
+        color: isKalshi ? "var(--kalshi)" : "var(--polymarket)",
+        border: `1px solid ${isKalshi
+          ? "color-mix(in srgb, var(--kalshi) 32%, transparent)"
+          : "color-mix(in srgb, var(--polymarket) 32%, transparent)"}`,
       }}
     >
-      {source === "kalshi" ? "KALSHI" : "POLYMARKET"}
+      {isKalshi ? "KALSHI" : "POLYMARKET"}
     </span>
   );
 }

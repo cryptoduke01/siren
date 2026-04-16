@@ -18,12 +18,12 @@ const STEPS = [
     body: "Browse prediction markets on the left. Click one to see probability and velocity. Filter by Politics, Crypto, Sports, and more.",
   },
   {
-    title: "Token surface",
-    body: "Tokens here match your selected market or trending picks. Trade prediction outcomes or linked tokens from the same flow.",
+    title: "Execution surface",
+    body: "Open a market to trade YES or NO with execution-aware routing. Keep risk and position context in the same flow.",
   },
   {
     title: "Connect wallet",
-    body: "Use Phantom, Solflare, or Torus to connect. Then trade markets (YES/NO) and tokens from the same panel.",
+    body: "Use Phantom, Solflare, or Torus to connect. Then trade markets (YES/NO) and manage open prediction positions.",
   },
 ];
 
