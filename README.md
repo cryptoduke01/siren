@@ -1,6 +1,6 @@
 # Siren
 
-Execution and risk intelligence for prediction markets. Live Kalshi and Polymarket signals, feasibility-aware execution (DFlow, Jupiter, Polymarket), and portfolio context in one terminal on Solana.
+Execution and risk intelligence for prediction markets. Live Kalshi and Polymarket signals, feasibility-aware execution (DFlow, Jupiter where routing requires it, Polymarket on Polygon), and portfolio context in one terminal.
 
 | | |
 |--|--|
@@ -10,12 +10,11 @@ Execution and risk intelligence for prediction markets. Live Kalshi and Polymark
 
 ## What Siren Does
 
-Siren connects prediction market data from Kalshi (via DFlow) and Polymarket with Solana execution and token surfacing (DexScreener, Jupiter). You can:
+Siren connects prediction market data from Kalshi (via DFlow) and Polymarket with Solana-native workflows. You can:
 
 - Browse prediction markets with live probability and velocity
-- Surface tokens matched to market keywords (DexScreener search)
-- Buy YES or NO on markets in-app (DFlow / Polymarket) or on Kalshi where linked
-- Swap tokens via Jupiter
+- Buy YES or NO in-app (DFlow for Kalshi routable markets, Polymarket CLOB when connected on Polygon)
+- Close Kalshi outcome positions from your portfolio (DFlow routing)
 - Filter markets by category (Politics, Crypto, Sports, Business, Entertainment)
 - Use on mobile as a feed with bottom sheet market picker
 
@@ -23,7 +22,7 @@ Siren connects prediction market data from Kalshi (via DFlow) and Polymarket wit
 
 - Frontend: Next.js 15, React 19, TypeScript, Tailwind, Framer Motion, TanStack Query, Zustand, Solana Wallet Adapter (Phantom, Solflare, Torus)
 - Backend: Fastify 5, Prisma, PostgreSQL
-- APIs: DFlow (Kalshi markets + trading), Jupiter (token swaps), DexScreener (token search)
+- APIs: DFlow (Kalshi markets + trading), Jupiter (aggregator when the swap route needs it), Polymarket CLOB
 
 ## Project Structure
 
@@ -54,9 +53,8 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in API keys. See docs/G
 Backend (`apps/api/.env`):
 
 - `DFLOW_API_KEY` – DFlow (markets + trading). Request at pond.dflow.net.
-- `JUPITER_API_KEY` – Jupiter (token swaps). Get at portal.jup.ag.
+- `JUPITER_API_KEY` – Jupiter (swap routing). Get at portal.jup.ag.
 - `DATABASE_URL` – PostgreSQL (optional for MVP)
-- `DEXSCREENER_BASE_URL` – Optional; defaults to api.dexscreener.com
 
 Frontend (`apps/web/.env.local`):
 

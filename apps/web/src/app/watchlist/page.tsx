@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -11,51 +10,14 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { StarButton } from "@/components/StarButton";
 import { hapticLight } from "@/lib/haptics";
 import { toSelectedMarket } from "@/lib/marketSelection";
-import { API_URL } from "@/lib/apiUrl";
-
-async function fetchTokenInfo(
-  mint: string
-): Promise<{
-  mint: string;
-  name: string;
-  symbol: string;
-  imageUrl?: string;
-  priceUsd?: number;
-  liquidityUsd?: number;
-  fdvUsd?: number;
-  holders?: number;
-  bondingCurveStatus?: "bonded" | "bonding" | "unknown";
-  rugcheckScore?: number;
-  safe?: boolean;
-  riskScore?: number;
-  riskLabel?: "low" | "moderate" | "high" | "critical";
-  riskReasons?: string[];
-  riskBlocked?: boolean;
-} | null> {
-  const res = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
-  if (!res.ok) return null;
-  const j = await res.json();
-  return j.data ?? null;
-}
 
 export default function WatchlistPage() {
   const router = useRouter();
   const { starredMarketTickers, starredTokenMints } = useWatchlistStore();
   const { data: markets = [] } = useMarkets();
-  const { setSelectedMarket, setSelectedToken } = useSirenStore();
+  const { setSelectedMarket } = useSirenStore();
 
   const starredMarkets = markets.filter((m) => starredMarketTickers.includes(m.ticker));
-
-  const tokenQueries = useQuery({
-    queryKey: ["watchlist-tokens", starredTokenMints],
-    queryFn: async () => {
-      const results = await Promise.all(starredTokenMints.map((mint) => fetchTokenInfo(mint)));
-      return starredTokenMints.map((mint, i) => ({ mint, info: results[i] ?? null }));
-    },
-    enabled: starredTokenMints.length > 0,
-  });
-
-  const tokenList = tokenQueries.data ?? [];
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
@@ -65,16 +27,26 @@ export default function WatchlistPage() {
           Watchlist
         </h1>
         <p className="font-body text-sm mb-6" style={{ color: "var(--text-2)" }}>
-          Starred markets and tokens. Click to open on the terminal.
+          Starred prediction markets. Click to open execution context on the terminal.
         </p>
 
-        {starredMarkets.length === 0 && starredTokenMints.length === 0 ? (
+        {starredTokenMints.length > 0 && (
+          <div
+            className="rounded-[8px] border p-4 mb-6 font-body text-sm"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+          >
+            Solana token stars from a previous version are no longer used. Siren is prediction-market execution only — star
+            markets from the terminal feed.
+          </div>
+        )}
+
+        {starredMarkets.length === 0 ? (
           <div
             className="rounded-[8px] border p-8 text-center"
             style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
           >
             <p className="font-body" style={{ color: "var(--text-2)" }}>
-              No starred items yet. Star markets and tokens from the Terminal or Trending.
+              No starred markets yet. Open the terminal and star events you track.
             </p>
             <Link
               href="/"
@@ -86,122 +58,37 @@ export default function WatchlistPage() {
             </Link>
           </div>
         ) : (
-          <div className="space-y-8">
-            {starredMarkets.length > 0 && (
-              <section>
-                <h2 className="font-heading font-semibold text-xs uppercase mb-3" style={{ color: "var(--text-3)", letterSpacing: "0.1em" }}>
-                  Markets
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {starredMarkets.map((m) => (
-                    <motion.div
-                      key={m.ticker}
-                      initial={{ opacity: 0, translateY: 6 }}
-                      animate={{ opacity: 1, translateY: 0 }}
-                      className="rounded-[6px] border p-3 cursor-pointer transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative"
-                      style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-                      onClick={() => {
-                        hapticLight();
-                        setSelectedMarket(toSelectedMarket(m));
-                        router.push("/");
-                      }}
-                    >
-                      <div className="absolute top-2 right-2">
-                        <StarButton type="market" id={m.ticker} />
-                      </div>
-                      <p className="font-heading font-semibold text-sm line-clamp-2 pr-8" style={{ color: "var(--text-1)" }}>
-                        {m.title}
-                      </p>
-                      <p className="font-mono text-xs mt-1" style={{ color: "var(--accent)" }}>
-                        {m.probability.toFixed(0)}% YES
-                      </p>
-                      <Link
-                        href={`/market/${m.ticker}`}
-                        className="font-body text-[11px] mt-1 block"
-                        style={{ color: "var(--text-3)" }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Share
-                      </Link>
-                    </motion.div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {starredTokenMints.length > 0 && (
-              <section>
-                <h2 className="font-heading font-semibold text-xs uppercase mb-3" style={{ color: "var(--text-3)", letterSpacing: "0.1em" }}>
-                  Tokens
-                </h2>
-                <div className="token-grid">
-                  {tokenList.map(({ mint, info }, i) => (
-                    <motion.div
-                      key={mint}
-                      initial={{ opacity: 0, translateY: 6 }}
-                      animate={{ opacity: 1, translateY: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className="rounded-[10px] p-3 cursor-pointer transition-all duration-[100ms] ease hover:bg-[var(--bg-elevated)] relative border"
-                      style={{
-                        background: "var(--bg-surface)",
-                        borderColor: "var(--border-subtle)",
-                      }}
-                      onClick={() => {
-                        hapticLight();
-                        setSelectedToken({
-                          mint,
-                          name: info?.name ?? "Unknown",
-                          symbol: info?.symbol ?? "???",
-                          price: info?.priceUsd,
-                          volume24h: undefined,
-                          liquidityUsd: info?.liquidityUsd,
-                          fdvUsd: info?.fdvUsd,
-                          holders: info?.holders,
-                          bondingCurveStatus: info?.bondingCurveStatus,
-                          rugcheckScore: info?.rugcheckScore,
-                          safe: info?.safe,
-                          ctMentions: undefined,
-                          riskScore: info?.riskScore,
-                          riskLabel: info?.riskLabel,
-                          riskReasons: info?.riskReasons,
-                          riskBlocked: info?.riskBlocked,
-                        });
-                        router.push("/");
-                      }}
-                    >
-                      <div className="absolute top-2 right-2">
-                        <StarButton type="token" id={mint} />
-                      </div>
-                      <div className="flex items-center gap-2 mb-2 pr-6">
-                        {info?.imageUrl && (
-                          <img src={info.imageUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
-                        )}
-                        <p className="font-heading font-bold text-sm truncate" style={{ color: "var(--text-1)" }}>
-                          {info?.symbol ?? mint.slice(0, 8) + "…"}
-                        </p>
-                      </div>
-                      {(info?.riskScore ?? 0) >= 60 && (
-                        <p className="font-body text-[10px] mb-2" style={{ color: "var(--down)" }}>
-                          Risk trade analysed
-                        </p>
-                      )}
-                      <p className="font-body text-[11px] truncate" style={{ color: "var(--text-2)" }}>
-                        {info?.name ?? mint}
-                      </p>
-                      <Link
-                        href={`/token/${mint}`}
-                        className="font-body text-[11px] mt-1 block"
-                        style={{ color: "var(--text-3)" }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Share
-                      </Link>
-                    </motion.div>
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
+          <section>
+            <h2 className="font-heading font-semibold text-xs uppercase mb-3" style={{ color: "var(--text-3)", letterSpacing: "0.1em" }}>
+              Markets
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {starredMarkets.map((m) => (
+                <motion.div
+                  key={m.ticker}
+                  initial={{ opacity: 0, translateY: 6 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  className="rounded-[6px] border p-3 cursor-pointer transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative"
+                  style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                  onClick={() => {
+                    hapticLight();
+                    setSelectedMarket(toSelectedMarket(m));
+                    router.push("/");
+                  }}
+                >
+                  <div className="absolute top-2 right-2">
+                    <StarButton type="market" id={m.ticker} />
+                  </div>
+                  <p className="font-heading font-semibold text-sm line-clamp-2 pr-8" style={{ color: "var(--text-1)" }}>
+                    {m.title}
+                  </p>
+                  <p className="font-mono text-xs mt-1" style={{ color: "var(--accent)" }}>
+                    {m.probability.toFixed(0)}% YES
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          </section>
         )}
       </main>
     </div>

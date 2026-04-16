@@ -6,12 +6,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from "recharts";
-import { Copy, Check, Loader2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ExternalLink } from "lucide-react";
 import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
-import type { TradePnLSharePayload } from "@/store/useTradePnLShareStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { hapticLight } from "@/lib/haptics";
 import {
@@ -189,14 +187,6 @@ async function waitForDflowSettlement(signature: string, lastValidBlockHeight?: 
   return lastStatus;
 }
 
-async function getMintDecimals(conn: any, mint: string): Promise<number> {
-  const info = await conn.getParsedAccountInfo(new PublicKey(mint));
-  const parsed = info.value ? (info.value.data as any)?.parsed : null;
-  const decimals = parsed?.info?.decimals;
-  if (typeof decimals !== "number") throw new Error("Unable to fetch mint decimals");
-  return decimals;
-}
-
 function parseUnitsToBigInt(amountStr: string, decimals: number): bigint {
   const raw = amountStr.trim();
   if (!raw) return BigInt(0);
@@ -213,144 +203,6 @@ function parseUnitsToBigInt(amountStr: string, decimals: number): bigint {
   const scale = BigInt(10) ** BigInt(decimals);
   const baseUnits = whole * scale + frac;
   return negative ? -baseUnits : baseUnits;
-}
-
-const MOCK_CHART_DATA = [
-  { t: "0h", v: 0.0003 },
-  { t: "4h", v: 0.00035 },
-  { t: "8h", v: 0.00032 },
-  { t: "12h", v: 0.00038 },
-  { t: "16h", v: 0.0004 },
-  { t: "20h", v: 0.00042 },
-  { t: "24h", v: 0.00042 },
-];
-
-/** DexScreener-based signal: volume tier + keyword match. */
-function TokenSignalSection({
-  volume24h,
-  matchedMarketTitle,
-}: {
-  volume24h?: number;
-  matchedMarketTitle?: string;
-}) {
-  const vol = volume24h ?? 0;
-  const tier = vol >= 10_000 ? "High" : vol >= 1_000 ? "Medium" : vol > 0 ? "Low" : null;
-  return (
-    <div
-      className="rounded-xl border mt-3 px-4 py-3"
-      style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}
-    >
-      <p className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider mb-2">Signal (DexScreener)</p>
-      <div className="flex flex-wrap gap-2">
-        {tier && (
-          <span
-            className="inline-flex items-center px-2.5 py-1 rounded-md font-body text-[11px]"
-            style={{
-              background: tier === "High" ? "color-mix(in srgb, var(--up) 14%, var(--bg-surface))" : "var(--bg-surface)",
-              color: tier === "High" ? "var(--up)" : "var(--text-2)",
-              border: `1px solid ${tier === "High" ? "color-mix(in srgb, var(--up) 30%, transparent)" : "var(--border-subtle)"}`,
-            }}
-          >
-            Vol {tier}
-          </span>
-        )}
-        {matchedMarketTitle && (
-          <span
-            className="inline-flex items-center px-2.5 py-1 rounded-md font-body text-[11px] truncate max-w-[180px]"
-            style={{
-              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
-              color: "var(--accent)",
-              border: "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
-            }}
-            title={matchedMarketTitle}
-          >
-            {matchedMarketTitle.slice(0, 28)}{matchedMarketTitle.length > 28 ? "…" : ""}
-          </span>
-        )}
-        {!tier && !matchedMarketTitle && (
-          <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            No volume or market match data
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** X/Twitter mentions (requires TWITTER_BEARER_TOKEN on API). */
-function TokenTweetsSection({ mint }: { mint: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const { data: tweets = [], isLoading, isError, error } = useQuery({
-    queryKey: ["token-tweets", mint],
-    queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/token-tweets?mint=${encodeURIComponent(mint)}`, { credentials: "omit" });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? "Failed to fetch");
-      return j.data ?? [];
-    },
-    enabled: expanded && !!mint && mint.length >= 32,
-    staleTime: 60_000,
-    retry: false,
-  });
-  return (
-    <div className="rounded-xl border mt-3" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left"
-      >
-        <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>CT mentions (X)</span>
-        {expanded ? <ChevronUp className="w-4 h-4" style={{ color: "var(--text-3)" }} /> : <ChevronDown className="w-4 h-4" style={{ color: "var(--text-3)" }} />}
-      </button>
-      {expanded && (
-        <div className="px-4 pb-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-          {isLoading ? (
-            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>Loading…</p>
-          ) : isError ? (
-            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>
-              {String(error).includes("not configured") ? "Set TWITTER_BEARER_TOKEN in API to enable X search." : "Unable to load."}
-            </p>
-          ) : tweets.length === 0 ? (
-            <p className="font-body text-xs py-4" style={{ color: "var(--text-3)" }}>No recent mentions.</p>
-          ) : (
-            <ul className="space-y-3 max-h-40 overflow-y-auto">
-              {tweets.map((t: { id: string; text: string; created_at?: string }) => (
-                <li key={t.id} className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                  <p className="line-clamp-3">{t.text}</p>
-                  {t.created_at && (
-                    <a href={`https://x.com/i/status/${t.id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] mt-1 inline-block" style={{ color: "var(--accent)" }}>
-                      View on X
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CopyCAButton({ mint }: { mint: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(mint);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  const isValid = mint && mint.length >= 32 && !mint.startsWith("mock");
-  if (!isValid) return null;
-  return (
-    <button
-      onClick={handleCopy}
-      className="flex items-center gap-2 text-xs font-body text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors duration-100"
-    >
-      {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent)]" /> : <Copy className="w-3.5 h-3.5" />}
-      {copied ? "Copied!" : "Copy CA"}
-    </button>
-  );
 }
 
 export function UnifiedBuyPanel() {
@@ -513,19 +365,13 @@ export function UnifiedBuyPanel() {
   const marketNetIfCorrectUsd =
     marketMaxPayoutUsd != null && tradeNotionalUsd != null ? marketMaxPayoutUsd - tradeNotionalUsd : null;
   const marketBreakEvenPct = selectedMarketPriceUsd != null ? selectedMarketPriceUsd * 100 : null;
-  const tokenBuyApproxReceive =
-    !sellMode && !isPredictionToken && tradeNotionalUsd != null && selectedTokenPriceUsd != null && selectedTokenPriceUsd > 0
-      ? tradeNotionalUsd / selectedTokenPriceUsd
-      : null;
-  const tokenBuyMinReceive =
-    tokenBuyApproxReceive != null ? tokenBuyApproxReceive * (1 - slippageBps / 10_000) : null;
   const tokenSellApproxUsd =
     sellMode && parsedSellTokenAmount != null && effectiveSellPriceUsd != null
       ? parsedSellTokenAmount * effectiveSellPriceUsd
       : null;
   const tokenSellMinReceiveUsd =
     tokenSellApproxUsd != null ? tokenSellApproxUsd * (1 - slippageBps / 10_000) : null;
-  const tokenRouteLabel = isPredictionToken ? "DFlow" : "Jupiter";
+  const tokenRouteLabel = "DFlow";
   const verificationRequired = isWalletVerificationError(error);
   const proofVerified = !!dflowProofStatus?.verified;
 
@@ -547,107 +393,41 @@ export function UnifiedBuyPanel() {
   }, [publicKey?.toBase58(), evmAddress]);
 
   useEffect(() => {
-    let cancelled = false;
-    async function run() {
-      if (!selectedToken) return;
-      if (selectedToken.assetType === "prediction") {
-        const ok =
-          (typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) && selectedToken.price > 0) ||
-          (selectedToken.marketProbability != null && selectedToken.marketProbability > 0);
-        setTokenPriceFetchState(ok ? "ready" : "error");
-        setTokenPriceFetchReason(ok ? null : "Add a mark price from your position.");
-        return;
-      }
-      // Fetch price/name on-demand if we don't have a usable USD price yet.
-      const needsPrice = selectedToken.price == null || !Number.isFinite(selectedToken.price);
-      const needsNameOrSymbol =
-        !selectedToken.name || selectedToken.name === "Unknown" || selectedToken.name === "-" || !selectedToken.symbol || selectedToken.symbol === "-" || selectedToken.symbol === "—";
-      if (!needsPrice && !needsNameOrSymbol) return;
-      setTokenPriceFetchState("loading");
-      setTokenPriceFetchReason(null);
-      try {
-        if (process.env.NODE_ENV !== "production") {
-          console.debug("[UnifiedBuyPanel] fetching token info", {
-            mint: selectedToken.mint,
-            sellMode,
-            openForSell,
-          });
-        }
-        const res = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
-        const j = await res.json();
-        if (!res.ok || !j?.data) {
-          throw new Error(j?.error || "Token info unavailable");
-        }
-        const d = j.data as {
-          name?: string;
-          symbol?: string;
-          priceUsd?: number;
-          volume24h?: number;
-          liquidityUsd?: number;
-          fdvUsd?: number;
-          holders?: number;
-          bondingCurveStatus?: "bonded" | "bonding" | "unknown";
-          rugcheckScore?: number;
-          safe?: boolean;
-          riskScore?: number;
-          riskLabel?: "low" | "moderate" | "high" | "critical";
-          riskReasons?: string[];
-          riskBlocked?: boolean;
-        };
-        const nextName = d.name ?? selectedToken.name;
-        const nextSymbolRaw = d.symbol ?? selectedToken.symbol;
-        const nextSymbol =
-          nextSymbolRaw && nextSymbolRaw !== "-" && nextSymbolRaw !== "—" ? nextSymbolRaw : (nextName && nextName !== "Unknown" ? nextName : selectedToken.symbol);
-        const nextPrice = typeof d.priceUsd === "number" && Number.isFinite(d.priceUsd) ? d.priceUsd : undefined;
+    if (!selectedToken || selectedToken.assetType !== "prediction") return;
+    const ok =
+      (typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) && selectedToken.price > 0) ||
+      (selectedToken.marketProbability != null && selectedToken.marketProbability > 0);
+    setTokenPriceFetchState(ok ? "ready" : "error");
+    setTokenPriceFetchReason(ok ? null : "Add a mark price from your position.");
+  }, [selectedToken?.mint, selectedToken?.price, selectedToken?.marketProbability, selectedToken?.assetType]);
 
-        if (cancelled) return;
-        setSelectedToken(
-          {
-            ...selectedToken,
-            name: nextName,
-            symbol: nextSymbol,
-            price: nextPrice,
-            volume24h: d.volume24h ?? selectedToken.volume24h,
-            liquidityUsd: d.liquidityUsd ?? selectedToken.liquidityUsd,
-            fdvUsd: d.fdvUsd ?? selectedToken.fdvUsd,
-            holders: d.holders ?? selectedToken.holders,
-            bondingCurveStatus: d.bondingCurveStatus ?? selectedToken.bondingCurveStatus,
-            rugcheckScore: d.rugcheckScore ?? selectedToken.rugcheckScore,
-            safe: d.safe ?? selectedToken.safe,
-            riskScore: d.riskScore ?? selectedToken.riskScore,
-            riskLabel: d.riskLabel ?? selectedToken.riskLabel,
-            riskReasons: d.riskReasons ?? selectedToken.riskReasons,
-            riskBlocked: d.riskBlocked ?? selectedToken.riskBlocked,
-          },
-          { openForSell: sellMode || openForSell }
-        );
-        setTokenPriceFetchState(nextPrice != null ? "ready" : "error");
-        setTokenPriceFetchReason(nextPrice != null ? null : "No reliable USD quote for this mint yet.");
-      } catch (e) {
-        if (cancelled) return;
-        setTokenPriceFetchState("error");
-        setTokenPriceFetchReason(e instanceof Error ? e.message : "Unable to load token price.");
-      }
+  useEffect(() => {
+    if (
+      buyPanelOpen &&
+      buyPanelMode === "token" &&
+      selectedToken &&
+      selectedToken.assetType !== "prediction"
+    ) {
+      setBuyPanelOpen(false);
+      setSelectedToken(null);
     }
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedToken?.mint, selectedToken?.price, selectedToken?.name, selectedToken?.symbol, sellMode, openForSell]);
+  }, [buyPanelOpen, buyPanelMode, selectedToken, setBuyPanelOpen, setSelectedToken]);
 
   if (!buyPanelOpen) return null;
   if (buyPanelOpen && buyPanelMode === "market" && !selectedMarket) return null;
-  if (buyPanelOpen && buyPanelMode === "token" && !selectedToken) return null;
+  if (
+    buyPanelOpen &&
+    buyPanelMode === "token" &&
+    (!selectedToken || selectedToken.assetType !== "prediction")
+  ) {
+    return null;
+  }
 
   const onClose = () => {
     setBuyPanelOpen(false);
     setError(null);
     setSuccess(null);
   };
-  const buyBlocked = !!selectedToken?.riskBlocked && !sellMode;
-  const riskScore = selectedToken?.riskScore ?? 0;
-  const riskReasons = selectedToken?.riskReasons ?? [];
-  const riskLabel = selectedToken?.riskLabel ?? "low";
 
   const recordLocalTrade = ({
     mint,
@@ -764,11 +544,8 @@ export function UnifiedBuyPanel() {
       setError("Connect your wallet to execute trades.");
       return;
     }
-    if (!sellMode && selectedToken.riskBlocked) {
-      const reason = riskReasons[0] ?? "This token looks too risky to trade.";
-      const msg = `Risk trade analysed. ${reason}.`;
-      setError(msg);
-      showResultModal({ type: "error", title: "Trade blocked", message: msg });
+    if (!isPredictionToken) {
+      setError("Only prediction positions can be managed from this panel.");
       return;
     }
     setError(null);
@@ -777,56 +554,34 @@ export function UnifiedBuyPanel() {
     setLoading(true);
     const isSell = !!sellMode;
     try {
+      if (!isSell) {
+        setError("Add size from the market trade panel.");
+        setLoading(false);
+        return;
+      }
+
       let inputMint: string;
       let outputMint: string;
       let amount: string;
-      let sellDecimals = 6;
+      const sellDecimals = 6;
       let partialSellFilled = false;
 
       let amountNum: number;
 
-      if (isSell) {
-        const amountStr = sellAmount?.trim() || "0";
-        amountNum = parseFloat(amountStr);
-        if (amountNum <= 0 || !Number.isFinite(amountNum)) {
-          setError("Enter a valid token amount to sell.");
-          setLoading(false);
-          return;
-        }
-        // DFlow Kalshi outcome tokens use 6 decimals; parsed mint fetch can miss Token-2022 edge cases.
-        sellDecimals = isPredictionToken ? 6 : await getMintDecimals(connection, selectedToken.mint);
-        amount = parseUnitsToBigInt(amountStr, sellDecimals).toString();
-        inputMint = selectedToken.mint;
-        outputMint = SOLANA_USDC_MINT;
-      } else {
-        const amountStr = solAmount?.trim() || "";
-        amountNum = parseFloat(amountStr);
-        if (!amountStr || amountNum <= 0 || !Number.isFinite(amountNum)) {
-          setError("Enter a valid USDC amount (e.g. 10.00).");
-          setLoading(false);
-          return;
-        }
-        amount = parseUnitsToBigInt(amountStr, 6).toString();
-        inputMint = SOLANA_USDC_MINT;
-        outputMint = selectedToken.mint;
-        if (solanaUsdcBalance < amountNum) {
-          setError(`Not enough Solana USDC. You have ${formatTokenAmount(solanaUsdcBalance, 2)} USDC ready to trade.`);
-          setLoading(false);
-          return;
-        }
+      const amountStr = sellAmount?.trim() || "0";
+      amountNum = parseFloat(amountStr);
+      if (amountNum <= 0 || !Number.isFinite(amountNum)) {
+        setError("Enter a valid amount to close.");
+        setLoading(false);
+        return;
       }
+      amount = parseUnitsToBigInt(amountStr, sellDecimals).toString();
+      inputMint = selectedToken.mint;
+      outputMint = SOLANA_USDC_MINT;
 
       const tokenPriceUsd = typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
       const tokenNameToLog = tokenDisplayName || selectedToken.name;
       const tokenSymbolToLog = tokenDisplaySymbol || selectedToken.symbol;
-
-      // For the Trade PnL card (buy flows)
-      let tokenAmountForPnL: number | null = null;
-      let boughtUsdForPnL: number | null = null;
-      if (!isSell && tokenPriceUsd != null && tokenPriceUsd > 0 && Number.isFinite(amountNum)) {
-        boughtUsdForPnL = amountNum;
-        tokenAmountForPnL = amountNum / tokenPriceUsd;
-      }
 
       const requestSwapOrder = async (amountAtomic: string): Promise<Record<string, unknown>> => {
         const res = await fetch(`${API_URL}/api/swap/order`, {
@@ -902,26 +657,16 @@ export function UnifiedBuyPanel() {
       // Track per-wallet volume and trades for Siren (local, in SOL terms)
       try {
         let volumeSol: number | null = null;
-        let tokenAmountApprox: number | null = null;
-
-        if (isSell) {
-          if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
-            tokenAmountApprox = amountNum;
-            const approxSolPerToken = tokenPriceUsd / solPriceUsd;
-            volumeSol = amountNum * approxSolPerToken;
-          }
-        } else {
-          volumeSol = solPriceUsd > 0 ? amountNum / solPriceUsd : null;
-          if (tokenPriceUsd != null && tokenPriceUsd > 0) {
-            tokenAmountApprox = amountNum / tokenPriceUsd;
-          }
+        if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
+          const approxSolPerToken = tokenPriceUsd / solPriceUsd;
+          volumeSol = amountNum * approxSolPerToken;
         }
 
         recordLocalTrade({
           mint: selectedToken.mint,
-          side: isSell ? "sell" : "buy",
+          side: "sell",
           volumeSol,
-          tokenAmount: isSell ? amountNum : tokenAmountApprox,
+          tokenAmount: amountNum,
           priceUsd: tokenPriceUsd,
           tokenName: tokenNameToLog,
           tokenSymbol: tokenSymbolToLog,
@@ -931,46 +676,13 @@ export function UnifiedBuyPanel() {
         // ignore volume tracking errors
       }
 
-      let sharePnL: TradePnLSharePayload | undefined;
-      if (!isSell && tokenAmountForPnL != null && boughtUsdForPnL != null && tokenAmountForPnL > 0 && boughtUsdForPnL > 0) {
-        try {
-          const infoRes = await fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(selectedToken.mint)}`, { credentials: "omit" });
-          const j = await infoRes.json();
-          const currentPriceUsd = typeof j?.data?.priceUsd === "number" && Number.isFinite(j.data.priceUsd) ? j.data.priceUsd : null;
-
-          const currentValueUsd = currentPriceUsd != null ? tokenAmountForPnL * currentPriceUsd : boughtUsdForPnL;
-          const profitUsdCard = currentValueUsd - boughtUsdForPnL;
-          const percentCard = boughtUsdForPnL > 0 ? (profitUsdCard / boughtUsdForPnL) * 100 : 0;
-
-          const kalshiTitle =
-            buyPanelMode === "market" && selectedMarket?.title ? selectedMarket.title : selectedMarket?.title ?? "Siren trade";
-
-          sharePnL = {
-            token: {
-              name: tokenDisplayName || selectedToken.name,
-              symbol: tokenDisplaySymbol || selectedToken.symbol,
-            },
-            profitUsd: profitUsdCard,
-            percent: percentCard,
-            kalshiMarket: kalshiTitle,
-            wallet: publicKey.toBase58(),
-            displayName: cardDisplayName,
-            executedAt: Date.now(),
-            stakeUsd: boughtUsdForPnL,
-            valueUsd: currentValueUsd,
-          };
-        } catch {
-          sharePnL = undefined;
-        }
-      }
-
       setSuccess(null);
       if (isSell) setSellAmount("");
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
       setBuyPanelOpen(false);
       const realizedSummary = (() => {
-        if (!isSell || !isPredictionToken || !selectedToken.mint) return null;
+        if (!isPredictionToken || !selectedToken.mint) return null;
         const entry = getPositionEntry(selectedToken.mint);
         if (!entry || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
         const soldValueUsd = amountNum * tokenPriceUsd;
@@ -983,18 +695,12 @@ export function UnifiedBuyPanel() {
       })();
       showResultModal({
         type: "success",
-        title: data.executionMode === "async" ? "Trade submitted" : "Swap complete",
-        message: isSell
-          ? `${partialSellFilled ? "Partial fill executed. " : ""}${realizedSummary ??
-            `Sold ${tokenDisplayName || selectedToken.name} (${amountNum.toLocaleString(undefined, { maximumFractionDigits: 6 })} tokens).`
-            }`
-          : data.executionMode === "async"
-            ? asyncStatus?.status === "closed"
-              ? "Trade confirmed and settled."
-              : "Transaction confirmed. Settlement is still being finalized by DFlow."
-            : "Swap successful.",
+        title: data.executionMode === "async" ? "Trade submitted" : "Position closed",
+        message: `${partialSellFilled ? "Partial fill executed. " : ""}${
+          realizedSummary ??
+          `Sold ${tokenDisplayName || selectedToken.name} (${amountNum.toLocaleString(undefined, { maximumFractionDigits: 6 })} contracts).`
+        }`,
         txSignature: sig,
-        sharePnL,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
@@ -1725,39 +1431,39 @@ export function UnifiedBuyPanel() {
                     </p>
                   </div>
                 )}
-                {buyPanelMode === "token" && selectedToken && (
+                               {buyPanelMode === "token" && selectedToken && (
                   <>
-                  <div className="rounded-xl border p-4 md:p-5" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
-                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">{isPredictionToken ? "Prediction position" : "Solana Token"}</p>
-                    <div className="flex gap-2 mb-2">
-                      {!isPredictionToken && (
+                    <div
+                      className="rounded-xl border p-4 md:p-5"
+                      style={{
+                        background: "var(--bg-elevated)",
+                        borderColor: "var(--border-subtle)",
+                        boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)",
+                      }}
+                    >
+                      <p className="text-[var(--text-secondary)] text-xs uppercase mb-1">Prediction position</p>
+                      <div className="flex gap-2 mb-2">
                         <button
                           type="button"
-                          onClick={() => setSellMode(false)}
-                          className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${!sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-                          style={!sellMode ? { background: "var(--accent)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                          onClick={() => setSellMode(true)}
+                          className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                          style={
+                            sellMode
+                              ? { background: "var(--accent)" }
+                              : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }
+                          }
                         >
-                          Buy
+                          Close
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setSellMode(true)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-                        style={sellMode ? { background: "var(--accent)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
-                      >
-                        {isPredictionToken ? "Close" : "Sell"}
-                      </button>
-                    </div>
-                    <p className="font-heading font-bold text-[var(--text-primary)]">{tokenDisplayName}</p>
-                    <p className="font-body text-[var(--accent-primary)] text-sm mt-1 tabular-nums">
-                      {tokenPriceFetchState === "loading"
-                        ? "Fetching price..."
-                        : selectedToken.price != null
-                          ? `${isPredictionToken ? "Mark" : "~"} ${formatUsd(selectedToken.price, isPredictionToken ? 3 : 4)}`
-                          : `Price unavailable${tokenPriceFetchReason ? `: ${tokenPriceFetchReason}` : ""}`}
-                    </p>
-                    {isPredictionToken ? (
+                      </div>
+                      <p className="font-heading font-bold text-[var(--text-primary)]">{tokenDisplayName}</p>
+                      <p className="font-body text-[var(--accent-primary)] text-sm mt-1 tabular-nums">
+                        {tokenPriceFetchState === "loading"
+                          ? "Fetching price..."
+                          : selectedToken.price != null
+                            ? `Mark ${formatUsd(selectedToken.price, 3)}`
+                            : `Price unavailable${tokenPriceFetchReason ? `: ${tokenPriceFetchReason}` : ""}`}
+                      </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {selectedToken.marketSide && (
                           <span
@@ -1771,7 +1477,10 @@ export function UnifiedBuyPanel() {
                           </span>
                         )}
                         {selectedToken.marketTicker && (
-                          <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--bg-surface)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}>
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded"
+                            style={{ background: "var(--bg-surface)", color: "var(--text-2)", border: "1px solid var(--border-subtle)" }}
+                          >
                             {selectedToken.marketTicker}
                           </span>
                         )}
@@ -1781,186 +1490,62 @@ export function UnifiedBuyPanel() {
                           </span>
                         )}
                       </div>
-                    ) : (
-                      <p className="font-body text-[var(--text-1)] mt-2 text-sm tabular-nums">
-                        Vol 24h: {selectedToken.volume24h?.toLocaleString() ?? "-"} USD
-                      </p>
-                    )}
-                    {!isPredictionToken && riskScore > 0 && (
-                      <div
-                        className="mt-3 rounded-lg border px-3 py-2"
-                        style={{
-                          background: riskScore >= 80
-                            ? "color-mix(in srgb, var(--down) 12%, var(--bg-surface))"
-                            : "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
-                          borderColor: riskScore >= 80
-                            ? "color-mix(in srgb, var(--down) 30%, var(--border-subtle))"
-                            : "color-mix(in srgb, var(--accent) 24%, var(--border-subtle))",
-                        }}
-                      >
-                        <p className="font-body text-[10px] uppercase tracking-wide mb-1" style={{ color: riskScore >= 80 ? "var(--down)" : "var(--accent)" }}>
-                          Risk trade analysed
-                        </p>
-                        <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
-                          {riskLabel === "critical"
-                            ? "This token is blocked because it looks like a honeypot or fake pair."
-                            : "This token looks tradable, but it still carries elevated risk."}
-                        </p>
-                        {riskReasons.length > 0 && (
-                          <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
-                            {riskReasons.join(" · ")}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      {!isPredictionToken && (
-                        <>
-                          <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
-                            MEV protected
-                          </span>
-                          <span className="text-[10px] text-[var(--text-3)]">Slippage:</span>
-                          {[100, 200, 500].map((bps) => (
-                            <button
-                              key={bps}
-                              type="button"
-                              onClick={() => { hapticLight(); setSlippageBps(bps); }}
-                              className={`text-[10px] font-body px-2 py-0.5 rounded transition-colors ${slippageBps === bps ? "bg-[var(--accent)] text-[var(--accent-text)]" : "bg-[var(--bg-surface)] text-[var(--text-2)] hover:text-[var(--text-1)]"}`}
-                            >
-                              {(bps / 100).toFixed(1)}%
-                            </button>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                    {!sellMode ? (
-                      <>
-                        {isPredictionToken ? (
-                          <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                            <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                              Add to this position from the market panel so you can choose YES or NO without clutter.
-                            </p>
-                            <a
-                              href={selectedToken.kalshiUrl || selectedMarket?.kalshi_url || "https://kalshi.com"}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-3 inline-flex items-center gap-2 text-xs"
-                              style={{ color: "var(--accent)" }}
-                            >
-                              Open market reference
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="mt-3">
-                              <label className="text-xs text-[var(--text-secondary)] block mb-1">USDC amount (enter for each buy)</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="1"
-                                placeholder="10.00"
-                                value={solAmount}
-                                onChange={(e) => setSolAmount(e.target.value)}
-                                className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
-                                style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
-                              />
-                            </div>
-                            <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                              <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>Buy preview</p>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Spend</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                    {tradeNotionalUsd != null ? formatUsd(tradeNotionalUsd, 2) : "—"}
-                                  </p>
-                                  <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
-                                    {parsedBuySolAmount != null ? `${formatTokenAmount(parsedBuySolAmount, 2)} USDC` : "Enter a USDC amount"}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated receive</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                    {tokenBuyApproxReceive != null ? `${formatTokenAmount(tokenBuyApproxReceive, 4)} ${tokenDisplaySymbol}` : "—"}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Min receive @ slippage</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                    {tokenBuyMinReceive != null ? `${formatTokenAmount(tokenBuyMinReceive, 4)} ${tokenDisplaySymbol}` : "—"}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Route</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--accent)" }}>
-                                    {tokenRouteLabel}
-                                  </p>
-                                </div>
-                              </div>
-                              <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                                Approximate preview from the latest token price. Siren buys from Solana USDC and builds the final quote at submit time.
-                              </p>
-                            </div>
-                            <button
-                              onClick={executeSwap}
-                              disabled={loading || buyBlocked}
-                              className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
-                              style={{ background: "var(--accent)", color: "var(--bg-base)", height: "36px" }}
-                            >
-                              {loading ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 animate-spin" /> Swapping…
-                                </>
-                              ) : buyBlocked ? (
-                                "Blocked by risk analysis"
-                              ) : (
-                                `Buy ${tokenDisplayName}`
-                              )}
-                            </button>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="mt-3">
-                          <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount of {tokenDisplayName} to sell</label>
-                          <div className="flex gap-1.5 mb-2">
-                            {([25, 50, 75, 100] as const).map((pct) => (
-                              <button
-                                key={pct}
-                                type="button"
-                                onClick={() => {
-                                  hapticLight();
-                                  const amt = tokenBalance > 0 ? (tokenBalance * pct) / 100 : 0;
-                                  setSellAmount(amt > 0 ? amt.toString() : "");
-                                }}
-                                className="flex-1 py-1.5 rounded-md text-[11px] font-heading font-semibold transition-all duration-100"
-                                style={{
-                                  background: "var(--bg-surface)",
-                                  color: "var(--text-2)",
-                                  border: "1px solid var(--border-subtle)",
-                                }}
-                              >
-                                {pct}%
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            placeholder={tokenBalance > 0 ? tokenBalance.toLocaleString() : "0"}
-                            value={sellAmount}
-                            onChange={(e) => setSellAmount(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
-                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
-                          />
-                        </div>
+                      {!sellMode ? (
                         <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                          <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>
-                            {isPredictionToken ? "Payout preview" : "Sell preview"}
+                          <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            Add to this position from the market panel so you can choose YES or NO without clutter.
                           </p>
-                          {isPredictionToken ? (
+                          <a
+                            href={selectedToken.kalshiUrl || selectedMarket?.kalshi_url || "https://kalshi.com"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 inline-flex items-center gap-2 text-xs"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            Open market reference
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mt-3">
+                            <label className="text-xs text-[var(--text-secondary)] block mb-1">Amount of {tokenDisplayName} to close</label>
+                            <div className="flex gap-1.5 mb-2">
+                              {([25, 50, 75, 100] as const).map((pct) => (
+                                <button
+                                  key={pct}
+                                  type="button"
+                                  onClick={() => {
+                                    hapticLight();
+                                    const amt = tokenBalance > 0 ? (tokenBalance * pct) / 100 : 0;
+                                    setSellAmount(amt > 0 ? amt.toString() : "");
+                                  }}
+                                  className="flex-1 py-1.5 rounded-md text-[11px] font-heading font-semibold transition-all duration-100"
+                                  style={{
+                                    background: "var(--bg-surface)",
+                                    color: "var(--text-2)",
+                                    border: "1px solid var(--border-subtle)",
+                                  }}
+                                >
+                                  {pct}%
+                                </button>
+                              ))}
+                            </div>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              placeholder={tokenBalance > 0 ? tokenBalance.toLocaleString() : "0"}
+                              value={sellAmount}
+                              onChange={(e) => setSellAmount(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
+                              style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+                            />
+                          </div>
+                          <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                            <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>
+                              Payout preview
+                            </p>
                             <div className="space-y-2">
                               <div className="flex justify-between gap-3 font-body text-sm" style={{ color: "var(--text-1)" }}>
                                 <span style={{ color: "var(--text-3)" }}>Selling</span>
@@ -1978,113 +1563,65 @@ export function UnifiedBuyPanel() {
                                 Mark is the live YES price. Final fill may differ slightly when the transaction lands.
                               </p>
                             </div>
-                          ) : (
-                            <>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Tokens in</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                    {parsedSellTokenAmount != null ? `${formatTokenAmount(parsedSellTokenAmount, 4)} ${tokenDisplaySymbol}` : "—"}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Estimated receive</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                    {tokenSellApproxUsd != null ? `${formatTokenAmount(tokenSellApproxUsd, 2)} USDC` : "—"}
-                                  </p>
-                                  <p className="text-[10px] mt-1" style={{ color: "var(--text-3)" }}>
-                                    {tokenSellApproxUsd != null ? formatUsd(tokenSellApproxUsd, 2) : "—"}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Min receive @ slippage</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--text-1)" }}>
-                                    {tokenSellMinReceiveUsd != null ? `${formatTokenAmount(tokenSellMinReceiveUsd, 2)} USDC` : "—"}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>Route</p>
-                                  <p className="font-mono text-sm mt-1 tabular-nums" style={{ color: "var(--accent)" }}>
-                                    {tokenRouteLabel}
-                                  </p>
-                                </div>
-                              </div>
-                              <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                                Approximate preview from the latest token price. Final route quote is built at submit time.
-                              </p>
-                            </>
-                          )}
-                        </div>
-                        <button
-                          onClick={executeSwap}
-                          disabled={loading}
-                          className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
-                          style={{ background: "var(--accent)", color: "var(--bg-base)", height: "36px" }}
-                        >
-                          {loading ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" /> Selling...
-                            </>
-                          ) : (
-                            isPredictionToken ? "Sell position for USDC" : `Sell ${tokenDisplayName} → USDC`
-                          )}
-                        </button>
-                      </>
-                    )}
-                    <div className="mt-3 md:mt-4 pt-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-                      <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">{isPredictionToken ? (sellMode ? "Note" : "Marking guide") : "24h price sketch"}</p>
-                      {isPredictionToken ? (
-                        sellMode ? (
+                          </div>
+                          <button
+                            onClick={executeSwap}
+                            disabled={loading}
+                            className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+                            style={{ background: "var(--accent)", color: "var(--bg-base)", height: "36px" }}
+                          >
+                            {loading ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" /> Closing…
+                              </>
+                            ) : (
+                              "Sell position for USDC"
+                            )}
+                          </button>
+                        </>
+                      )}
+                      <div className="mt-3 md:mt-4 pt-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                        <p className="text-[10px] uppercase text-[var(--text-3)] mb-1">{sellMode ? "Note" : "Marking guide"}</p>
+                        {sellMode ? (
                           <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
                             You are closing part or all of this position. USDC returns to your Solana wallet after confirmation.
                           </p>
                         ) : (
-                        <div className="rounded-lg border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                          <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Add size from the market panel. Prices follow live YES probability; closes route back to USDC on Solana.
-                          </p>
-                        </div>
-                        )
-                      )
-                      : (
-                        <div className="h-20 md:h-28 rounded-lg overflow-hidden" style={{ background: "var(--bg-surface)" }}>
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={MOCK_CHART_DATA}>
-                              <defs>
-                                <linearGradient id="priceGradPanel" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="0%" stopColor="#00FF85" stopOpacity={0.35} />
-                                  <stop offset="100%" stopColor="#00FF85" stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <Area type="monotone" dataKey="v" stroke="#00FF85" strokeWidth={2} fill="url(#priceGradPanel)" />
-                              <XAxis dataKey="t" tick={{ fontSize: 9 }} stroke="var(--text-3)" />
-                              <YAxis hide domain={["dataMin", "dataMax"]} />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
-                      {!isPredictionToken && <CopyCAButton mint={selectedToken.mint} />}
+                          <div className="rounded-lg border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                            <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              Add size from the market panel. Prices follow live YES probability; closes route back to USDC on Solana.
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  {!(isPredictionToken && sellMode) && (
-                  <div className="rounded-xl border p-4 flex flex-col" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)" }}>
-                    <p className="text-[var(--text-secondary)] text-xs uppercase mb-3">{isPredictionToken ? "Position info" : "Token info"}</p>
-                    <div className="space-y-2 text-sm">
-                      <p className="flex justify-between">
-                        <span className="text-[var(--text-3)]">{isPredictionToken ? "Mark price" : "Price (est.)"}</span>
-                        <span className="font-body text-[var(--accent-primary)] tabular-nums">
-                          {selectedToken.price != null ? `$${selectedToken.price.toFixed(6)}` : "—"}
-                        </span>
-                      </p>
-                      {isPredictionToken ? (
-                        <>
+                    {!sellMode && (
+                      <div
+                        className="rounded-xl border p-4 flex flex-col"
+                        style={{
+                          background: "var(--bg-elevated)",
+                          borderColor: "var(--border-subtle)",
+                          boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.03)",
+                        }}
+                      >
+                        <p className="text-[var(--text-secondary)] text-xs uppercase mb-3">Position info</p>
+                        <div className="space-y-2 text-sm">
+                          <p className="flex justify-between">
+                            <span className="text-[var(--text-3)]">Mark price</span>
+                            <span className="font-body text-[var(--accent-primary)] tabular-nums">
+                              {selectedToken.price != null ? `$${selectedToken.price.toFixed(6)}` : "—"}
+                            </span>
+                          </p>
                           <p className="flex justify-between">
                             <span className="text-[var(--text-3)]">Side</span>
                             <span className="font-body text-[var(--text-2)]">{selectedToken.marketSide?.toUpperCase() ?? "—"}</span>
                           </p>
                           <p className="flex justify-between">
                             <span className="text-[var(--text-3)]">Market</span>
-                            <span className="font-body text-[var(--text-2)] truncate pl-4" title={selectedToken.marketTitle ?? selectedMarket?.title}>
+                            <span
+                              className="font-body text-[var(--text-2)] truncate pl-4"
+                              title={selectedToken.marketTitle ?? selectedMarket?.title}
+                            >
                               {selectedToken.marketTicker ?? selectedMarket?.ticker ?? "—"}
                             </span>
                           </p>
@@ -2102,76 +1639,12 @@ export function UnifiedBuyPanel() {
                             <span className="text-[var(--text-3)]">Settlement</span>
                             <span className="text-[var(--text-2)]">Async</span>
                           </p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="flex justify-between">
-                            <span className="text-[var(--text-3)]">24h volume</span>
-                            <span className="font-body text-[var(--accent)] tabular-nums">
-                              {selectedToken.volume24h != null ? `${selectedToken.volume24h.toLocaleString()} USD` : "—"}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span className="text-[var(--text-3)]">Liquidity</span>
-                            <span className="font-body text-[var(--text-2)] tabular-nums">
-                              {selectedToken.liquidityUsd != null ? `$${formatCompactNumber(selectedToken.liquidityUsd)}` : "—"}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span className="text-[var(--text-3)]">FDV</span>
-                            <span className="font-body text-[var(--text-2)] tabular-nums">
-                              {selectedToken.fdvUsd != null ? `$${formatCompactNumber(selectedToken.fdvUsd)}` : "—"}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span className="text-[var(--text-3)]">Holders</span>
-                            <span className="font-body text-[var(--text-2)] tabular-nums">
-                              {selectedToken.holders != null ? formatCompactNumber(selectedToken.holders, 0) : "—"}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span className="text-[var(--text-3)]">Curve</span>
-                            <span className="text-[var(--text-2)]">
-                              {selectedToken.bondingCurveStatus === "bonded"
-                                ? "Bonded"
-                                : selectedToken.bondingCurveStatus === "bonding"
-                                  ? "On curve"
-                                  : "—"}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span className="text-[var(--text-3)]">Rugcheck</span>
-                            <span style={{ color: selectedToken.safe === false ? "var(--down)" : "var(--accent)" }}>
-                              {selectedToken.rugcheckScore != null
-                                ? `${selectedToken.rugcheckScore}${selectedToken.safe === false ? " · watch" : ""}`
-                                : selectedToken.safe === false
-                                  ? "Watch"
-                                  : "Safe"}
-                            </span>
-                          </p>
-                        </>
-                      )}
-                      <p className="flex justify-between">
-                        <span className="text-[var(--text-3)]">{isPredictionToken ? "Reference" : "Swap"}</span>
-                        <span className="text-[var(--text-2)]">{isPredictionToken ? "Kalshi / DFlow" : "DFlow / Jupiter"}</span>
-                      </p>
-                    </div>
-                    <p className="text-[10px] text-[var(--text-3)] mt-3 leading-relaxed">
-                      {isPredictionToken
-                        ? "Prediction positions are marked from live market probability and closed through DFlow outcome-token routing."
-                        : "Chart is illustrative. Execute swaps via Jupiter; confirm in your wallet."}
-                    </p>
-                  </div>
-                  )}
-                  {!isPredictionToken && (
-                    <>
-                      <TokenSignalSection
-                        volume24h={selectedToken.volume24h}
-                        matchedMarketTitle={selectedMarket?.title}
-                      />
-                      <TokenTweetsSection mint={selectedToken.mint} />
-                    </>
-                  )}
+                        </div>
+                        <p className="text-[10px] text-[var(--text-3)] mt-3 leading-relaxed">
+                          Prediction positions are marked from live market probability and closed through DFlow outcome-token routing.
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -2190,7 +1663,7 @@ export function UnifiedBuyPanel() {
               )}
               {!resultModalOpen && success && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>{success}</p>}
               <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">
-                Use market mode for YES or NO shares and token mode for linked coins. Siren spends USDC for both Solana and Polymarket trades, and Kalshi may need a one-time DFlow wallet verification first.
+                Use market mode to buy YES or NO. Position mode is for closing Kalshi outcome holdings from your portfolio. USDC funds Solana and Polymarket trades; Kalshi may require a one-time DFlow wallet verification.
               </p>
             </div>
           </motion.div>

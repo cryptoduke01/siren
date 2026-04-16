@@ -45,7 +45,7 @@ export interface MarketWithVelocity extends KalshiMarket {
   outcomes?: MarketOutcome[];
 }
 
-/** Core fields for a surfaced Solana token (DexScreener / Jupiter metadata). */
+/** Optional SPL token shape for wallet / legacy payloads (not used for market-keyword surfacing). */
 export interface SurfacedTokenFields {
   mint: string;
   name: string;

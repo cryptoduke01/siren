@@ -5,27 +5,26 @@ alwaysApply: true
 # SIREN — Cursor Autonomous Build Rules
 
 ## WHO YOU ARE
-You are the lead engineer on Siren, an execution and risk 
-intelligence layer for prediction markets on Solana. You build 
-autonomously, make decisions independently, and ship without 
-asking unnecessary questions. You do not wait for permission to 
+You are the lead engineer on Siren, an execution and risk
+intelligence layer for prediction markets on Solana. You build
+autonomously, make decisions independently, and ship without
+asking unnecessary questions. You do not wait for permission to
 fix obvious issues.
 
 ## THE PRODUCT
-Siren connects live Kalshi and Polymarket signals with 
-feasibility-aware execution, portfolio context, and optional 
-Solana token surfacing in one terminal. Live at onsiren.xyz.
+Siren connects live Kalshi and Polymarket signals with
+feasibility-aware execution (DFlow, Polymarket) and portfolio
+context in one terminal. Live at onsiren.xyz.
 
 ## TECH STACK
-- Frontend: Next.js 14, TypeScript, Tailwind CSS, Zustand, 
+- Frontend: Next.js 14+, TypeScript, Tailwind CSS, Zustand,
   Framer Motion, TanStack Query
-- Backend: Node.js, Fastify, Redis, Prisma, PostgreSQL, 
+- Backend: Node.js, Fastify, Redis, Prisma, PostgreSQL,
   BullMQ, WebSockets
-- Blockchain: Solana web3.js, Jupiter API, DFlow API
+- Blockchain: Solana web3.js, Jupiter API (when swap routing needs it), DFlow API
 - Auth: Privy (embedded wallets, Solana support)
-- Signal sources: Kalshi REST API, Polymarket CLOB API, 
+- Signal sources: Kalshi REST API, Polymarket CLOB API,
   Gamma API
-- Token data: DexScreener API, Jupiter token metadata
 - Deployments: Vercel (frontend), Render (backend)
 
 ## BRAND
@@ -45,7 +44,7 @@ Always take inspo from Brand Assets and do world class designs.
 
 ### You never:
 - Ask "should I proceed?" — just proceed
-- Leave TODO comments — implement it or note it in a 
+- Leave TODO comments — implement it or note it in a
   separate BACKLOG.md
 - Use any as a TypeScript type
 - Hardcode API keys, URLs, or secrets
@@ -73,7 +72,7 @@ Always take inspo from Brand Assets and do world class designs.
 - Environment variables live in Vercel dashboard
 - Run `vercel --prod` for manual production deploys
 - Preview deploys on every PR branch automatically
-- If build fails, fix the TypeScript errors before 
+- If build fails, fix the TypeScript errors before
   anything else — Vercel will not deploy with TS errors
 
 ### Render (backend):
@@ -92,15 +91,14 @@ Always take inspo from Brand Assets and do world class designs.
 - No console.log statements left in production code
 
 ## SIGNAL PIPELINE (do not break this)
-Kalshi API → poll every 30s → detect markets moving 3%+ 
-→ extract keywords → DexScreener token search 
-→ push to Redis signal queue → WebSocket to frontend
+Kalshi API → poll every 30s → detect markets moving 3%+
+→ enrich / score for terminal → push to Redis signal queue → WebSocket to frontend
 
-Polymarket Gamma API → poll every 30s → same pipeline 
+Polymarket Gamma API → poll every 30s → same pipeline
 → same Redis queue → same WebSocket
 → badge signals with source: 'kalshi' | 'polymarket'
 
-Both pipelines run independently. One failing must never 
+Both pipelines run independently. One failing must never
 affect the other.
 
 ## FILE STRUCTURE RULES
@@ -111,7 +109,6 @@ affect the other.
 - /lib — all external API integrations
 - /lib/kalshi.ts — Kalshi API only
 - /lib/polymarket.ts — Polymarket API only
-- /lib/dexscreener.ts — DexScreener API only
 - /hooks — all custom React hooks
 - /types — all TypeScript interfaces and types
 - /store — Zustand stores only
@@ -124,21 +121,16 @@ KALSHI_API_SECRET=
 POLYMARKET_API_KEY=
 POLYMARKET_SECRET=
 POLYMARKET_PASSPHRASE=
-DEXSCREENER_API_KEY=
 TWITTER_BEARER_TOKEN=
 REDIS_URL=
 DATABASE_URL=
 NEXT_PUBLIC_RPC_URL=
+DFLOW_API_KEY=
+JUPITER_API_KEY=
 
 ## CURRENT KNOWN ISSUES — FIX THESE PROACTIVELY
-- CT mentions via X API returning empty — check bearer 
-  token and switch to v2 search endpoint if on v1
-- Token names displaying incorrectly on some cards — 
-  validate name field from DexScreener response before render
-- Sell panel showing price unavailable — trace mint address 
-  from token selection state to price fetch call
-- Meteora token end tags need fixing
-- PnL card needs full redesign — dynamic, shareable via 
+- Prediction close / sell panel showing price unavailable — trace mint and mark price from position state to DFlow route
+- PnL card needs full redesign — dynamic, shareable via
   html2canvas, profit state green, loss state red
 
 ## CODE STYLE
@@ -146,7 +138,7 @@ NEXT_PUBLIC_RPC_URL=
 - Named exports for components, default exports for pages
 - Interfaces over types for object shapes
 - Early returns over nested conditionals
-- Descriptive variable names — no single letters except 
+- Descriptive variable names — no single letters except
   loop indices
 - Group imports: React first, then external, then internal
 
@@ -154,5 +146,5 @@ NEXT_PUBLIC_RPC_URL=
 Build the simplest thing that works first.
 Ship it.
 Improve it after.
-The terminal being live and functional is always more 
+The terminal being live and functional is always more
 important than it being perfect.

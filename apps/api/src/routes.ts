@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import { getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
-import { getSurfacedTokens, getTokenInfoByMint } from "./services/tokens.js";
 import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
 import { getDflowPositionsForWallet } from "./services/dflowPositions.js";
 import { getSwapOrder } from "./services/swapRouter.js";
@@ -21,22 +20,12 @@ const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const STABLE_QUOTE_SYMBOLS = new Set(["USD", "USDC", "USDT", "USDS", "USDE"]);
 const MARKET_ROUTE_TIMEOUT_MS = 10_000;
-const TOKEN_ROUTE_TIMEOUT_MS = 8_000;
 const SIGNAL_ROUTE_TIMEOUT_MS = 1_500;
 const SIGNAL_ROUTE_CACHE_MS = 5_000;
 const SOL_PRICE_ROUTE_TIMEOUT_MS = 4_500;
 const SOL_PRICE_CACHE_MS = 60_000;
 const DFLOW_PROOF_ROUTE_TIMEOUT_MS = 5_000;
 const DFLOW_PROOF_VERIFY_URL = process.env.DFLOW_PROOF_VERIFY_URL?.trim() || "https://proof.dflow.net/verify";
-
-type SolPricePair = {
-  chainId?: string;
-  priceUsd?: string;
-  liquidity?: { usd?: number };
-  volume?: { h24?: number };
-  baseToken?: { address?: string; symbol?: string };
-  quoteToken?: { address?: string; symbol?: string };
-};
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -48,40 +37,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   ]).finally(() => {
     if (timeoutId) clearTimeout(timeoutId);
   });
-}
-
-function pickReliableSolUsdPrice(pairs: SolPricePair[] | undefined): number {
-  if (!pairs?.length) return 0;
-
-  const candidates = pairs.filter((pair) => {
-    if (pair.chainId !== "solana") return false;
-    const baseAddress = pair.baseToken?.address;
-    const quoteAddress = pair.quoteToken?.address;
-    const baseSymbol = pair.baseToken?.symbol?.toUpperCase();
-    const quoteSymbol = pair.quoteToken?.symbol?.toUpperCase();
-
-    const baseIsSol = baseAddress === SOL_MINT;
-    const quoteIsSol = quoteAddress === SOL_MINT;
-    const baseIsStable = !!baseSymbol && STABLE_QUOTE_SYMBOLS.has(baseSymbol);
-    const quoteIsStable = !!quoteSymbol && STABLE_QUOTE_SYMBOLS.has(quoteSymbol);
-
-    return (baseIsSol && quoteIsStable) || (quoteIsSol && baseIsStable);
-  });
-
-  const best = candidates.reduce<SolPricePair | null>((currentBest, pair) => {
-    if (!currentBest) return pair;
-    const pairLiquidity = pair.liquidity?.usd ?? 0;
-    const bestLiquidity = currentBest.liquidity?.usd ?? 0;
-    if (pairLiquidity !== bestLiquidity) {
-      return pairLiquidity > bestLiquidity ? pair : currentBest;
-    }
-    const pairVolume = pair.volume?.h24 ?? 0;
-    const bestVolume = currentBest.volume?.h24 ?? 0;
-    return pairVolume > bestVolume ? pair : currentBest;
-  }, null);
-
-  const parsed = best?.priceUsd ? parseFloat(best.priceUsd) : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function getTradeErrorStatus(error?: string | null): number {
@@ -150,17 +105,17 @@ async function fetchSolPriceUsd(): Promise<number> {
         usd = json.solana?.usd ?? 0;
       }
     } catch {
-      /* CoinGecko failed, try DexScreener */
+      /* CoinGecko failed */
     }
 
     if (!usd || !Number.isFinite(usd)) {
       try {
-        const ds = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${SOL_MINT}`, {
+        const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT", {
           signal: AbortSignal.timeout(3_500),
         });
-        if (ds.ok) {
-          const json = (await ds.json()) as { pairs?: SolPricePair[] };
-          usd = pickReliableSolUsdPrice(json.pairs);
+        if (r.ok) {
+          const j = (await r.json()) as { price?: string };
+          usd = j.price ? parseFloat(j.price) : 0;
         }
       } catch {
         /* fallback failed */
@@ -1242,149 +1197,6 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch market activity" });
-    }
-  });
-
-  app.get<{ Querystring: { marketId?: string; categoryId?: string; keywords?: string } }>("/api/tokens", async (req, reply) => {
-    const { marketId, categoryId, keywords: keywordsParam } = req.query;
-    try {
-      const tokens = await withTimeout(
-        getSurfacedTokens(marketId, categoryId, keywordsParam),
-        TOKEN_ROUTE_TIMEOUT_MS,
-        "tokens"
-      );
-      return reply.send({ success: true, data: tokens });
-    } catch (e) {
-      app.log.warn(e);
-      return reply.send({ success: true, data: [] });
-    }
-  });
-
-  // ─── Real trending tokens (DexScreener top boosted with fallback) ──
-  app.get("/api/trending", async (_req, reply) => {
-    try {
-      const { getTopBoostedTokens, getLatestBoostedTokens, getTokenPairs, searchPairs } = await import("./services/dexscreener.js");
-
-      let boosted = await withTimeout(getTopBoostedTokens(), 8_000, "trending-boosted");
-      if (boosted.length === 0) {
-        boosted = await withTimeout(getLatestBoostedTokens(), 8_000, "trending-latest");
-      }
-
-      let top = boosted.slice(0, 20);
-
-      if (top.length === 0) {
-        const fallbackPairs = await withTimeout(searchPairs("SOL"), 6_000, "trending-fallback");
-        const seen = new Set<string>();
-        const data = fallbackPairs
-          .filter((p) => {
-            if (seen.has(p.baseToken.address)) return false;
-            seen.add(p.baseToken.address);
-            return true;
-          })
-          .slice(0, 16)
-          .map((p) => ({
-            mint: p.baseToken.address,
-            symbol: p.baseToken.symbol,
-            name: p.baseToken.name,
-            imageUrl: p.info?.imageUrl,
-            priceUsd: p.priceUsd ? parseFloat(p.priceUsd) : undefined,
-            volume24h: p.volume?.h24,
-            marketCap: p.marketCap ?? p.fdv,
-            liquidity: p.liquidity?.usd,
-          }));
-        return reply.send({ success: true, data });
-      }
-
-      const enriched = await Promise.allSettled(
-        top.map(async (t) => {
-          const pairs = await getTokenPairs(t.tokenAddress).catch(() => []);
-          const best = pairs.sort((a, b) => (b.volume?.h24 ?? 0) - (a.volume?.h24 ?? 0))[0];
-          return {
-            mint: t.tokenAddress,
-            symbol: best?.baseToken?.symbol ?? t.symbol ?? "???",
-            name: best?.baseToken?.name ?? t.name ?? "Unknown",
-            imageUrl: t.icon ?? best?.info?.imageUrl ?? undefined,
-            priceUsd: best?.priceUsd ? parseFloat(best.priceUsd) : undefined,
-            volume24h: best?.volume?.h24 ?? undefined,
-            marketCap: best?.marketCap ?? best?.fdv ?? undefined,
-            liquidity: best?.liquidity?.usd ?? undefined,
-            dexUrl: t.url ?? undefined,
-          };
-        })
-      );
-      const data = enriched
-        .filter((r): r is PromiseFulfilledResult<ReturnType<typeof Object>> => r.status === "fulfilled")
-        .map((r) => r.value)
-        .filter((t) => t.priceUsd);
-      return reply.send({ success: true, data });
-    } catch (e) {
-      _req.log.error(e);
-      return reply.send({ success: true, data: [] });
-    }
-  });
-
-  app.get<{ Querystring: { mint: string } }>("/api/token-info", async (req, reply) => {
-    const { mint } = req.query;
-    if (!mint?.trim()) {
-      return reply.status(400).send({ success: false, error: "mint required" });
-    }
-    try {
-      const info = await getTokenInfoByMint(mint.trim());
-      if (!info) return reply.send({ success: true, data: null });
-      return reply.send({ success: true, data: info });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch token info" });
-    }
-  });
-
-  /** Tweets mentioning a token CA (X API v2). Requires TWITTER_BEARER_TOKEN. */
-  app.get<{ Querystring: { mint: string } }>("/api/token-tweets", async (req, reply) => {
-    const { mint } = req.query;
-    if (!mint?.trim() || mint.length < 32) {
-      return reply.status(400).send({ success: false, error: "Valid mint (CA) required" });
-    }
-    const bearer = process.env.TWITTER_BEARER_TOKEN?.trim();
-    if (!bearer) {
-      return reply.status(503).send({ success: false, error: "X API not configured. Set TWITTER_BEARER_TOKEN." });
-    }
-    try {
-      const cleanMint = mint.trim();
-      const info = await getTokenInfoByMint(cleanMint).catch(() => null);
-      const symbol = info?.symbol?.trim();
-      const safeSymbol =
-        symbol && symbol.length >= 2 && symbol.length <= 10 && !["token", "unknown"].includes(symbol.toLowerCase())
-          ? symbol
-          : null;
-      const queryParts = [`"${cleanMint}"`];
-      if (safeSymbol) queryParts.push(`$${safeSymbol}`);
-      const query = `(${queryParts.join(" OR ")}) lang:en -is:retweet`;
-      const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(query)}&max_results=10&tweet.fields=created_at,author_id,text,public_metrics`;
-      req.log.info(
-        { mint: cleanMint, query, bearerConfigured: Boolean(process.env.TWITTER_BEARER_TOKEN?.trim()) },
-        "token-tweets query"
-      );
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${bearer}`, Accept: "application/json" },
-      });
-      const data = (await res.json()) as {
-        data?: Array<{ id: string; text: string; created_at?: string; author_id?: string }>;
-        error?: { message?: string };
-        title?: string;
-        detail?: string;
-        errors?: Array<{ message?: string }>;
-      };
-      if (!res.ok) {
-        return reply.status(res.status >= 500 ? 503 : res.status).send({
-          success: false,
-          error: data.detail ?? data.errors?.[0]?.message ?? data.error?.message ?? data.title ?? "X API error",
-        });
-      }
-      const tweets = data.data ?? [];
-      return reply.send({ success: true, data: tweets });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch tweets" });
     }
   });
 

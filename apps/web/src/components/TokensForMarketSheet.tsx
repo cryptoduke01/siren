@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
-import { TokenSurface } from "./TokenSurface";
+import { MarketExecutionSurface } from "./MarketExecutionSurface";
 import { hapticLight } from "@/lib/haptics";
 
 export function TokensForMarketSheet({
@@ -91,8 +91,8 @@ export function TokensForMarketSheet({
                     </p>
                     <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
                       {canTradeInSiren
-                        ? "Trade here, or scroll for the linked tokens."
-                        : `Scroll for linked tokens, or open the ${sourceLabel} page.`}
+                        ? "Trade here with execution-aware routing."
+                        : `Open the ${sourceLabel} page for full market context.`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -134,7 +134,7 @@ export function TokensForMarketSheet({
               )}
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-              <TokenSurface compactMode />
+              <MarketExecutionSurface compactMode />
             </div>
           </motion.div>
         </>

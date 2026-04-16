@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { MarketFeed } from "@/components/MarketFeed";
-import { TokenSurface } from "@/components/TokenSurface";
+import { MarketExecutionSurface } from "@/components/MarketExecutionSurface";
 import { TerminalRightPanel } from "@/components/TerminalRightPanel";
 import { MobileStickyMarket } from "@/components/MobileStickyMarket";
 import { MarketBottomSheet } from "@/components/MarketBottomSheet";
@@ -15,8 +15,6 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useRouter } from "next/navigation";
 import type { MarketWithVelocity } from "@siren/shared";
 import { toSelectedMarket } from "@/lib/marketSelection";
-import { API_URL } from "@/lib/apiUrl";
-
 const SIDEBAR_MIN = 340;
 const SIDEBAR_MAX = 620;
 const SIDEBAR_DEFAULT = 400;
@@ -26,13 +24,13 @@ export function HomeInner() {
   const { connected, isReady } = useSirenWallet();
   const searchParams = useSearchParams();
   const { data: markets = [], isLoading } = useMarkets();
-  const { setSelectedMarket, setSelectedToken, setBuyPanelOpen } = useSirenStore();
+  const { setSelectedMarket, setBuyPanelOpen } = useSirenStore();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tokensSheetOpen, setTokensSheetOpen] = useState(false);
   const [mobileCategory, setMobileCategory] = useState("all");
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
   const isResizing = useRef(false);
-  const appliedShareRef = useRef<{ market?: string; token?: string }>({});
+  const appliedShareRef = useRef<{ market?: string }>({});
   const isMobileLg = useIsMobileLg();
 
   useEffect(() => {
@@ -70,39 +68,6 @@ export function HomeInner() {
       }
     }
   }, [searchParams, markets, setSelectedMarket]);
-
-  useEffect(() => {
-    const tokenMint = searchParams.get("token");
-    if (!tokenMint || appliedShareRef.current.token === tokenMint) return;
-    appliedShareRef.current.token = tokenMint;
-    fetch(`${API_URL}/api/token-info?mint=${encodeURIComponent(tokenMint)}`, { credentials: "omit" })
-      .then((r) => r.json())
-      .then((j) => {
-        const d = j.data;
-        if (d) {
-          setSelectedToken({
-            mint: tokenMint,
-            name: d.name ?? "Unknown",
-            symbol: d.symbol ?? "???",
-            price: d.priceUsd,
-            volume24h: undefined,
-            liquidityUsd: d.liquidityUsd,
-            fdvUsd: d.fdvUsd,
-            holders: d.holders,
-            bondingCurveStatus: d.bondingCurveStatus,
-            rugcheckScore: d.rugcheckScore,
-            safe: d.safe,
-            ctMentions: undefined,
-            riskScore: d.riskScore,
-            riskLabel: d.riskLabel,
-            riskReasons: d.riskReasons,
-            riskBlocked: d.riskBlocked,
-          });
-          setBuyPanelOpen(true);
-        }
-      })
-      .catch(() => {});
-  }, [searchParams, setSelectedToken, setBuyPanelOpen]);
 
   const handleSelectMarket = (m: MarketWithVelocity) => {
     setSelectedMarket(toSelectedMarket(m));
@@ -155,7 +120,7 @@ export function HomeInner() {
             boxShadow: "0 32px 72px -48px rgba(0, 0, 0, 0.82)",
           }}
         >
-          <TokenSurface />
+          <MarketExecutionSurface />
         </div>
       </main>
       <TerminalRightPanel />

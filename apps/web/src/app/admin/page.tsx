@@ -863,7 +863,7 @@ export default function AdminPage() {
               </div>
               <h1 className="font-heading text-[30px] leading-none tracking-[-0.04em] md:text-[42px]">Siren Admin</h1>
               <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                See signups, active users, volume, and email tools in one place.
+                Waitlist, activations, and volume for the prediction-markets terminal—plus email tools in one place.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -906,7 +906,7 @@ export default function AdminPage() {
                   The important numbers, all in one view.
                 </h2>
                 <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                  Quick view of signups, returning users, and trading volume. Export it as an image when you need to share an update.
+                  Quick view of signups, returning traders, and routed volume. Export as PNG when you need to share an ops update.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
