@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
@@ -52,6 +52,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
 
   const { data: markets = [], isLoading, isError, refetch } = useMarkets();
   const { signals, status: signalStatus } = useSignals();
+  const normalizedQuery = searchQuery.trim().toLowerCase();
 
   const [debouncedQuery, setDebouncedQuery] = useState("");
   useEffect(() => {
@@ -95,6 +96,11 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
     return set;
   }, [liveSignals]);
 
+  const topLiveSignals = useMemo(
+    () => [...liveSignals].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 8),
+    [liveSignals]
+  );
+
   const filtered = useMemo(() => {
     let list = markets.filter((m) => marketMatchesTimePreset(m, timePreset));
     list = list.filter((m) => marketMatchesCategory(m, category));
@@ -102,8 +108,8 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
       list = list.filter((m) => m.source === source);
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    if (normalizedQuery) {
+      const q = normalizedQuery;
       list = list.filter(
         (m) =>
           m.title?.toLowerCase().includes(q) ||
@@ -149,22 +155,24 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         break;
     }
 
-    if (searchQuery.trim() && sorted.length < 5 && serverSearchResults.length > 0) {
+    if (normalizedQuery && sorted.length < 5 && serverSearchResults.length > 0) {
       const existingTickers = new Set(sorted.map((m) => m.ticker));
       const extra = serverSearchResults.filter((m) => !existingTickers.has(m.ticker));
       sorted.push(...extra);
     }
 
     return sorted;
-  }, [markets, timePreset, category, source, searchQuery, sortMode, hotSignalTickers, serverSearchResults]);
+  }, [markets, timePreset, category, source, normalizedQuery, sortMode, hotSignalTickers, serverSearchResults]);
 
-  const handleSelectMarket = (m: MarketWithVelocity) => {
+  const visibleMarkets = useMemo(() => filtered.slice(0, shownCount), [filtered, shownCount]);
+
+  const handleSelectMarket = useCallback((m: MarketWithVelocity) => {
     hapticLight();
     setSelectedMarket(toSelectedMarket(m));
     onAfterSelectMarket?.(m);
-  };
+  }, [setSelectedMarket, onAfterSelectMarket]);
 
-  const handleSelectSignal = (signal: PredictionSignal) => {
+  const handleSelectSignal = useCallback((signal: PredictionSignal) => {
     hapticLight();
     const linked = markets.find(
       (m) => m.source === signal.source && (m.platform_id === signal.marketId || m.ticker === signal.marketId)
@@ -175,16 +183,16 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
     } else {
       setSelectedSignal(signal);
     }
-  };
+  }, [markets, onAfterSelectMarket, setSelectedMarket, setSelectedSignal]);
 
   const signalCount = liveSignals.length;
   const kalshiUp = signalStatus.find((s) => s.source === "kalshi")?.connected;
   const polyUp = signalStatus.find((s) => s.source === "polymarket")?.connected;
   const filterActive = activeFilterCount(timePreset, category, source, sortMode);
-  const hasQuery = searchQuery.trim().length > 0;
+  const hasQuery = normalizedQuery.length > 0;
   const hasRecoveryActions = hasQuery || filterActive > 0;
 
-  const resetDiscovery = () => {
+  const resetDiscovery = useCallback(() => {
     hapticLight();
     setSearchQuery("");
     setTimePreset("all");
@@ -192,7 +200,11 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
     setSource("all");
     setSortMode("hot");
     setShownCount(INITIAL_SHOWN);
-  };
+  }, []);
+
+  useEffect(() => {
+    setShownCount(INITIAL_SHOWN);
+  }, [normalizedQuery, timePreset, category, source, sortMode]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0" style={{ background: "var(--bg-base)" }}>
@@ -274,15 +286,12 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
       {liveSignals.length > 0 && (
         <div className="flex-shrink-0 px-3 pb-2">
           <div className="flex gap-2 overflow-x-auto scrollbar-hidden pb-1 snap-x snap-mandatory">
-            {liveSignals
-              .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-              .slice(0, 8)
-              .map((sig) => (
+            {topLiveSignals.map((sig) => (
                 <button
                   key={sig.id}
                   type="button"
                   onClick={() => handleSelectSignal(sig)}
-                  className="shrink-0 snap-start rounded-2xl border px-3 py-2 text-left transition-colors hover:border-[var(--border-active)]"
+                  className="shrink-0 snap-start rounded-2xl border px-3 py-2 text-left transition-colors hover:border-[var(--border-active)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                   style={{
                     background: "var(--bg-surface)",
                     borderColor: "var(--border-subtle)",
@@ -339,7 +348,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
       ) : (
         <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 pb-6 space-y-4 snap-y snap-proximity md:px-4 md:space-y-5">
           <AnimatePresence mode="popLayout">
-            {filtered.slice(0, shownCount).map((m, i) => {
+            {visibleMarkets.map((m, i) => {
               const isSelected = selectedMarket?.ticker === m.ticker;
               const isHot = hotSignalTickers.has(m.platform_id ?? m.ticker);
               return (

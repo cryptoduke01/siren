@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { hapticLight } from "@/lib/haptics";
 import { StarButton } from "./StarButton";
@@ -46,8 +46,10 @@ export function MarketBottomSheet({
 
   const cat = (CATEGORIES.includes(activeCategory as MarketCategoryId) ? activeCategory : "all") as MarketCategoryId;
 
-  const filteredMarkets =
-    cat === "all" ? markets : markets.filter((m) => marketMatchesCategory(m, cat));
+  const filteredMarkets = useMemo(
+    () => (cat === "all" ? markets : markets.filter((m) => marketMatchesCategory(m, cat))),
+    [cat, markets]
+  );
 
   return (
     <AnimatePresence>
