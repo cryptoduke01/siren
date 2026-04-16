@@ -65,7 +65,7 @@ export function MarketBottomSheet({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="fixed bottom-0 left-0 right-0 z-50 max-h-[78vh] flex flex-col lg:hidden rounded-t-[24px] border-t"
+            className="fixed bottom-0 left-0 right-0 z-50 max-h-[82vh] flex flex-col lg:hidden rounded-t-[24px] border-t"
             style={{
               background: "var(--bg-base)",
               borderColor: "var(--border-subtle)",
@@ -100,32 +100,34 @@ export function MarketBottomSheet({
                 ))}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto scrollbar-hidden px-3 pt-0 pb-8 space-y-3">
+            <div className="flex-1 overflow-y-auto scrollbar-hidden px-3 pt-0 pb-8 md:px-4">
               {isLoading ? (
-                <div className="space-y-3">
+                <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
                   {[1, 2, 3, 4].map((i) => (
                     <div key={i} className="skeleton-card rounded-[22px]" style={{ height: 180 }} />
                   ))}
                 </div>
               ) : (
-                filteredMarkets.map((m) => (
-                  <div key={m.ticker} className="relative">
-                    <div className="absolute top-3 right-3 z-[2]">
-                      <StarButton type="market" id={m.ticker} />
+                <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+                  {filteredMarkets.map((m) => (
+                    <div key={m.ticker} className="relative">
+                      <div className="absolute top-3 right-3 z-[2]">
+                        <StarButton type="market" id={m.ticker} />
+                      </div>
+                      <ImmersiveMarketCard
+                        market={m}
+                        isSelected={false}
+                        isHot={false}
+                        layout="sheet"
+                        onSelect={() => {
+                          hapticLight();
+                          onSelectMarket(m);
+                          onClose();
+                        }}
+                      />
                     </div>
-                    <ImmersiveMarketCard
-                      market={m}
-                      isSelected={false}
-                      isHot={false}
-                      layout="sheet"
-                      onSelect={() => {
-                        hapticLight();
-                        onSelectMarket(m);
-                        onClose();
-                      }}
-                    />
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
           </motion.div>

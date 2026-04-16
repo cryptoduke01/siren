@@ -25,7 +25,11 @@ function SourceMini({ source }: { source?: string }) {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-body text-[9px] font-semibold tracking-[0.12em]"
-        style={{ background: "rgba(91,138,255,0.14)", color: "#a8c3ff" }}
+        style={{
+          background: "color-mix(in srgb, var(--polymarket) 14%, var(--bg-surface))",
+          color: "var(--polymarket)",
+          border: "1px solid color-mix(in srgb, var(--polymarket) 28%, transparent)",
+        }}
       >
         <img src="/brand/polymarket/icon-white.svg" alt="" className="h-2.5 w-2.5 opacity-90" />
         Polymarket
@@ -35,7 +39,11 @@ function SourceMini({ source }: { source?: string }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-body text-[9px] font-semibold tracking-[0.12em]"
-      style={{ background: "rgba(0,199,106,0.14)", color: "#98f5c9" }}
+      style={{
+        background: "color-mix(in srgb, var(--kalshi) 14%, var(--bg-surface))",
+        color: "var(--kalshi)",
+        border: "1px solid color-mix(in srgb, var(--kalshi) 28%, transparent)",
+      }}
     >
       <img src="/brand/kalshi/logo-green.svg" alt="" className="h-2.5 w-auto" />
       Kalshi
@@ -66,21 +74,15 @@ export function ImmersiveMarketCard({
   const hue = tickerHue(m.ticker);
   const cat = inferMarketCategory(m);
   const pad = layout === "sheet" ? "p-3" : "p-3.5 sm:p-4";
+  const canTradeInSiren = m.source === "kalshi" ? !!(m.yes_mint || m.no_mint) : !!(m.yes_token_id || m.no_token_id);
 
   return (
-    <article
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
       className={`relative w-full text-left rounded-[22px] border overflow-hidden transition-transform duration-200 ease-out ${layout === "feed" ? "active:scale-[0.99]" : ""}`}
       style={{
-        borderColor: isSelected ? "color-mix(in srgb, var(--accent) 55%, transparent)" : "rgba(255,255,255,0.08)",
+        borderColor: isSelected ? "color-mix(in srgb, var(--accent) 55%, transparent)" : "var(--border-subtle)",
         boxShadow: isSelected
           ? "0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 18px 40px -24px rgba(0,0,0,0.85)"
           : "0 14px 36px -28px rgba(0,0,0,0.75)",
@@ -89,7 +91,7 @@ export function ImmersiveMarketCard({
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: `linear-gradient(145deg, hsla(${hue}, 42%, 14%, 0.97) 0%, hsla(${(hue + 40) % 360}, 35%, 8%, 0.99) 50%, rgba(6,10,8,1) 100%)`,
+          background: `linear-gradient(145deg, color-mix(in srgb, hsl(${hue}, 72%, 34%) 12%, var(--bg-surface)) 0%, color-mix(in srgb, hsl(${(hue + 40) % 360}, 72%, 30%) 9%, var(--bg-base)) 56%, var(--bg-base) 100%)`,
         }}
       />
       <div
@@ -100,7 +102,7 @@ export function ImmersiveMarketCard({
       />
       <div
         className="absolute -right-8 -bottom-10 w-40 h-40 rounded-full pointer-events-none blur-3xl opacity-25"
-        style={{ background: `hsl(${hue}, 50%, 40%)` }}
+        style={{ background: `color-mix(in srgb, hsl(${hue}, 72%, 45%) 40%, transparent)` }}
       />
 
       <div className={`relative z-[1] ${pad} flex flex-col gap-3`}>
@@ -119,13 +121,16 @@ export function ImmersiveMarketCard({
             </span>
           )}
           {!multi && (
-            <span className="rounded-full px-2.5 py-0.5 font-body text-[9px] font-semibold" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)" }}>
+            <span
+              className="rounded-full px-2.5 py-0.5 font-body text-[9px] font-semibold"
+              style={{ background: "color-mix(in srgb, var(--bg-surface) 70%, transparent)", color: "var(--text-3)" }}
+            >
               Yes / No
             </span>
           )}
           <SourceMini source={m.source} />
           {isHot && (
-            <span className="font-heading text-[9px] font-bold uppercase tracking-wider" style={{ color: "#4ade80" }}>
+            <span className="font-heading text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--up)" }}>
               Live move
             </span>
           )}
@@ -133,13 +138,13 @@ export function ImmersiveMarketCard({
 
         <div>
           <h3
-            className={`font-heading font-bold leading-[1.08] text-white ${layout === "sheet" ? "text-[13px] line-clamp-2" : "text-[15px] sm:text-base line-clamp-3"}`}
-            style={{ letterSpacing: "-0.035em" }}
+            className={`font-heading font-bold leading-[1.08] ${layout === "sheet" ? "text-[13px] line-clamp-2" : "text-[15px] sm:text-base md:text-[17px] line-clamp-3"}`}
+            style={{ letterSpacing: "-0.035em", color: "var(--text-1)" }}
           >
             {m.title}
           </h3>
           {(m.subtitle || formatCloseLine(m)) && (
-            <p className="mt-1 font-body text-[11px] leading-snug line-clamp-2" style={{ color: "rgba(255,255,255,0.45)" }}>
+            <p className="mt-1 font-body text-[11px] leading-snug line-clamp-2" style={{ color: "var(--text-3)" }}>
               {[m.subtitle, formatCloseLine(m)].filter(Boolean).join(" · ")}
             </p>
           )}
@@ -151,48 +156,52 @@ export function ImmersiveMarketCard({
               <span
                 key={o.ticker ?? `${o.label}-${idx}`}
                 className="inline-flex items-center gap-1 rounded-xl px-2.5 py-2 font-body text-[10px] font-medium max-w-[100%]"
-                style={{ background: "rgba(0,0,0,0.45)", color: "rgba(255,255,255,0.88)", border: "1px solid rgba(255,255,255,0.06)" }}
+                style={{
+                  background: "color-mix(in srgb, var(--bg-surface) 72%, transparent)",
+                  color: "var(--text-2)",
+                  border: "1px solid var(--border-subtle)",
+                }}
               >
                 <span className="truncate max-w-[140px]">{o.label.length > 22 ? `${o.label.slice(0, 22)}…` : o.label}</span>
-                <span className="font-mono font-bold shrink-0" style={{ color: "#d9f99d" }}>
+                <span className="font-mono font-bold shrink-0" style={{ color: "var(--accent)" }}>
                   {o.probability.toFixed(0)}%
                 </span>
               </span>
             ))}
             {sortedOutcomes.length > 4 && (
-              <span className="self-center font-heading text-[10px] font-bold pl-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+              <span className="self-center font-heading text-[10px] font-bold pl-1" style={{ color: "var(--text-3)" }}>
                 +{sortedOutcomes.length - 4} more
               </span>
             )}
           </div>
         ) : (
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2 md:gap-2.5">
             <div
               className="flex-1 rounded-xl px-3 py-2.5 text-center"
-              style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.06)" }}
+              style={{ background: "color-mix(in srgb, var(--bg-surface) 70%, transparent)", border: "1px solid var(--border-subtle)" }}
             >
-              <p className="font-heading text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+              <p className="font-heading text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "var(--text-3)" }}>
                 Yes
               </p>
-              <p className="font-mono text-base font-bold tabular-nums" style={{ color: "#d9f99d" }}>
+              <p className="font-mono text-base md:text-[17px] font-bold tabular-nums" style={{ color: "var(--up)" }}>
                 {yesPct.toFixed(0)}%
               </p>
             </div>
             <div
               className="flex-1 rounded-xl px-3 py-2.5 text-center"
-              style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.06)" }}
+              style={{ background: "color-mix(in srgb, var(--bg-surface) 70%, transparent)", border: "1px solid var(--border-subtle)" }}
             >
-              <p className="font-heading text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+              <p className="font-heading text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "var(--text-3)" }}>
                 No
               </p>
-              <p className="font-mono text-base font-bold tabular-nums" style={{ color: "#fda4af" }}>
+              <p className="font-mono text-base md:text-[17px] font-bold tabular-nums" style={{ color: "var(--down)" }}>
                 {noPct.toFixed(0)}%
               </p>
             </div>
           </div>
         )}
 
-        <div className="flex items-center gap-4 font-body text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+        <div className="flex items-center gap-4 font-body text-[10px]" style={{ color: "var(--text-3)" }}>
           <span className="inline-flex items-center gap-1 tabular-nums">
             <BarChart2 className="w-3.5 h-3.5 shrink-0 opacity-80" aria-hidden />
             ${formatCompact(m.volume ?? m.volume_24h)}
@@ -203,22 +212,22 @@ export function ImmersiveMarketCard({
           </span>
         </div>
 
-        <button
-          type="button"
-          className={`w-full rounded-2xl font-heading font-black uppercase tracking-[0.06em] transition-transform hover:brightness-105 ${layout === "sheet" ? "py-2.5 text-[11px]" : "py-3 text-xs sm:text-[13px]"}`}
+        <div
+          className={`w-full rounded-2xl font-heading font-black uppercase tracking-[0.06em] text-center ${layout === "sheet" ? "py-2.5 text-[11px]" : "py-3 text-xs sm:text-[13px]"}`}
           style={{
-            background: "var(--accent)",
-            color: "var(--accent-text)",
-            boxShadow: "0 10px 28px -14px color-mix(in srgb, var(--accent) 65%, transparent)",
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect();
+            background: canTradeInSiren
+              ? "color-mix(in srgb, var(--accent) 86%, var(--bg-surface))"
+              : "color-mix(in srgb, var(--bg-surface) 88%, transparent)",
+            color: canTradeInSiren ? "var(--accent-text)" : "var(--text-2)",
+            boxShadow: canTradeInSiren
+              ? "0 10px 28px -14px color-mix(in srgb, var(--accent) 65%, transparent)"
+              : "none",
+            border: canTradeInSiren ? "none" : "1px solid var(--border-subtle)",
           }}
         >
-          Trade
-        </button>
+          {canTradeInSiren ? "Trade In Siren" : "Open Market"}
+        </div>
       </div>
-    </article>
+    </button>
   );
 }

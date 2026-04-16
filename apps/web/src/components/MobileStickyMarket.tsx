@@ -25,14 +25,17 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
 
   return (
     <div
-      className="sticky top-0 z-10 flex items-center justify-between gap-4 px-4 py-3 mb-4"
+      className="sticky top-0 z-10 flex items-center justify-between gap-4 px-4 py-3 mb-4 rounded-b-2xl"
       style={{
-        background: "var(--bg-surface)",
+        background: "color-mix(in srgb, var(--bg-surface) 94%, transparent)",
         borderBottom: "1px solid var(--border-subtle)",
         minHeight: 80,
       }}
     >
       <div className="min-w-0 flex-1">
+        <p className="font-body text-[10px] uppercase tracking-[0.14em] mb-1" style={{ color: "var(--text-3)" }}>
+          {selectedMarket.source === "kalshi" ? "Kalshi" : "Polymarket"}
+        </p>
         <p className="font-heading font-semibold text-sm truncate mb-1" style={{ color: "var(--text-1)" }}>
           {selectedMarket.title}
         </p>
@@ -62,11 +65,11 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
         <button
           type="button"
           onClick={() => { hapticLight(); onOpenMarkets(); }}
-          className="p-2 rounded-[6px] transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
-          style={{ color: "var(--text-2)" }}
+          className="h-10 min-w-10 px-2 rounded-[10px] border transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
+          style={{ color: "var(--text-2)", borderColor: "var(--border-subtle)" }}
           aria-label="Change market"
         >
-          &#8593;
+          Change
         </button>
       </div>
     </div>

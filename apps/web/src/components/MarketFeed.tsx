@@ -183,10 +183,10 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0" style={{ background: "var(--bg-base)" }}>
-      <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2.5">
+      <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2.5 md:px-4 md:pt-4">
         <div className="flex items-center gap-2">
           <div
-            className="flex-1 flex items-center gap-2.5 h-10 px-3 rounded-2xl border"
+            className="flex-1 flex items-center gap-2.5 h-10 md:h-11 px-3 md:px-3.5 rounded-2xl border"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
             <Search className="w-4 h-4 shrink-0" style={{ color: "var(--text-3)" }} />
@@ -195,7 +195,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               placeholder="Search markets or tickers"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent font-body text-xs outline-none placeholder:text-[var(--text-3)]"
+              className="flex-1 bg-transparent font-body text-xs md:text-[13px] outline-none placeholder:text-[var(--text-3)]"
               style={{ color: "var(--text-1)" }}
             />
             {isSearchingServer && debouncedQuery.length >= 2 && (
@@ -213,7 +213,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               hapticLight();
               setFilterOpen(true);
             }}
-            className="relative h-10 px-3 rounded-2xl border flex items-center gap-2 shrink-0 transition-colors"
+            className="relative h-10 md:h-11 px-3.5 rounded-2xl border flex items-center gap-2 shrink-0 transition-colors"
             style={{
               background: "var(--bg-surface)",
               borderColor: filterActive ? "var(--accent)" : "var(--border-subtle)",
@@ -233,8 +233,8 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         </div>
 
         <div className="flex items-center justify-between gap-2 px-0.5">
-          <p className="font-body text-[10px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Scroll the feed, tap a card, and trade without jumping around.
+          <p className="font-body text-[10px] md:text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+            Scan markets quickly, tap once, and route execution without context switching.
           </p>
           <div className="flex items-center gap-1.5 shrink-0">
             {kalshiUp != null && (
@@ -317,7 +317,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
           ))}
         </div>
       ) : (
-        <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 pb-6 space-y-4 snap-y snap-proximity">
+        <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 pb-6 space-y-4 snap-y snap-proximity md:px-4 md:space-y-5">
           <AnimatePresence mode="popLayout">
             {filtered.slice(0, shownCount).map((m, i) => {
               const isSelected = selectedMarket?.ticker === m.ticker;
