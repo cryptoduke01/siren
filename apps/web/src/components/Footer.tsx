@@ -14,7 +14,7 @@ export function Footer() {
             (c) {new Date().getFullYear()} Siren
           </p>
           <p className="font-body text-[11px] mt-1" style={{ color: "var(--text-3)" }}>
-            Event-driven meme terminal.
+            Execution and risk intelligence for prediction markets.
           </p>
         </div>
         <div className="flex items-center gap-4">

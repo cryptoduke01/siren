@@ -54,8 +54,9 @@
   --accent: #00FF85;
   --accent-dim: #00FF8514;
   --accent-text: #060609;
-  --bags: #00FF85;
-  --bags-dim: #00FF8514;
+  /* Legacy aliases — YES / positive lane (same as accent) */
+  --yes: #00FF85;
+  --yes-dim: #00FF8514;
   --kalshi: #5DDFB0;
   --polymarket: #6B3FDB;
   --text-1: #F0F0F5;
@@ -72,7 +73,6 @@
   --border: var(--border-default);
   --border-active-legacy: var(--border-active);
   --accent-primary: var(--accent);
-  --accent-bags: var(--bags);
   --accent-kalshi: var(--kalshi);
   --text-primary: var(--text-1);
   --text-secondary: var(--text-2);
@@ -93,8 +93,8 @@ html.light {
   --accent: #2D5C00;
   --accent-dim: #D4FF0024;
   --accent-text: #FAFAFC;
-  --bags: #008848;
-  --bags-dim: #00FF8520;
+  --yes: #008848;
+  --yes-dim: #00FF8520;
   --kalshi: #2BA86E;
   --polymarket: #6B3FDB;
   --text-1: #16161D;

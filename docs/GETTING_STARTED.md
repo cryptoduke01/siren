@@ -22,21 +22,6 @@ API keys, setup, and run instructions.
 
 ---
 
-### Bags (meme token launch + trade)
-
-- **What for:** Token trade quotes, launch flow, partner fees.
-- **How to get:**
-  1. Go to **https://dev.bags.fm**
-  2. Sign up / log in
-  3. Create an API key in the dashboard
-- **Where to set:** `BAGS_API_KEY` in `apps/api/.env`.
-- **Note:** Without this key, token **surfacing** uses mock data; **trading** and **launch** need the key.
-- **Fee claiming:** Portfolio shows claimable Bags fee share and lets users claim. See `docs/BAGS_FEE_CLAIMING.md`.
-
-**Docs:** https://docs.bags.fm
-
----
-
 ### Kalshi (optional — native exchange data)
 
 - **What for:** Extra market data / WebSocket from Kalshi directly. Siren can run on DFlow-only.
@@ -75,7 +60,7 @@ cp .env.example .env
 Edit `.env` and fill only what you have:
 
 - **Minimum to run:** With `DFLOW_API_KEY` set, use production URLs (`e.prediction-markets-api.dflow.net`, `e.quote-api.dflow.net`). Without a key, you can try dev URLs for testing (rate-limited).
-- **For real trading:** Set `DFLOW_API_KEY` and `BAGS_API_KEY`.
+- **For real trading:** Set `DFLOW_API_KEY` and `JUPITER_API_KEY` (for Solana swaps).
 - **For DB/Redis later:** Set `DATABASE_URL` and `REDIS_URL` when you add Postgres/Redis.
 - **For waitlist:** Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (from Supabase → Settings → API). Create the `waitlist_signups` table in the SQL editor; see `docs/WAITLIST_SETUP.md`.
 ### Frontend (`apps/web`)
@@ -138,7 +123,7 @@ curl http://localhost:4000/health
 # Markets (from DFlow Prediction Markets API; requires DFLOW_API_KEY for production)
 curl http://localhost:4000/api/markets
 
-# Surfaced tokens (mock data if no Bags key)
+# Surfaced tokens (DexScreener + Jupiter enrichment)
 curl "http://localhost:4000/api/tokens"
 ```
 
@@ -162,15 +147,13 @@ If `/health` returns `{"ok":true,...}` and `/api/markets` returns a list, you’
 | Step | What to do |
 |------|------------|
 | **1. Run locally** | Get the app running with `pnpm dev:api` + `pnpm dev:web` and confirm markets load (with or without keys). |
-| **2. Get Bags key** | Sign up at https://dev.bags.fm and add `BAGS_API_KEY` so token quotes and launch can use the real API. |
-| **3. Get DFlow key** | Email hello@dflow.net for a production key; set `DFLOW_API_KEY` for higher limits and production trading. |
-| **4. Wire unified buy** | In the app: connect DFlow order/quote and Bags trade quote to the unified buy panel; add wallet sign-and-send. |
-| **5. Add Kalshi Builder Code** | When integrating DFlow orders, set referral/fee account so you earn builder fees. |
-| **6. Add Bags partner key** | Create partner config in Bags for fee share; use it in launches/trades from Siren. |
-| **7. CT layer (optional)** | Add Twitter API or a mock: query mentions for token symbols + event keywords and feed into scoring. |
-| **8. Launch Signal** | When a market has high velocity but no surfaced tokens, show “Launch a token” with pre-filled Bags form. |
-| **9. Portfolio + Trending** | Implement `/portfolio` (positions + fees) and `/trending` (hot Bags tokens by CT velocity). |
-| **10. Deploy** | Frontend on Vercel, API + Postgres + Redis on Railway (or Fly.io); set env vars; submit to Kalshi grant + Bags hackathon. |
+| **2. Get DFlow key** | Request via [pond.dflow.net](https://pond.dflow.net); set `DFLOW_API_KEY` for production trading routes. |
+| **3. Jupiter** | Add `JUPITER_API_KEY` for Solana swap quotes used by the unified buy flow. |
+| **4. Unified buy** | DFlow for prediction outcomes; Jupiter for SPL routing — both wired in `UnifiedBuyPanel` + `/api/swap/order`. |
+| **5. Builder / fees** | Optional: Kalshi builder referral on DFlow orders; optional Jupiter platform fee envs. |
+| **6. CT layer (optional)** | `TWITTER_BEARER_TOKEN` for mention velocity on surfaced tokens. |
+| **7. Portfolio + trending** | `/portfolio` and `/trending` use Helius + DexScreener data paths. |
+| **8. Deploy** | Frontend on Vercel (`apps/web`), API on Render or similar; set env vars; document keys in `.env.example`. |
 
 ---
 
@@ -199,7 +182,6 @@ open http://localhost:3000
 
 **Keys (set in `apps/api/.env` when you have them):**
 
-- **Bags:** dev.bags.fm → `BAGS_API_KEY`; partner config → `BAGS_PARTNER_CONFIG_KEY`; ref link → `BAGS_REF_URL`
 - **DFlow:** Request via form (see above) → `DFLOW_API_KEY`
 - **Kalshi:** kalshi.com → API → `KALSHI_API_KEY` + `KALSHI_PRIVATE_KEY` (RSA PEM)
 - **Twitter:** developer.x.com → Basic → Bearer → `TWITTER_BEARER_TOKEN`

@@ -9,7 +9,6 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { useSirenStore, type SelectedMarket } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
-import { LaunchTokenPanel } from "@/components/LaunchTokenPanel";
 import { StarButton } from "./StarButton";
 import { TokenAlertButton } from "./AlertButton";
 import { MarketAlertButton } from "./AlertButton";
@@ -49,17 +48,17 @@ function CopyCAButton({ mint }: { mint: string }) {
       style={{ color: "var(--text-2)" }}
       title="Copy Contract Address"
     >
-      {copied ? <Check className="w-3.5 h-3.5" style={{ color: "var(--bags)" }} /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
 }
 
 function getTokenCardTopBorder(token: SurfacedToken): string {
   if (token.riskBlocked || (token.riskScore ?? 0) >= 80) return "var(--down)";
-  if ((token.riskScore ?? 0) >= 60) return "var(--bags)";
+  if ((token.riskScore ?? 0) >= 60) return "var(--accent)";
   const ct = token.ctMentions ?? 0;
   const vol = token.volume24h ?? 0;
-  if (ct > 10) return "var(--bags)";
+  if (ct > 10) return "var(--accent)";
   if (vol > 50) return "var(--kalshi)";
   return "var(--border-subtle)";
 }
@@ -204,7 +203,7 @@ function MarketShareExportCard({
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-3">
-        <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--bags)" />
+        <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--accent)" />
         <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
         <CompactMarketStat label="Move 1h" value={`${market.velocity_1h >= 0 ? "+" : ""}${market.velocity_1h.toFixed(1)}%`} tone={market.velocity_1h >= 0 ? "var(--up)" : "var(--down)"} />
         <CompactMarketStat label="Closes" value={formatTimestampLabel(market.close_time)} />
@@ -311,7 +310,7 @@ function PredictionMarketFocusPanel({
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--bags)" />
+            <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--accent)" />
             <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
             <CompactMarketStat label="Closes" value={formatTimestampLabel(market.close_time)} />
             <CompactMarketStat
@@ -526,12 +525,10 @@ function SignalNarrativePanel({
 export function TokenSurface({ compactMode = false }: { compactMode?: boolean } = {}) {
   const { selectedMarket, selectedSignal, setBuyPanelOpen } = useSirenStore();
   const { publicKey, evmAddress } = useSirenWallet();
-  const [launchPanelOpen, setLaunchPanelOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [exportingCard, setExportingCard] = useState(false);
-  const [bagsLaunches, setBagsLaunches] = useState<string[]>([]);
   const [cardDisplayName, setCardDisplayName] = useState("@siren");
-  const [launchpadFilter, setLaunchpadFilter] = useState<"all" | "bags" | "pump" | "bonk" | "moonshot">("all");
+  const [launchpadFilter, setLaunchpadFilter] = useState<"all" | "pump" | "bonk" | "moonshot">("all");
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
   const tokenSectionRef = useRef<HTMLDivElement | null>(null);
@@ -556,20 +553,6 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
   useEffect(() => {
     if (isError && error) addToast("Unable to load tokens. Please try again in a moment.", "error");
   }, [isError, error, addToast]);
-
-  useEffect(() => {
-    if (!publicKey) {
-      setBagsLaunches([]);
-      return;
-    }
-    try {
-      const key = `siren-bags-launches-${publicKey.toBase58()}`;
-      const raw = localStorage.getItem(key);
-      setBagsLaunches(raw ? JSON.parse(raw) : []);
-    } catch {
-      setBagsLaunches([]);
-    }
-  }, [publicKey]);
 
   useEffect(() => {
     if (!selectedMarket?.ticker && !selectedSignal?.id) return;
@@ -776,7 +759,6 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hidden">
           {[
             { id: "all", label: "All", logoUrl: "", fallback: "A" },
-            { id: "bags", label: "Bags", logoUrl: "https://bags.fm/assets/images/bags-icon.png", fallback: "B" },
             { id: "pump", label: "Pump", logoUrl: "https://pump.fun/favicon.ico", fallback: "P" },
             { id: "bonk", label: "Bonk", logoUrl: "https://brand.bonkcoin.com/_next/image?url=%2Fimages%2Flogo.png&w=640&q=75", fallback: "B" },
             { id: "moonshot", label: "Moonshot", logoUrl: "https://moonshot.money/favicon.ico", fallback: "M" },
@@ -786,7 +768,7 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setLaunchpadFilter(item.id as "all" | "bags" | "pump" | "bonk" | "moonshot")}
+                onClick={() => setLaunchpadFilter(item.id as "all" | "pump" | "bonk" | "moonshot")}
                 className="h-7 px-2.5 rounded-full border text-[11px] font-body whitespace-nowrap inline-flex items-center gap-1.5"
                 style={{
                   background: isActive ? "var(--bg-elevated)" : "transparent",
@@ -845,21 +827,8 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
               <StarButton type="market" id={selectedMarket.ticker} />
             </>
           )}
-          <button
-            type="button"
-            onClick={() => { hapticLight(); setLaunchPanelOpen(true); }}
-            className="font-heading font-bold text-[11px] uppercase h-8 px-4 rounded-[6px] transition-all duration-[120ms] ease hover:opacity-90"
-            style={{
-              background: "var(--accent)",
-              color: "var(--accent-text)",
-              letterSpacing: "0.06em",
-            }}
-          >
-            Launch token
-          </button>
         </div>
       </div>
-      {launchPanelOpen && <LaunchTokenPanel onClose={() => setLaunchPanelOpen(false)} />}
       <p className="font-body font-normal text-[11px] mb-2" style={{ color: "var(--text-3)" }}>
         {selectedMarket
           ? "These tokens are ranked by how closely they match this market."
@@ -917,7 +886,6 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
         >
           {filteredTokens.map((t) => {
             const topBorder = getTokenCardTopBorder(t);
-            const isUserLaunch = bagsLaunches.includes(t.mint);
             return (
               <motion.div
                 key={t.mint}
@@ -978,11 +946,6 @@ export function TokenSurface({ compactMode = false }: { compactMode?: boolean } 
                           ${t.symbol}
                         </p>
                         <LaunchpadBadge launchpad={t.launchpad} />
-                        {isUserLaunch && (
-                          <span className="font-body text-[9px] font-semibold" style={{ color: "var(--bags)" }}>
-                            Yours
-                          </span>
-                        )}
                       </div>
                       <span className="font-mono text-sm font-semibold tabular-nums shrink-0" style={{ color: "var(--text-1)" }}>
                         ${t.price != null ? (t.price < 0.001 ? t.price.toExponential(1) : t.price.toFixed(4)) : "—"}

@@ -5,13 +5,14 @@ import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://onsiren.xyz";
-const socialPreviewVersion = "2026-04-04";
+const socialPreviewVersion = "2026-04-16-r2";
 const ogImage = new URL(`/opengraph-image?v=${socialPreviewVersion}`, siteUrl).toString();
 const twitterImage = new URL(`/twitter-image?v=${socialPreviewVersion}`, siteUrl).toString();
 
 export const metadata: Metadata = {
-  title: "Siren | Prediction Markets x Meme Tokens",
-  description: "Track Kalshi and Polymarket signals, surface Solana token narratives, and trade from one terminal.",
+  title: "Siren | Execution and risk intelligence for prediction markets",
+  description:
+    "Execution and risk intelligence for prediction traders. Kalshi and Polymarket signals, Solana execution, feasibility-aware trading, and portfolio context in one terminal.",
   metadataBase: new URL(siteUrl),
   manifest: "/manifest.json",
   alternates: {
@@ -25,23 +26,25 @@ export const metadata: Metadata = {
     type: "website",
     url: "/",
     siteName: "Siren",
-    title: "Siren | Prediction Markets x Meme Tokens",
-    description: "Track Kalshi and Polymarket signals, surface Solana token narratives, and trade from one terminal.",
+    title: "Siren | Execution and risk intelligence for prediction markets",
+    description:
+      "Execution and risk intelligence for prediction traders. Kalshi and Polymarket signals, Solana execution, feasibility-aware trading, and portfolio context in one terminal.",
     images: [
       {
         url: ogImage,
         width: 1200,
         height: 630,
-        alt: "Siren trading terminal preview",
+        alt: "Siren prediction trading terminal",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    site: "@sirentracker",
-    creator: "@sirentracker",
-    title: "Siren | Prediction Markets x Meme Tokens",
-    description: "Track Kalshi and Polymarket signals, surface Solana token narratives, and trade from one terminal.",
+    site: "@sirenmarketsxyz",
+    creator: "@sirenmarketsxyz",
+    title: "Siren | Execution and risk intelligence for prediction markets",
+    description:
+      "Execution and risk intelligence for prediction traders. Kalshi and Polymarket signals, Solana execution, feasibility-aware trading, and portfolio context in one terminal.",
     images: [twitterImage],
   },
   appleWebApp: { capable: true, title: "Siren" },

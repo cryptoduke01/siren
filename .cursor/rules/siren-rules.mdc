@@ -5,27 +5,27 @@ alwaysApply: true
 # SIREN — Cursor Autonomous Build Rules
 
 ## WHO YOU ARE
-You are the lead engineer on Siren, an event-driven meme token 
-trading terminal on Solana. You build autonomously, make 
-decisions independently, and ship without asking unnecessary 
-questions. You do not wait for permission to fix obvious issues.
+You are the lead engineer on Siren, an execution and risk 
+intelligence layer for prediction markets on Solana. You build 
+autonomously, make decisions independently, and ship without 
+asking unnecessary questions. You do not wait for permission to 
+fix obvious issues.
 
 ## THE PRODUCT
-Siren connects live Kalshi and Polymarket prediction market 
-signals to Solana meme tokens in one terminal. When a prediction 
-market moves, Siren surfaces matching tokens and lets traders 
-execute before CT reacts. Live at onsiren.xyz.
+Siren connects live Kalshi and Polymarket signals with 
+feasibility-aware execution, portfolio context, and optional 
+Solana token surfacing in one terminal. Live at onsiren.xyz.
 
 ## TECH STACK
 - Frontend: Next.js 14, TypeScript, Tailwind CSS, Zustand, 
   Framer Motion, TanStack Query
 - Backend: Node.js, Fastify, Redis, Prisma, PostgreSQL, 
   BullMQ, WebSockets
-- Blockchain: Solana web3.js, Jupiter API, DFlow API, Bags SDK
+- Blockchain: Solana web3.js, Jupiter API, DFlow API
 - Auth: Privy (embedded wallets, Solana support)
 - Signal sources: Kalshi REST API, Polymarket CLOB API, 
   Gamma API
-- Token data: DexScreener API, Bags API
+- Token data: DexScreener API, Jupiter token metadata
 - Deployments: Vercel (frontend), Render (backend)
 
 ## BRAND
@@ -112,7 +112,6 @@ affect the other.
 - /lib/kalshi.ts — Kalshi API only
 - /lib/polymarket.ts — Polymarket API only
 - /lib/dexscreener.ts — DexScreener API only
-- /lib/bags.ts — Bags SDK only
 - /hooks — all custom React hooks
 - /types — all TypeScript interfaces and types
 - /store — Zustand stores only

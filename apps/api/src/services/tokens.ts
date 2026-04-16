@@ -3,8 +3,6 @@ import { getKeywordsForCategory } from "@siren/shared";
 import { matchTokenToKeywords } from "@siren/shared";
 import { searchPairs, getTokenPairs, getLatestBoostedTokens } from "./dexscreener.js";
 import type { DexPair } from "./dexscreener.js";
-import { getBagsPools, getBagsPoolByTokenMint } from "./bags.js";
-
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 type RiskLabel = "low" | "moderate" | "high" | "critical";
 type BondingCurveStatus = "bonded" | "bonding" | "unknown";
@@ -67,10 +65,9 @@ function evictMapByExpiry<T extends { expiry?: number; expiresAt?: number }>(
   }
 }
 
-/** Detect launchpad from mint suffix (Bags: BAGS, Pump.fun: pump, Bonk.fun: bonk, Moonshot: shot). */
+/** Detect launchpad from mint suffix (Pump.fun: pump, Bonk.fun: bonk, Moonshot: shot). */
 export function getLaunchpadFromMint(mint: string): LaunchpadId | undefined {
   const lower = mint.toLowerCase();
-  if (lower.endsWith("bags")) return "bags";
   if (lower.endsWith("pump")) return "pump";
   if (lower.endsWith("bonk")) return "bonk";
   if (lower.endsWith("shot") || lower.endsWith("moonshot")) return "moonshot";
@@ -97,14 +94,7 @@ function parseUsd(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function deriveBondingCurveStatus(params: {
-  pair?: DexPair;
-  launchpad?: LaunchpadId;
-  bagsPool?: { dammV2PoolKey?: string | null } | null;
-}): BondingCurveStatus {
-  if (params.launchpad === "bags" && params.bagsPool) {
-    return params.bagsPool.dammV2PoolKey ? "bonded" : "bonding";
-  }
+function deriveBondingCurveStatus(params: { pair?: DexPair }): BondingCurveStatus {
   const dexId = params.pair?.dexId?.toLowerCase() ?? "";
   if (!dexId) return "unknown";
   if (dexId.includes("meteora") || dexId.includes("raydium") || dexId.includes("orca")) return "bonded";
@@ -221,15 +211,10 @@ async function enrichToken(params: {
   symbol: string;
   priceUsd?: number;
 }): Promise<TokenEnrichment> {
-  const launchpad = getLaunchpadFromMint(params.mint);
   const dexImageUrl = normalizeDexImageUrl(params.pair?.info?.imageUrl);
   const jup = !dexImageUrl ? await getJupiterTokenByMint(params.mint) : null;
   const imageUrl = dexImageUrl ?? jup?.imageUrl;
   const rugcheck = await getRugcheckSummary(params.mint);
-  const bagsPool =
-    launchpad === "bags" && process.env.BAGS_API_KEY
-      ? await getBagsPoolByTokenMint(params.mint).catch(() => null)
-      : null;
   const liquidityUsd = params.pair?.liquidity?.usd;
   const fdvUsd = params.pair?.fdv ?? params.pair?.marketCap;
   const risk = analyzeTokenRisk({
@@ -246,7 +231,7 @@ async function enrichToken(params: {
     liquidityUsd,
     fdvUsd,
     holders: rugcheck?.holders,
-    bondingCurveStatus: deriveBondingCurveStatus({ pair: params.pair, launchpad, bagsPool }),
+    bondingCurveStatus: deriveBondingCurveStatus({ pair: params.pair }),
     rugcheckScore: rugcheck?.rugcheckScore,
     safe: rugcheck?.safe ?? (risk.label === "low" || risk.label === "moderate"),
     risk,
@@ -468,24 +453,6 @@ export async function getSurfacedTokens(marketId?: string, categoryId?: string, 
           }
         } catch (e) {
           console.warn("[tokens] direct CA lookup failed:", e);
-        }
-      }
-
-      if (process.env.BAGS_API_KEY && !isDefaultDiscovery) {
-        try {
-          const pools = await getBagsPools();
-          const bagsMints = pools.map((p) => p.tokenMint).filter((m) => m.endsWith("BAGS")).slice(0, TARGETED_RESULT_LIMIT);
-          const results = await Promise.all(bagsMints.map((mint) => getTokenPairs(mint)));
-          for (let index = 0; index < bagsMints.length; index += 1) {
-            const queriedMint = bagsMints[index];
-            const best = pickBestPair(results[index]);
-            if (best && !seenMints.has(queriedMint)) {
-              seenMints.add(queriedMint);
-              allPairs.push(best);
-            }
-          }
-        } catch (e) {
-          console.warn("[tokens] Bags pools fetch failed:", e);
         }
       }
 

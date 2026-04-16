@@ -11,7 +11,7 @@ const ONBOARDING_KEY = "siren-onboarding-seen";
 const STEPS = [
   {
     title: "Welcome to Siren",
-    body: "Your event-driven meme token terminal. Connect prediction markets with tokens in one place.",
+    body: "Execution and risk intelligence for prediction markets. Live Kalshi and Polymarket signals, Solana execution, and portfolio context in one terminal.",
   },
   {
     title: "Market feed",
@@ -19,7 +19,7 @@ const STEPS = [
   },
   {
     title: "Token surface",
-    body: "Tokens here match your selected market or show trending picks. Click Buy to trade via Jupiter.",
+    body: "Tokens here match your selected market or trending picks. Trade prediction outcomes or linked tokens from the same flow.",
   },
   {
     title: "Connect wallet",

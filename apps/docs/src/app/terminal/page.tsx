@@ -10,8 +10,8 @@ export default function Terminal() {
       </p>
       <h2>Surfacing tokens</h2>
       <p>
-        Tap a market to see tokens on Bags that match its keywords. These are meme tokens
-        tied to real-world events.
+        Tap a market to see Solana tokens that match its keywords, with DexScreener-backed context and
+        Jupiter pricing where available.
       </p>
       <h2>Trading</h2>
       <p>

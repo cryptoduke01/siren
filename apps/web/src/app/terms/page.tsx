@@ -36,7 +36,7 @@ export default function TermsPage() {
             <h2 className="font-heading font-semibold text-lg mt-8 mb-2" style={{ color: "var(--text-1)" }}>3. Non-custodial; third-party services</h2>
             <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
               Siren does not custody your funds. Trades and transactions are executed using third-party protocols and infrastructure
-              (for example, wallets, RPC providers, DFlow, Jupiter, Bags, and Solana). Your use of third-party services is governed
+              (for example, wallets, RPC providers, DFlow, Jupiter, Polymarket, and Solana). Your use of third-party services is governed
               by their terms, and they may impose additional restrictions or fees.
             </p>
 

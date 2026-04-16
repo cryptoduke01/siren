@@ -79,10 +79,6 @@ function parsePositiveNumber(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function isBagsMint(mint?: string | null): boolean {
-  return !!mint && mint.toLowerCase().endsWith("bags");
-}
-
 function isWalletVerificationError(message?: string | null): boolean {
   if (!message) return false;
   const lower = message.toLowerCase();
@@ -351,7 +347,7 @@ function CopyCAButton({ mint }: { mint: string }) {
       onClick={handleCopy}
       className="flex items-center gap-2 text-xs font-body text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors duration-100"
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-bags)]" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent)]" /> : <Copy className="w-3.5 h-3.5" />}
       {copied ? "Copied!" : "Copy CA"}
     </button>
   );
@@ -529,7 +525,7 @@ export function UnifiedBuyPanel() {
       : null;
   const tokenSellMinReceiveUsd =
     tokenSellApproxUsd != null ? tokenSellApproxUsd * (1 - slippageBps / 10_000) : null;
-  const tokenRouteLabel = isPredictionToken ? "DFlow" : isBagsMint(selectedToken?.mint) ? "Bags" : "Jupiter";
+  const tokenRouteLabel = isPredictionToken ? "DFlow" : "Jupiter";
   const verificationRequired = isWalletVerificationError(error);
   const proofVerified = !!dflowProofStatus?.verified;
 
@@ -1643,7 +1639,7 @@ export function UnifiedBuyPanel() {
                       disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked}
                       className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
                       style={{
-                        background: marketSide === "yes" ? "var(--accent-bags)" : "var(--down)",
+                        background: marketSide === "yes" ? "var(--accent)" : "var(--down)",
                         color: "var(--bg-base)",
                       }}
                     >
@@ -1677,7 +1673,7 @@ export function UnifiedBuyPanel() {
                     >
                       {isKalshiMarketTrade ? (
                         <>
-                          <p className="text-[10px] uppercase tracking-wide" style={{ color: proofVerified ? "var(--up)" : "var(--bags)" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: proofVerified ? "var(--up)" : "var(--accent)" }}>
                             {proofVerified ? "Wallet verified" : "Wallet verification"}
                           </p>
                           <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
@@ -1739,7 +1735,7 @@ export function UnifiedBuyPanel() {
                           type="button"
                           onClick={() => setSellMode(false)}
                           className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${!sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-                          style={!sellMode ? { background: "var(--accent-bags)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                          style={!sellMode ? { background: "var(--accent)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
                         >
                           Buy
                         </button>
@@ -1748,7 +1744,7 @@ export function UnifiedBuyPanel() {
                         type="button"
                         onClick={() => setSellMode(true)}
                         className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold transition-colors duration-100 ${sellMode ? "text-[var(--bg-base)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-                        style={sellMode ? { background: "var(--accent-bags)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                        style={sellMode ? { background: "var(--accent)" } : { background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
                       >
                         {isPredictionToken ? "Close" : "Sell"}
                       </button>
@@ -1767,8 +1763,8 @@ export function UnifiedBuyPanel() {
                           <span
                             className="text-[10px] px-2 py-0.5 rounded"
                             style={{
-                              background: selectedToken.marketSide === "yes" ? "var(--bags-dim)" : "var(--down-dim)",
-                              color: selectedToken.marketSide === "yes" ? "var(--bags)" : "var(--down)",
+                              background: selectedToken.marketSide === "yes" ? "var(--accent-dim)" : "var(--down-dim)",
+                              color: selectedToken.marketSide === "yes" ? "var(--accent)" : "var(--down)",
                             }}
                           >
                             {selectedToken.marketSide.toUpperCase()}
@@ -1796,13 +1792,13 @@ export function UnifiedBuyPanel() {
                         style={{
                           background: riskScore >= 80
                             ? "color-mix(in srgb, var(--down) 12%, var(--bg-surface))"
-                            : "color-mix(in srgb, var(--bags) 12%, var(--bg-surface))",
+                            : "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
                           borderColor: riskScore >= 80
                             ? "color-mix(in srgb, var(--down) 30%, var(--border-subtle))"
-                            : "color-mix(in srgb, var(--bags) 24%, var(--border-subtle))",
+                            : "color-mix(in srgb, var(--accent) 24%, var(--border-subtle))",
                         }}
                       >
-                        <p className="font-body text-[10px] uppercase tracking-wide mb-1" style={{ color: riskScore >= 80 ? "var(--down)" : "var(--bags)" }}>
+                        <p className="font-body text-[10px] uppercase tracking-wide mb-1" style={{ color: riskScore >= 80 ? "var(--down)" : "var(--accent)" }}>
                           Risk trade analysed
                         </p>
                         <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
@@ -1909,7 +1905,7 @@ export function UnifiedBuyPanel() {
                               onClick={executeSwap}
                               disabled={loading || buyBlocked}
                               className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
-                              style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
+                              style={{ background: "var(--accent)", color: "var(--bg-base)", height: "36px" }}
                             >
                               {loading ? (
                                 <>
@@ -1974,7 +1970,7 @@ export function UnifiedBuyPanel() {
                               </div>
                               <div className="flex justify-between gap-3 font-body text-sm" style={{ color: "var(--text-1)" }}>
                                 <span style={{ color: "var(--text-3)" }}>Est. USDC (at mark)</span>
-                                <span className="font-mono tabular-nums font-semibold" style={{ color: "var(--accent-bags)" }}>
+                                <span className="font-mono tabular-nums font-semibold" style={{ color: "var(--accent)" }}>
                                   {tokenSellApproxUsd != null ? formatUsd(tokenSellApproxUsd, 2) : "—"}
                                 </span>
                               </div>
@@ -2023,7 +2019,7 @@ export function UnifiedBuyPanel() {
                           onClick={executeSwap}
                           disabled={loading}
                           className="mt-3 w-full py-2.5 rounded-md font-heading font-bold text-[13px] uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
-                          style={{ background: "var(--accent-bags)", color: "var(--bg-base)", height: "36px" }}
+                          style={{ background: "var(--accent)", color: "var(--bg-base)", height: "36px" }}
                         >
                           {loading ? (
                             <>
@@ -2094,7 +2090,7 @@ export function UnifiedBuyPanel() {
                           </p>
                           <p className="flex justify-between">
                             <span className="text-[var(--text-3)]">Reference YES</span>
-                            <span className="font-body text-[var(--accent-bags)] tabular-nums">
+                            <span className="font-body text-[var(--accent)] tabular-nums">
                               {selectedToken.marketProbability != null ? `${selectedToken.marketProbability.toFixed(1)}%` : "—"}
                             </span>
                           </p>
@@ -2111,7 +2107,7 @@ export function UnifiedBuyPanel() {
                         <>
                           <p className="flex justify-between">
                             <span className="text-[var(--text-3)]">24h volume</span>
-                            <span className="font-body text-[var(--accent-bags)] tabular-nums">
+                            <span className="font-body text-[var(--accent)] tabular-nums">
                               {selectedToken.volume24h != null ? `${selectedToken.volume24h.toLocaleString()} USD` : "—"}
                             </span>
                           </p>
@@ -2145,7 +2141,7 @@ export function UnifiedBuyPanel() {
                           </p>
                           <p className="flex justify-between">
                             <span className="text-[var(--text-3)]">Rugcheck</span>
-                            <span style={{ color: selectedToken.safe === false ? "var(--down)" : "var(--bags)" }}>
+                            <span style={{ color: selectedToken.safe === false ? "var(--down)" : "var(--accent)" }}>
                               {selectedToken.rugcheckScore != null
                                 ? `${selectedToken.rugcheckScore}${selectedToken.safe === false ? " · watch" : ""}`
                                 : selectedToken.safe === false
@@ -2192,7 +2188,7 @@ export function UnifiedBuyPanel() {
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
-              {!resultModalOpen && success && <p className="text-sm mt-3" style={{ color: "var(--accent-bags)" }}>{success}</p>}
+              {!resultModalOpen && success && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>{success}</p>}
               <p className="text-[var(--text-secondary)] text-[11px] mt-3 leading-relaxed">
                 Use market mode for YES or NO shares and token mode for linked coins. Siren spends USDC for both Solana and Polymarket trades, and Kalshi may need a one-time DFlow wallet verification first.
               </p>
