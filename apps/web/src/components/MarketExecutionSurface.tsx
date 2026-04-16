@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { getFontEmbedCSS, toPng } from "html-to-image";
 import { ExternalLink, Share2, Download, Loader2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
@@ -430,6 +430,7 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
   const fontEmbedCssRef = useRef<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   const addToast = useToastStore((s) => s.addToast);
 
@@ -512,10 +513,10 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
           <motion.div
             key={`m-${selectedMarket.ticker}`}
             className="mb-4"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+            animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             <PredictionMarketFocusPanel
               market={selectedMarket}
@@ -539,10 +540,10 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
         ) : selectedMarket && compactMode ? (
           <motion.div
             key={`mc-${selectedMarket.ticker}`}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
             <PredictionMarketFocusPanel
               market={selectedMarket}
@@ -567,10 +568,10 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
           <motion.div
             key={`s-${selectedSignal.id}`}
             className="mb-4"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+            animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             <SignalNarrativePanel signal={selectedSignal} />
           </motion.div>
@@ -579,10 +580,10 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
             key="surface-empty"
             className="mb-4 rounded-xl border px-4 py-3"
             style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.99 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.98 }}
+            animate={reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0, scale: 0.99 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
             <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
               Select a prediction market

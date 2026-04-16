@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { ExternalLink } from "lucide-react";
@@ -23,6 +23,7 @@ export function MarketDetailPanel() {
   const { selectedMarket, setBuyPanelOpen, detailPanelOpen, setDetailPanelOpen } = useSirenStore();
   const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
   const isOpen = !!selectedMarket && detailPanelOpen;
+  const reduceMotion = useReducedMotion();
 
   if (!selectedMarket || !detailPanelOpen) return null;
 
@@ -40,28 +41,28 @@ export function MarketDetailPanel() {
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0 }}
+            initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => setDetailPanelOpen(false)}
         >
           <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.6)" }} />
           <motion.div
-            initial={{ opacity: 0 }}
+            initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="relative w-full max-w-lg rounded-[8px] border overflow-hidden"
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" }}
+            className="relative w-full max-w-2xl rounded-2xl border overflow-hidden"
             style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-start p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-              <span className="font-body text-sm" style={{ color: "var(--text-2)" }}>Market</span>
+            <div className="flex justify-between items-start p-4 border-b md:px-5" style={{ borderColor: "var(--border-subtle)" }}>
+              <span className="font-body text-sm" style={{ color: "var(--text-2)" }}>Market details</span>
               <button
                 type="button"
                 onClick={() => { hapticLight(); setDetailPanelOpen(false); }}
-                className="p-2 rounded-[6px] transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
+                className="h-10 min-w-10 p-2 rounded-[10px] border transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                 style={{ color: "var(--text-2)" }}
                 aria-label="Close"
               >
@@ -69,7 +70,7 @@ export function MarketDetailPanel() {
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 md:px-5 md:py-5">
               <h2 className="font-heading font-semibold text-base leading-snug" style={{ color: "var(--text-1)" }}>
                 {selectedMarket.title}
               </h2>
@@ -116,32 +117,32 @@ export function MarketDetailPanel() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Velocity (1h)</p>
                   <VelocityBadge v={selectedMarket.velocity_1h} />
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Trades (24h)</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{marketActivity?.recentTrades?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Volume (24h)</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.volume_24h?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Volume</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.volume?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Open interest</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.open_interest?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Liquidity</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{selectedMarket.liquidity?.toLocaleString() ?? "—"}</p>
                 </div>
-                <div className="rounded-[6px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
+                <div className="rounded-xl border p-4 md:col-span-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
                   <p className="font-body text-xs mb-1" style={{ color: "var(--text-3)" }}>Last trade</p>
                   <p className="font-mono text-sm tabular-nums" style={{ color: "var(--text-1)" }}>{marketActivity?.lastTradeAt ? new Date(marketActivity.lastTradeAt).toLocaleTimeString() : "—"}</p>
                 </div>
@@ -156,7 +157,7 @@ export function MarketDetailPanel() {
                       setDetailPanelOpen(false);
                       setBuyPanelOpen(true, "market");
                     }}
-                    className="w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2"
+                    className="w-full py-4 rounded-xl font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
                     Trade here
@@ -166,7 +167,7 @@ export function MarketDetailPanel() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
-                    className="w-full py-3 rounded-[6px] font-body font-medium text-sm transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2 border"
+                    className="w-full py-3 rounded-xl font-body font-medium text-sm transition-opacity duration-[120ms] ease hover:opacity-90 flex items-center justify-center gap-2 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                     style={{
                       background: "var(--bg-elevated)",
                       color: "var(--text-2)",
@@ -187,7 +188,7 @@ export function MarketDetailPanel() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => hapticLight()}
-                    className="flex items-center justify-center gap-2 w-full py-4 rounded-[6px] font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90"
+                    className="flex items-center justify-center gap-2 w-full py-4 rounded-xl font-heading font-semibold text-base transition-opacity duration-[120ms] ease hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
                     Open source page

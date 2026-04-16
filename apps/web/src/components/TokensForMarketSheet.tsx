@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
 import { MarketExecutionSurface } from "./MarketExecutionSurface";
 import { hapticLight } from "@/lib/haptics";
@@ -13,6 +13,7 @@ export function TokensForMarketSheet({
   isOpen: boolean;
   onClose: () => void;
 }) {
+  const reduceMotion = useReducedMotion();
   const { selectedMarket, setBuyPanelOpen } = useSirenStore();
   const canTradeInSiren = !!selectedMarket && (
     selectedMarket.source === "kalshi"
@@ -49,10 +50,10 @@ export function TokensForMarketSheet({
             style={{ background: "rgba(0,0,0,0.6)" }}
           />
           <motion.div
-            initial={{ y: "100%" }}
+            initial={reduceMotion ? false : { y: "100%" }}
             animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
+            exit={reduceMotion ? { y: 0 } : { y: "100%" }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.25, ease: "easeOut" }}
             className="fixed inset-x-0 bottom-0 top-[20%] z-50 flex flex-col lg:hidden"
             style={{
               background: "var(--bg-base)",
@@ -103,7 +104,7 @@ export function TokensForMarketSheet({
                           hapticLight();
                           setBuyPanelOpen(true, "market");
                         }}
-                        className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                        className="font-body font-medium text-[11px] uppercase h-9 px-3 rounded-[8px] border transition-all duration-[120ms] ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                         style={{
                           background: "var(--accent)",
                           borderColor: "var(--accent)",
@@ -119,7 +120,7 @@ export function TokensForMarketSheet({
                           hapticLight();
                           window.open(marketUrl, "_blank", "noopener,noreferrer");
                         }}
-                        className="font-body font-medium text-[11px] uppercase h-8 px-3 rounded-[6px] border transition-all duration-[120ms] ease"
+                        className="font-body font-medium text-[11px] uppercase h-9 px-3 rounded-[8px] border transition-all duration-[120ms] ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                         style={{
                           background: "var(--bg-elevated)",
                           borderColor: "var(--border-default)",
