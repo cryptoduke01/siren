@@ -2,6 +2,12 @@
 
 Execution and risk intelligence for prediction markets. Live Kalshi and Polymarket signals, feasibility-aware execution (DFlow, Jupiter, Polymarket), and portfolio context in one terminal on Solana.
 
+| | |
+|--|--|
+| **Terminal** | [onsiren.xyz](https://onsiren.xyz) |
+| **Docs** | [docs.onsiren.xyz](https://docs.onsiren.xyz) |
+| **X** | [@sirenmarketsxyz](https://x.com/sirenmarketsxyz) |
+
 ## What Siren Does
 
 Siren connects prediction market data from Kalshi (via DFlow) and Polymarket with Solana execution and token surfacing (DexScreener, Jupiter). You can:
@@ -25,6 +31,7 @@ Siren connects prediction market data from Kalshi (via DFlow) and Polymarket wit
 apps/
   web/     Next.js frontend (port 3000)
   api/     Fastify backend (port 4000)
+  docs/    Next.js docs site → docs.onsiren.xyz (port 3001 locally if run alone)
 packages/
   shared/  Shared types and tag library
 docs/
@@ -37,6 +44,7 @@ docs/
 pnpm install
 pnpm dev:api    # Terminal 1: API on :4000
 pnpm dev:web    # Terminal 2: Frontend on :3000
+# Optional: pnpm dev:docs   # Docs on :3001
 ```
 
 Copy `apps/api/.env.example` to `apps/api/.env` and fill in API keys. See docs/GETTING_STARTED.md for details.
@@ -57,7 +65,9 @@ Frontend (`apps/web/.env.local`):
 
 ## Hosting
 
-Frontend (Next.js): Vercel. Import repo, set Root Directory to `apps/web`, add `NEXT_PUBLIC_API_URL` to your deployed API URL.
+**Web** (Next.js): Vercel. Root Directory `apps/web`, set `NEXT_PUBLIC_API_URL` to your deployed API.
+
+**Docs** (Next.js): Separate Vercel project, Root Directory `apps/docs`, domain `docs.onsiren.xyz`. `metadataBase` in `apps/docs/src/app/layout.tsx` should match the live URL.
 
 Backend (Fastify): Render, Fly.io, or Railway. Set Root Directory to `apps/api`, Build Command `pnpm install && pnpm build`, Start Command `node dist/index.js`. Add env vars from `.env.example`. Render has a free tier. Fly.io is good for global deploys. Railway is another option.
 
