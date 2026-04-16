@@ -57,7 +57,7 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
             }
             window.open(marketUrl, "_blank", "noopener,noreferrer");
           }}
-          className="h-9 rounded-[8px] px-3 text-[11px] font-heading font-semibold uppercase tracking-[0.08em]"
+          className="h-10 rounded-[10px] px-3 text-[11px] font-heading font-semibold uppercase tracking-[0.08em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
           style={{ background: "var(--accent)", color: "var(--accent-text)" }}
         >
           {canTradeInSiren ? "Trade" : "Details"}
@@ -65,7 +65,7 @@ export function MobileStickyMarket({ onOpenMarkets }: { onOpenMarkets: () => voi
         <button
           type="button"
           onClick={() => { hapticLight(); onOpenMarkets(); }}
-          className="h-10 min-w-10 px-2 rounded-[10px] border transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)]"
+          className="h-10 min-w-10 px-2 rounded-[10px] border transition-colors duration-[120ms] ease hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
           style={{ color: "var(--text-2)", borderColor: "var(--border-subtle)" }}
           aria-label="Change market"
         >

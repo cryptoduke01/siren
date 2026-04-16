@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { hapticLight } from "@/lib/haptics";
 import { StarButton } from "./StarButton";
 import { ImmersiveMarketCard } from "./ImmersiveMarketCard";
@@ -36,6 +36,7 @@ export function MarketBottomSheet({
   setActiveCategory: (c: string) => void;
   onSelectMarket: (m: MarketWithVelocity) => void;
 }) {
+  const reduceMotion = useReducedMotion();
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
     return () => {
@@ -61,10 +62,10 @@ export function MarketBottomSheet({
             style={{ background: "rgba(0,0,0,0.6)" }}
           />
           <motion.div
-            initial={{ y: "100%" }}
+            initial={reduceMotion ? false : { y: "100%" }}
             animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
+            exit={reduceMotion ? { y: 0 } : { y: "100%" }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: "easeOut" }}
             className="fixed bottom-0 left-0 right-0 z-50 max-h-[82vh] flex flex-col lg:hidden rounded-t-[24px] border-t"
             style={{
               background: "var(--bg-base)",
@@ -88,7 +89,7 @@ export function MarketBottomSheet({
                       hapticLight();
                       setActiveCategory(c);
                     }}
-                    className="snap-start shrink-0 rounded-full px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-wide transition-all"
+                    className="snap-start shrink-0 rounded-full px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-wide transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                     style={{
                       color: cat === c ? "var(--accent-text)" : "var(--text-3)",
                       background: cat === c ? "var(--accent)" : "var(--bg-surface)",

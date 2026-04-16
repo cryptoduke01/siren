@@ -80,7 +80,7 @@ export function ImmersiveMarketCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`relative w-full text-left rounded-[22px] border overflow-hidden transition-transform duration-200 ease-out ${layout === "feed" ? "active:scale-[0.99]" : ""}`}
+      className={`relative w-full text-left rounded-[22px] border overflow-hidden transition-transform duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 ${layout === "feed" ? "motion-safe:active:scale-[0.99]" : ""}`}
       style={{
         borderColor: isSelected ? "color-mix(in srgb, var(--accent) 55%, transparent)" : "var(--border-subtle)",
         boxShadow: isSelected

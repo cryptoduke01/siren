@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useMarkets } from "@/hooks/useMarkets";
 import { useSignals } from "@/hooks/useSignals";
@@ -48,6 +48,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
   const [category, setCategory] = useState<MarketCategoryId>("all");
   const [source, setSource] = useState<MarketSourceFilter>("all");
   const [sortMode, setSortMode] = useState<MarketFeedSortMode>("hot");
+  const reduceMotion = useReducedMotion();
 
   const { data: markets = [], isLoading, isError, refetch } = useMarkets();
   const { signals, status: signalStatus } = useSignals();
@@ -213,7 +214,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               hapticLight();
               setFilterOpen(true);
             }}
-            className="relative h-10 md:h-11 px-3.5 rounded-2xl border flex items-center gap-2 shrink-0 transition-colors"
+            className="relative h-10 md:h-11 px-3.5 rounded-2xl border flex items-center gap-2 shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
             style={{
               background: "var(--bg-surface)",
               borderColor: filterActive ? "var(--accent)" : "var(--border-subtle)",
@@ -304,8 +305,12 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               hapticLight();
               refetch();
             }}
-            className="px-5 py-2.5 rounded-xl font-heading text-xs font-bold uppercase tracking-wide border"
-            style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+            className="px-5 py-2.5 rounded-xl font-heading text-xs font-bold uppercase tracking-wide border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+            style={{
+              background: "var(--bg-elevated)",
+              borderColor: "var(--border-subtle)",
+              color: "var(--text-1)",
+            }}
           >
             Try again
           </button>
@@ -325,11 +330,15 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               return (
                 <motion.li
                   key={m.ticker}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2, delay: Math.min(i * 0.025, 0.12) }}
+                  layout={!reduceMotion}
+                  initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                  animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                  exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
+                  transition={
+                    reduceMotion
+                      ? { duration: 0 }
+                      : { duration: 0.2, delay: Math.min(i * 0.025, 0.12) }
+                  }
                   className="snap-start"
                 >
                   <ImmersiveMarketCard
@@ -351,8 +360,12 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
                   hapticLight();
                   setShownCount((c) => c + 10);
                 }}
-                className="w-full py-3 rounded-2xl font-heading text-xs font-bold uppercase tracking-wider border transition-colors"
-                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-2)" }}
+                className="w-full py-3 rounded-2xl font-heading text-xs font-bold uppercase tracking-wider border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                style={{
+                  borderColor: "var(--border-subtle)",
+                  background: "var(--bg-surface)",
+                  color: "var(--text-2)",
+                }}
               >
                 Load more ({filtered.length - shownCount} left)
               </button>
