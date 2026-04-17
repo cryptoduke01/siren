@@ -835,7 +835,7 @@ function PredictionMarketFocusPanel({
         </div>
 
         <div
-          className="rounded-[20px] border p-4"
+          className="self-start rounded-[20px] border p-4"
           style={{
             borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
             background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), var(--bg-surface))",
@@ -866,6 +866,25 @@ function PredictionMarketFocusPanel({
               Market page
               <ExternalLink className="h-4 w-4" />
             </button>
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <div className="rounded-xl border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+              <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                Route target
+              </p>
+              <p className="mt-1 font-body text-sm" style={{ color: "var(--text-1)" }}>
+                {selectedOutcomeLabel || "Primary yes contract"}
+              </p>
+            </div>
+            <div className="rounded-xl border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+              <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                Venue context
+              </p>
+              <p className="mt-1 font-body text-sm" style={{ color: "var(--text-1)" }}>
+                {market.source === "kalshi" ? "Kalshi event book" : "Polymarket order book"}
+              </p>
+            </div>
           </div>
         </div>
       </div>
