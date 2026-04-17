@@ -8,6 +8,11 @@ export type TorqueRelayReadiness = {
   relayMode: "custom_webhook";
   webhookHost: string | null;
   eventNames: string[];
+  suggestedCampaigns: Array<{
+    name: string;
+    objective: string;
+  }>;
+  frictionLog: string[];
   summary: string;
 };
 

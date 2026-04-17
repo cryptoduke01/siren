@@ -1,6 +1,6 @@
 # Siren DX Report
 
-This report captures the current builder experience integrating sponsor-track infrastructure into Siren as of April 16, 2026.
+This report captures the current builder experience integrating sponsor-track infrastructure into Siren as of April 17, 2026.
 
 ## Project
 
@@ -11,28 +11,47 @@ Siren is building an execution and risk intelligence layer for prediction market
 ### What we integrated
 
 - Existing Siren swap flow already used Jupiter swap routing.
-- This pass added a Jupiter prediction comparison layer through:
+- This pass added a Jupiter prediction execution context layer through:
   - `GET /api/integrations/jupiter/prediction-map`
   - `apps/api/src/services/jupiterPrediction.ts`
   - `apps/web/src/hooks/useJupiterPredictionMap.ts`
   - `apps/web/src/components/MarketExecutionSurface.tsx`
+- Siren now uses these Prediction endpoints in one flow:
+  - `GET /prediction/v1/events/search`
+  - `GET /prediction/v1/events/{eventId}`
+  - `GET /prediction/v1/orderbook/{marketId}`
+  - `GET /prediction/v1/trading-status`
 
 ### What worked well
 
-- Prediction search is strong enough to map related events across venues from a title plus outcome label.
-- Reusing one `JUPITER_API_KEY` across swap and prediction surfaces is a good platform story.
+- The Prediction API is flexible enough to turn one Siren market thesis into a cross-venue read.
+- `events/search` is a clean starting point.
+- `events/{eventId}` is the endpoint that makes the integration actually useful because it exposes the event’s child markets.
+- `orderbook/{marketId}` is what upgrades the integration from “directory lookup” to “execution intelligence”.
+- Reusing one `JUPITER_API_KEY` across swap and prediction surfaces is a strong platform story.
 
 ### Friction
 
-- Prediction search is easy to use once the endpoint is known, but the product-facing URL structure for venue deep links is not obvious enough from the API response alone.
-- Venue-specific URL derivation still feels heuristic in the UI layer, especially for Kalshi.
-- Search relevance is decent, but multi-outcome event matching still benefits from Siren-side query cleanup.
+- Search results alone were not enough. In practice we had to chain search -> event details -> orderbook before the data became product-grade.
+- Volume units and pricing semantics require care. Event-level values and market-level values do not feel equally obvious at first glance, especially when you are trying to render user-facing numbers fast.
+- Canonical venue URLs are still not explicit enough from the raw response shape, so product teams end up deriving deep links heuristically.
+- For multi-outcome theses, the hardest part is not fetching data, it is choosing the best child market match reliably.
+
+### AI stack feedback
+
+- Docs were enough to get the integration working, but the strongest path came from combining multiple pages rather than following one obvious “build a product like this” guide.
+- The biggest lift would be a first-class example that shows:
+  1. search for an event,
+  2. fetch full event details,
+  3. select the best child market,
+  4. inspect orderbook depth,
+  5. drive a product decision from the result.
 
 ### What we want improved
 
-- Provider responses should make canonical venue URLs explicit.
-- More examples for multi-outcome prediction event matching would help a lot.
-- A first-class “related markets / same thesis across venues” example in docs would directly help products like Siren.
+- Make canonical venue URLs explicit in the response.
+- Add a richer “same thesis across venues” example for products doing comparison and routing.
+- Add clearer guidance around pricing units and which fields are safe to present directly to users.
 
 ## GoldRush / Covalent
 
@@ -43,21 +62,31 @@ Siren is building an execution and risk intelligence layer for prediction market
   - `apps/api/src/services/goldrush.ts`
   - `apps/web/src/hooks/useGoldRushWalletIntelligence.ts`
   - `apps/web/src/app/portfolio/page.tsx`
+- Siren currently uses:
+  - `GET /v1/solana-mainnet/address/{wallet}/balances_v2/`
+  - `GET /v1/solana-mainnet/address/{wallet}/transactions_v3/`
 
 ### What worked well
 
-- Structured balance reads are much faster to ship against than raw RPC parsing.
-- GoldRush is useful for turning wallet state into product decisions instead of just dashboards.
+- GoldRush makes “wallet intelligence” much faster to ship than raw RPC.
+- Balances plus recent transaction history are enough to build a real execution-readiness layer:
+  - deployable stablecoin reserve
+  - native SOL runway
+  - concentration risk
+  - recent inbound/outbound flow
+  - last active timestamp
 
 ### Friction
 
-- The biggest product question is not “what balances exist,” it is “which balances are actually deployable for this workflow.”
-- That means Siren still has to derive execution-specific risk flags on top of balance data.
+- The biggest product question is not “what balances exist,” it is “which balances are actually deployable for this workflow right now.”
+- Siren still has to derive execution-specific risk flags on top of GoldRush’s structured outputs.
+- For trading/risk products, more Solana-native examples around recent flow interpretation would help a lot.
 
 ### What we want improved
 
-- More docs or examples around portfolio readiness, concentration scoring, and alerting patterns would help product builders.
-- Better examples of Solana-specific operational wallet scoring would make GoldRush more immediately useful for risk products.
+- More example playbooks for wallet scoring on Solana.
+- Better examples showing how to turn balances + transactions into alerts, not just dashboards.
+- Stronger docs for “portfolio readiness” and “operational wallet health” use cases.
 
 ## Torque
 
@@ -67,28 +96,54 @@ Siren is building an execution and risk intelligence layer for prediction market
   - `apps/api/src/services/torque.ts`
   - `GET /api/integrations/torque/readiness`
   - trade-attempt emission inside `POST /api/trade-attempts/log`
+- Siren’s event model currently centers on:
+  - `trade_attempt_logged`
+  - `trade_attempt_success`
+  - `trade_attempt_failed`
+  - `partial_fill_recorded`
 
 ### What worked well
 
 - Siren’s execution log maps naturally onto campaign events like successful closes, failed attempts, and partial fills.
 - The mental model fits retention well: leaderboards, rebates, resolve-before-expiry campaigns, and execution-quality incentives.
 
-### Friction
+### Friction log
 
-- The best integration path for custom event ingestion needs to be extremely obvious, because teams like Siren want to plug in product events fast without reverse-engineering an ingestion shape.
-- There is a difference between “reward volume” and “reward better execution behavior”; the latter should have stronger examples.
+- The fastest route for custom event ingestion needs to be extremely obvious. Trading products want to wire product events fast, not reverse-engineer envelope shape.
+- Docs are good for installing the MCP quickly, but product teams also need a concrete “here is the minimum event contract to unlock campaigns” example.
+- “Reward volume” is easier to imagine than “reward better execution behavior”. The latter is where Siren lives, and it needs stronger examples.
 
 ### What we want improved
 
 - More end-to-end examples around custom events for trading products.
 - Clearer docs on the minimal event envelope for campaign eligibility.
+- More examples for behavior-based incentives rather than only volume-driven incentives.
+
+## AI Stack Used
+
+- Official Jupiter Prediction docs
+- Official GoldRush docs
+- Official Torque MCP quickstart docs
+- Live endpoint testing from the terminal during implementation
+
+What helped:
+
+- Jupiter’s docs around event discovery and orderbook inspection
+- GoldRush’s endpoint structure for balances and transactions
+- Torque’s MCP quickstart for setup expectations
+
+What did not help enough:
+
+- Cross-venue product examples for Jupiter
+- Behavior-driven reward examples for Torque
+- Solana-specific wallet readiness playbooks for GoldRush
 
 ## Summary
 
 The sponsor integrations are a good fit for Siren when used to strengthen the real product:
 
-- Jupiter for cross-venue prediction context
-- GoldRush for wallet readiness and risk flags
+- Jupiter for cross-venue prediction context and depth reads
+- GoldRush for wallet readiness, recent flow, and risk flags
 - Torque for execution-linked growth loops
 
-The biggest product lesson is simple: integrations only feel strong when they directly improve execution and risk clarity. That is the standard Siren is using for every track.
+The biggest product lesson is simple: integrations only matter when they improve execution and risk clarity. That is the standard Siren is using for every track.

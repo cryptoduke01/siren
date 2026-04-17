@@ -514,10 +514,16 @@ function formatEventCloseTime(value?: string | null): string {
   }).format(timestamp);
 }
 
+function formatPointGap(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)} pts`;
+}
+
 function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
   const { data, isLoading, isError } = useJupiterPredictionMap({
     title: market.title,
     outcomeLabel: market.selected_outcome_label ?? null,
+    probability: market.probability,
   });
 
   if (isLoading) {
@@ -563,12 +569,12 @@ function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
             className="rounded-full border px-3 py-1 font-body text-[10px] uppercase tracking-[0.14em]"
             style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-base)" }}
           >
-            Query: {data.query || market.title}
+            {data.tradingActive ? "Trading active" : "Trading paused"} · {data.query || market.title}
           </span>
         </div>
 
         <p className="mt-3 max-w-3xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-          Siren can now pull Jupiter’s prediction directory into the market read, so we can compare how the same narrative is expressed across Kalshi and Polymarket before we chase size.
+          Siren is now reading Jupiter’s live prediction directory, event details, and orderbook depth so this panel can compare the same thesis across venues before you trust a price or route.
         </p>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
@@ -587,10 +593,17 @@ function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
                     {provider.events.length > 0 ? `${provider.events.length} related events` : "No obvious matches"}
                   </p>
                 </div>
-                <CompactMarketStat
-                  label="Mapped"
-                  value={String(provider.events.reduce((sum, event) => sum + event.marketCount, 0))}
-                />
+                <div className="grid min-w-[132px] gap-2">
+                  <CompactMarketStat
+                    label="Mapped"
+                    value={String(provider.events.reduce((sum, event) => sum + event.marketCount, 0))}
+                  />
+                  <CompactMarketStat
+                    label="Depth read"
+                    value={provider.events.some((event) => event.primaryMarket?.orderbook) ? "Live" : "Thin"}
+                    tone={provider.events.some((event) => event.primaryMarket?.orderbook) ? "var(--up)" : "var(--text-2)"}
+                  />
+                </div>
               </div>
 
               {provider.events.length === 0 ? (
@@ -611,7 +624,7 @@ function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
                             {event.title}
                           </p>
                           {event.subtitle && (
-                          <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
                               {event.subtitle}
                             </p>
                           )}
@@ -644,7 +657,101 @@ function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
                         <CompactMarketStat label="Series" value={event.series || provider.provider} />
                       </div>
 
-                      {event.markets.length > 0 && (
+                      {event.primaryMarket ? (
+                        <div className="mt-3 rounded-2xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                Best matched market
+                              </p>
+                              <p className="mt-1 font-body text-sm leading-snug" style={{ color: "var(--text-1)" }}>
+                                {event.primaryMarket.title}
+                              </p>
+                              <p className="mt-2 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                                {event.primaryMarket.comparison.summary}
+                              </p>
+                            </div>
+                            <span
+                              className="rounded-full border px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.14em]"
+                              style={{
+                                borderColor: "var(--border-subtle)",
+                                background: "var(--bg-surface)",
+                                color:
+                                  event.primaryMarket.comparison.confidence === "high"
+                                    ? "var(--up)"
+                                    : event.primaryMarket.comparison.confidence === "medium"
+                                      ? "var(--yellow)"
+                                      : "var(--text-3)",
+                              }}
+                            >
+                              {event.primaryMarket.comparison.confidence} confidence
+                            </span>
+                          </div>
+
+                          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                            <CompactMarketStat label="Buy YES" value={formatUsdCompact(event.primaryMarket.yesPriceUsd)} tone="var(--accent)" />
+                            <CompactMarketStat label="Buy NO" value={formatUsdCompact(event.primaryMarket.noPriceUsd)} tone="var(--down)" />
+                            <CompactMarketStat label="Gap vs Siren" value={formatPointGap(event.primaryMarket.comparison.yesPriceGapPct)} tone={event.primaryMarket.comparison.yesPriceGapPct != null && Math.abs(event.primaryMarket.comparison.yesPriceGapPct) >= 10 ? "var(--yellow)" : "var(--text-1)"} />
+                            <CompactMarketStat label="Market vol" value={formatUsdCompact(event.primaryMarket.volume)} />
+                          </div>
+
+                          {event.primaryMarket.orderbook && (
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              <div className="rounded-xl border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                  YES depth
+                                </p>
+                                <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                                  Best bid {formatUsdCompact(event.primaryMarket.orderbook.bestYesBidUsd)} · {event.primaryMarket.orderbook.yesTopDepthContracts.toLocaleString()} contracts
+                                </p>
+                                <div className="mt-2 space-y-1.5">
+                                  {event.primaryMarket.orderbook.yesDepth.map((level) => (
+                                    <div key={`yes-${level.priceUsd}-${level.quantity}`} className="flex items-center justify-between gap-3 font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                                      <span>{formatUsdCompact(level.priceUsd)}</span>
+                                      <span>{level.quantity.toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="rounded-xl border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                  NO depth
+                                </p>
+                                <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                                  Best bid {formatUsdCompact(event.primaryMarket.orderbook.bestNoBidUsd)} · {event.primaryMarket.orderbook.noTopDepthContracts.toLocaleString()} contracts
+                                </p>
+                                <div className="mt-2 space-y-1.5">
+                                  {event.primaryMarket.orderbook.noDepth.map((level) => (
+                                    <div key={`no-${level.priceUsd}-${level.quantity}`} className="flex items-center justify-between gap-3 font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                                      <span>{formatUsdCompact(level.priceUsd)}</span>
+                                      <span>{level.quantity.toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <p className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              {event.primaryMarket.recommendation}
+                            </p>
+                            {event.primaryMarket.marketUrl && (
+                              <a
+                                href={event.primaryMarket.marketUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+                                style={{ borderColor: "var(--border-subtle)", color: "var(--accent)", background: "var(--bg-surface)" }}
+                              >
+                                Open matched market
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ) : event.markets.length > 0 ? (
                         <div className="mt-3 grid gap-2">
                           {event.markets.slice(0, 2).map((child) => (
                             <div
@@ -671,7 +778,7 @@ function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
                             </div>
                           ))}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   ))}
                 </div>

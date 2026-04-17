@@ -15,6 +15,10 @@ export type GoldRushWalletIntelligence = {
     concentrationPct: number;
     riskScore: number;
     riskLabel: "low" | "moderate" | "high";
+    recentTxnCount: number;
+    inboundUsd: number;
+    outboundUsd: number;
+    lastActiveAt: string | null;
   };
   alerts: Array<{
     level: "info" | "warn" | "high";
@@ -33,10 +37,20 @@ export type GoldRushWalletIntelligence = {
     isStable: boolean;
     isNative: boolean;
   }>;
+  activity: Array<{
+    txHash: string;
+    timestamp: string | null;
+    direction: "in" | "out" | "self" | "unknown";
+    valueUsd: number;
+    prettyValueUsd: string | null;
+    successful: boolean;
+    explorerUrl: string | null;
+  }>;
   narrative: {
     reserveRead: string;
     concentrationRead: string;
     readiness: string;
+    activityRead: string;
   };
 };
 

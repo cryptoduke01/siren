@@ -1800,7 +1800,7 @@ export default function PortfolioPage() {
                 </div>
               ) : goldRushError || !goldRushIntelligence ? (
                 <p className="mt-6 py-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
-                  GoldRush wallet intelligence is not live yet in this environment. Add `GOLDRUSH_API_KEY` to promote this from scaffold to live signal.
+                  GoldRush wallet intelligence is unavailable right now. Siren could not complete the live wallet read in this environment.
                 </p>
               ) : (
                 <>
@@ -1808,7 +1808,7 @@ export default function PortfolioPage() {
                     {[
                       { label: "Idle stables", value: `$${fmtUsd(goldRushIntelligence.summary.stablecoinUsd)}`, tone: "var(--accent)" },
                       { label: "Visible wallet", value: `$${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}`, tone: "var(--text-1)" },
-                      { label: "Open book", value: `$${fmtUsd(openBookUsd)}`, tone: "var(--text-1)" },
+                      { label: "Recent flow", value: `${goldRushIntelligence.summary.recentTxnCount}`, tone: "var(--text-1)" },
                       { label: "Risk", value: `${goldRushIntelligence.summary.riskScore}/100`, tone: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)" },
                     ].map((item) => (
                       <div
@@ -1840,11 +1840,35 @@ export default function PortfolioPage() {
                       <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                         {goldRushIntelligence.narrative.readiness}
                       </p>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {goldRushIntelligence.narrative.activityRead}
+                      </p>
                       <div className="mt-3 inline-flex items-center rounded-full border px-3 py-1.5 font-sub text-[10px] uppercase tracking-[0.16em]" style={{ borderColor: "var(--border-subtle)", color: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)", background: "var(--bg-surface)" }}>
                         {goldRushIntelligence.summary.riskLabel} execution risk
                       </div>
                     </div>
 
+                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Activity monitor
+                      </p>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {[
+                          { label: "Inbound", value: `$${fmtUsd(goldRushIntelligence.summary.inboundUsd)}` },
+                          { label: "Outbound", value: `$${fmtUsd(goldRushIntelligence.summary.outboundUsd)}` },
+                          { label: "Open book", value: `$${fmtUsd(openBookUsd)}` },
+                          { label: "Last active", value: goldRushIntelligence.summary.lastActiveAt ? new Date(goldRushIntelligence.summary.lastActiveAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Quiet" },
+                        ].map((item) => (
+                          <div key={item.label} className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                            <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
+                            <p className="mt-1 font-heading text-xs font-semibold" style={{ color: "var(--text-1)" }}>{item.value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
                     <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
                         Top holdings
@@ -1867,6 +1891,49 @@ export default function PortfolioPage() {
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Recent wallet activity
+                      </p>
+                      {goldRushIntelligence.activity.length === 0 ? (
+                        <p className="mt-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                          No recent on-chain flow was returned from GoldRush for this wallet.
+                        </p>
+                      ) : (
+                        <div className="mt-3 space-y-2">
+                          {goldRushIntelligence.activity.map((row) => (
+                            <div key={row.txHash} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                  {row.direction === "in" ? "Inbound flow" : row.direction === "out" ? "Outbound flow" : row.direction === "self" ? "Self move" : "Unknown flow"}
+                                </p>
+                                <span className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: row.direction === "out" ? "var(--yellow)" : row.direction === "in" ? "var(--up)" : "var(--text-3)" }}>
+                                  {row.successful ? row.direction : "failed"}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-3">
+                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
+                                  ${fmtUsd(row.valueUsd)}
+                                </p>
+                                <div className="flex items-center gap-3">
+                                  {row.timestamp && (
+                                    <time className="font-sub text-[11px]" style={{ color: "var(--text-3)" }} dateTime={row.timestamp}>
+                                      {new Date(row.timestamp).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                    </time>
+                                  )}
+                                  {row.explorerUrl && (
+                                    <a href={row.explorerUrl} target="_blank" rel="noopener noreferrer" className="font-sub text-[11px]" style={{ color: "var(--accent)" }}>
+                                      Explorer
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1963,6 +2030,39 @@ export default function PortfolioPage() {
                   </div>
                 ))}
               </div>
+
+              {!!torqueReadiness?.suggestedCampaigns?.length && (
+                <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                    Suggested campaigns
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {torqueReadiness.suggestedCampaigns.map((campaign) => (
+                      <div key={campaign.name} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                        <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>{campaign.name}</p>
+                        <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                          {campaign.objective}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!!torqueReadiness?.frictionLog?.length && (
+                <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                    Friction log
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {torqueReadiness.frictionLog.map((item) => (
+                      <p key={item} className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

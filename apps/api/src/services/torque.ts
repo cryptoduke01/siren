@@ -36,6 +36,24 @@ export function getTorqueRelayReadiness() {
     relayMode: "custom_webhook" as const,
     webhookHost: safeHostname(webhookUrl),
     eventNames: [...TORQUE_EVENT_NAMES],
+    suggestedCampaigns: [
+      {
+        name: "first_clean_close",
+        objective: "Reward users who complete their first successful close without repeated failed attempts.",
+      },
+      {
+        name: "resolve_before_expiry",
+        objective: "Nudge traders to reduce exposure before thin end-of-resolution liquidity windows.",
+      },
+      {
+        name: "execution_leaderboard",
+        objective: "Rank traders by successful execution quality instead of raw size alone.",
+      },
+    ],
+    frictionLog: [
+      "Custom event ingestion shape is still something Siren has to infer from the outside unless a concrete webhook contract is documented.",
+      "Trading products need clearer examples for behavior-based rewards, not just volume-based incentives.",
+    ],
     summary: webhookUrl
       ? "Siren can relay execution outcome events into Torque-compatible growth primitives."
       : "Set TORQUE_CUSTOM_EVENTS_WEBHOOK_URL to relay Siren execution events into Torque campaigns.",

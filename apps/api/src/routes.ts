@@ -8,7 +8,7 @@ import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
-import { searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
+import { getJupiterPredictionTradingStatus, searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
 import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness } from "./services/torque.js";
 import {
   sendWelcomeWithAccessCode,
@@ -1663,7 +1663,7 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   app.get<{
-    Querystring: { title?: string; outcomeLabel?: string; limit?: string };
+    Querystring: { title?: string; outcomeLabel?: string; probability?: string; limit?: string };
   }>("/api/integrations/jupiter/prediction-map", async (req, reply) => {
     const title = req.query.title?.trim();
     if (!title) {
@@ -1671,18 +1671,22 @@ export function registerRoutes(app: FastifyInstance) {
     }
 
     const outcomeLabel = req.query.outcomeLabel?.trim() || null;
+    const probability = Number.parseFloat(req.query.probability || "");
     const limit = Math.min(Math.max(parseInt(req.query.limit || "3", 10) || 3, 1), 6);
 
     try {
-      const [kalshi, polymarket] = await Promise.all([
-        searchJupiterPredictionEvents({ title, outcomeLabel, provider: "kalshi", limit }),
-        searchJupiterPredictionEvents({ title, outcomeLabel, provider: "polymarket", limit }),
+      const normalizedProbability = Number.isFinite(probability) ? probability : null;
+      const [tradingActive, kalshi, polymarket] = await Promise.all([
+        getJupiterPredictionTradingStatus(),
+        searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "kalshi", limit }),
+        searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "polymarket", limit }),
       ]);
 
       return reply.send({
         success: true,
         data: {
           query: kalshi.query || polymarket.query,
+          tradingActive,
           providers: [
             { provider: "kalshi", events: kalshi.events },
             { provider: "polymarket", events: polymarket.events },
