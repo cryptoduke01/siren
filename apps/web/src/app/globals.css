@@ -82,29 +82,29 @@
 }
 
 html.light {
-  --bg-void: #E8E8EC;
-  --bg-base: #F0F0F5;
-  --bg-surface: #F6F6FA;
-  --bg-elevated: #FAFAFC;
-  --bg-hover: #EEEEF4;
-  --border-subtle: #D8D8E4;
-  --border-default: #C4C4D4;
-  --border-active: #A8A8BC;
-  --accent: #2D5C00;
-  --accent-dim: #D4FF0024;
-  --accent-text: #FAFAFC;
-  --yes: #008848;
-  --yes-dim: #00FF8520;
-  --kalshi: #2BA86E;
-  --polymarket: #6B3FDB;
-  --text-1: #16161D;
-  --text-2: #505068;
-  --text-3: #383850;
-  --placeholder: #606078;
-  --up: #00B85C;
-  --down: #D92B4A;
-  --down-dim: #FF456018;
-  --yellow: #C78A00;
+  --bg-void: #eef1f5;
+  --bg-base: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f2f5f9;
+  --bg-hover: #e9eef5;
+  --border-subtle: #d9e0ea;
+  --border-default: #c4cedb;
+  --border-active: #93a3b7;
+  --accent: #0f7a45;
+  --accent-dim: rgba(15, 122, 69, 0.12);
+  --accent-text: #f8fafc;
+  --yes: #0f7a45;
+  --yes-dim: rgba(15, 122, 69, 0.12);
+  --kalshi: #159a66;
+  --polymarket: #5b6df6;
+  --text-1: #162033;
+  --text-2: #4e5d73;
+  --text-3: #7a8699;
+  --placeholder: #8b96a8;
+  --up: #17985b;
+  --down: #d83d57;
+  --down-dim: rgba(216, 61, 87, 0.12);
+  --yellow: #b7791f;
 }
 
 /* Light mode: logo visible (darken green mark) */
@@ -139,6 +139,7 @@ body {
   overflow-x: hidden;
   min-height: 100dvh;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-top: 96px;
 }
 
 ::-webkit-scrollbar {

@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, TrendingUp } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import type { MarketOutcome, MarketWithVelocity } from "@siren/shared";
 import { useMarkets } from "@/hooks/useMarkets";
 import { useSignals } from "@/hooks/useSignals";
 import { useSirenStore } from "@/store/useSirenStore";
+import { useExplorerStore } from "@/store/useExplorerStore";
 import { toSelectedMarket } from "@/lib/marketSelection";
 import {
   inferMarketCategory,
@@ -32,6 +33,8 @@ const CATEGORY_TABS: Array<{ id: MarketCategoryId; label: string }> = [
   { id: "finance", label: "Finance" },
   { id: "entertainment", label: "Entertainment" },
 ];
+const INITIAL_VISIBLE = 18;
+const VISIBLE_STEP = 12;
 
 function formatCompactNumber(value?: number | null): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return "—";
@@ -73,7 +76,7 @@ function topOutcomes(market: MarketWithVelocity): MarketOutcome[] {
   return [...market.outcomes].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0)).slice(0, 2);
 }
 
-function MarketExplorerCard({
+const MarketExplorerCard = memo(function MarketExplorerCard({
   market,
   onOpen,
 }: {
@@ -91,12 +94,11 @@ function MarketExplorerCard({
     <button
       type="button"
       onClick={() => onOpen(market)}
-      className="group w-full rounded-[26px] border p-5 text-left transition-all duration-200 hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+      className="group w-full rounded-[22px] border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
       style={{
         borderColor: "var(--border-subtle)",
-        background:
-          "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 7%, transparent), transparent 30%), linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 92%, transparent), var(--bg-base))",
-        boxShadow: "0 18px 40px -32px rgba(0,0,0,0.9)",
+        background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), var(--bg-base))",
+        boxShadow: "0 16px 36px -34px rgba(0,0,0,0.45)",
       }}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -124,16 +126,16 @@ function MarketExplorerCard({
         )}
       </div>
 
-      <h3 className="mt-4 max-w-[24ch] font-heading text-[1.55rem] font-semibold leading-[1.04] tracking-[-0.05em]" style={{ color: "var(--text-1)" }}>
+      <h3 className="mt-3 max-w-[22ch] font-heading text-[1.24rem] font-semibold leading-[1.06] tracking-[-0.045em]" style={{ color: "var(--text-1)" }}>
         {market.title}
       </h3>
 
       {multiOutcome ? (
-        <div className="mt-5 space-y-3">
+        <div className="mt-4 space-y-2.5">
           {outcomes.map((outcome) => (
             <div
               key={outcome.ticker ?? outcome.label}
-              className="flex items-center justify-between gap-4 rounded-[18px] border px-4 py-3"
+              className="flex items-center justify-between gap-4 rounded-[16px] border px-3.5 py-2.5"
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
             >
               <p className="min-w-0 truncate font-body text-sm" style={{ color: "var(--text-1)" }}>
@@ -146,28 +148,28 @@ function MarketExplorerCard({
           ))}
         </div>
       ) : (
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <div className="rounded-[18px] border px-4 py-4" style={{ borderColor: "color-mix(in srgb, var(--up) 26%, transparent)", background: "color-mix(in srgb, var(--up) 6%, var(--bg-surface))" }}>
+        <div className="mt-4 grid grid-cols-2 gap-2.5">
+          <div className="rounded-[16px] border px-3.5 py-3.5" style={{ borderColor: "color-mix(in srgb, var(--up) 22%, transparent)", background: "color-mix(in srgb, var(--up) 5%, var(--bg-surface))" }}>
             <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
               Yes
             </p>
-            <p className="mt-2 font-mono text-[1.4rem] font-semibold tabular-nums" style={{ color: "var(--up)" }}>
+            <p className="mt-2 font-mono text-[1.25rem] font-semibold tabular-nums" style={{ color: "var(--up)" }}>
               {yesProbability.toFixed(0)}%
             </p>
           </div>
-          <div className="rounded-[18px] border px-4 py-4" style={{ borderColor: "color-mix(in srgb, var(--down) 26%, transparent)", background: "color-mix(in srgb, var(--down) 6%, var(--bg-surface))" }}>
+          <div className="rounded-[16px] border px-3.5 py-3.5" style={{ borderColor: "color-mix(in srgb, var(--down) 22%, transparent)", background: "color-mix(in srgb, var(--down) 5%, var(--bg-surface))" }}>
             <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
               No
             </p>
-            <p className="mt-2 font-mono text-[1.4rem] font-semibold tabular-nums" style={{ color: "var(--down)" }}>
+            <p className="mt-2 font-mono text-[1.25rem] font-semibold tabular-nums" style={{ color: "var(--down)" }}>
               {noProbability.toFixed(0)}%
             </p>
           </div>
         </div>
       )}
 
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <div className="rounded-[18px] border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <div className="rounded-[16px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
             24h volume
           </p>
@@ -175,7 +177,7 @@ function MarketExplorerCard({
             {formatCompactNumber(market.volume_24h ?? market.volume) === "—" ? "—" : `$${formatCompactNumber(market.volume_24h ?? market.volume)}`}
           </p>
         </div>
-        <div className="rounded-[18px] border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+        <div className="rounded-[16px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
             {market.source === "polymarket" ? "Liquidity" : "Open interest"}
           </p>
@@ -185,12 +187,12 @@ function MarketExplorerCard({
         </div>
       </div>
 
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="font-body text-[13px]" style={{ color: "var(--text-3)" }}>
           {formatCloseLabel(market.close_time, multiOutcome)}
         </p>
         <span
-          className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors group-hover:border-[var(--accent)]"
+          className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors group-hover:border-[var(--accent)]"
           style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
         >
           Open market
@@ -198,16 +200,16 @@ function MarketExplorerCard({
       </div>
     </button>
   );
-}
+});
 
 export function TerminalMarketExplorer() {
   const router = useRouter();
   const { data: markets = [], isLoading, isError, refetch } = useMarkets();
   const { signals } = useSignals();
   const { setSelectedMarket } = useSirenStore();
-  const [query, setQuery] = useState("");
-  const [source, setSource] = useState<MarketSourceFilter>("all");
-  const [category, setCategory] = useState<MarketCategoryId>("all");
+  const { query, setQuery, source, setSource, category, setCategory } = useExplorerStore();
+  const deferredQuery = useDeferredValue(query);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
   const liveSignals = useMemo(
     () => signals.filter((signal) => Date.now() - Date.parse(signal.timestamp) <= LIVE_SIGNAL_WINDOW_MS),
@@ -215,7 +217,7 @@ export function TerminalMarketExplorer() {
   );
 
   const filtered = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
     return markets
       .filter((market) => (source === "all" ? true : market.source === source))
       .filter((market) => marketMatchesCategory(market, category))
@@ -236,7 +238,13 @@ export function TerminalMarketExplorer() {
         const rightScore = (right.volume_24h ?? right.volume ?? 0) + (right.open_interest ?? 0);
         return rightScore - leftScore;
       });
-  }, [markets, source, category, query, liveSignals]);
+  }, [markets, source, category, deferredQuery, liveSignals]);
+
+  const visibleMarkets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE);
+  }, [deferredQuery, source, category]);
 
   const openMarket = (market: MarketWithVelocity) => {
     hapticLight();
@@ -245,33 +253,30 @@ export function TerminalMarketExplorer() {
   };
 
   return (
-    <section className="mx-auto flex w-full max-w-[1640px] flex-col gap-6 px-3 py-4 md:px-5 md:py-6">
-      <div className="rounded-[28px] border p-5 md:p-6" style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, transparent), var(--bg-base))" }}>
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl">
-              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-                Prediction markets
+    <section className="mx-auto flex w-full max-w-[1360px] flex-col gap-5 px-3 py-4 md:px-5 md:py-6">
+      <div className="rounded-[24px] border p-4 md:p-5" style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 98%, transparent), var(--bg-base))" }}>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="max-w-2xl">
+              <p className="font-heading text-[1.55rem] font-semibold tracking-[-0.05em]" style={{ color: "var(--text-1)" }}>
+                Prediction market explorer
               </p>
-              <h1 className="mt-3 font-heading text-[2.4rem] font-semibold leading-[0.95] tracking-[-0.06em]" style={{ color: "var(--text-1)" }}>
-                Browse markets first. Open depth, execution, and risk on the next screen.
-              </h1>
-              <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                This is the explorer layer. Search the market, filter by venue or category, then open the dedicated Siren market page when you want route quality, sizing, and risk context.
+              <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                Pick a venue, narrow the category, then open the market page for execution and risk.
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 xl:w-[440px]">
+            <div className="grid gap-2 sm:grid-cols-3 xl:w-[420px]">
               {[
                 { label: "Tracked", value: markets.length.toLocaleString(), detail: "live market rows" },
                 { label: "Moving", value: liveSignals.length.toLocaleString(), detail: "signals in the last 30m" },
                 { label: "Venues", value: "2", detail: "Kalshi + Polymarket" },
               ].map((item) => (
-                <div key={item.label} className="rounded-[20px] border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <div key={item.label} className="rounded-[18px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
                   <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
                     {item.label}
                   </p>
-                  <p className="mt-2 font-heading text-2xl font-semibold" style={{ color: "var(--text-1)" }}>
+                  <p className="mt-2 font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>
                     {item.value}
                   </p>
                   <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -282,23 +287,7 @@ export function TerminalMarketExplorer() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div
-              className="flex h-14 w-full items-center gap-3 rounded-[22px] border px-4 xl:max-w-[520px]"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
-            >
-              <Search className="h-4 w-4 shrink-0" style={{ color: "var(--text-3)" }} />
-              <input
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search markets, tickers, or outcomes"
-                className="w-full bg-transparent font-body text-sm outline-none placeholder:text-[var(--text-3)]"
-                style={{ color: "var(--text-1)" }}
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
               {SOURCE_TABS.map((tab) => {
                 const active = tab.id === source;
                 return (
@@ -320,7 +309,6 @@ export function TerminalMarketExplorer() {
                   </button>
                 );
               })}
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -351,11 +339,11 @@ export function TerminalMarketExplorer() {
       </div>
 
       {isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 9 }).map((_, index) => (
             <div
               key={index}
-              className="h-[360px] rounded-[26px] border"
+              className="h-[300px] rounded-[22px] border"
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
             />
           ))}
@@ -390,11 +378,28 @@ export function TerminalMarketExplorer() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-          {filtered.map((market) => (
+        <>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {visibleMarkets.map((market) => (
             <MarketExplorerCard key={`${market.source}-${market.platform_id ?? market.ticker}`} market={market} onOpen={openMarket} />
           ))}
-        </div>
+          </div>
+          {filtered.length > visibleCount && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  hapticLight();
+                  setVisibleCount((count) => Math.min(count + VISIBLE_STEP, filtered.length));
+                }}
+                className="rounded-full border px-5 py-2.5 font-body text-sm font-semibold"
+                style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-surface)" }}
+              >
+                Load more markets
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   );
