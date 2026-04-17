@@ -1711,21 +1711,45 @@ export function registerRoutes(app: FastifyInstance) {
 
     const outcomeLabel = req.query.outcomeLabel?.trim() || null;
     const probability = Number.parseFloat(req.query.probability || "");
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "3", 10) || 3, 1), 6);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "2", 10) || 2, 1), 4);
 
     try {
       const normalizedProbability = Number.isFinite(probability) ? probability : null;
-      const [tradingActive, kalshi, polymarket] = await Promise.all([
+      const [tradingActiveResult, kalshiResult, polymarketResult] = await Promise.allSettled([
         getJupiterPredictionTradingStatus(),
         searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "kalshi", limit }),
         searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "polymarket", limit }),
       ]);
+      const warnings: string[] = [];
+      const tradingActive = tradingActiveResult.status === "fulfilled" ? tradingActiveResult.value : false;
+      if (tradingActiveResult.status === "rejected") warnings.push("Jupiter trading status unavailable.");
+
+      const kalshi =
+        kalshiResult.status === "fulfilled"
+          ? kalshiResult.value
+          : { query: "", events: [] };
+      if (kalshiResult.status === "rejected") warnings.push("Kalshi comparison is temporarily rate-limited on Jupiter.");
+
+      const polymarket =
+        polymarketResult.status === "fulfilled"
+          ? polymarketResult.value
+          : { query: "", events: [] };
+      if (polymarketResult.status === "rejected") warnings.push("Polymarket comparison is temporarily rate-limited on Jupiter.");
+
+      if (warnings.length === 3) {
+        return reply.status(503).send({
+          success: false,
+          error: "Jupiter prediction map temporarily unavailable",
+        });
+      }
 
       return reply.send({
         success: true,
         data: {
           query: kalshi.query || polymarket.query,
           tradingActive,
+          degraded: warnings.length > 0,
+          warnings,
           providers: [
             { provider: "kalshi", events: kalshi.events },
             { provider: "polymarket", events: polymarket.events },

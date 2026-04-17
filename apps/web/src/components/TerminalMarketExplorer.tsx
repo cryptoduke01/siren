@@ -13,6 +13,8 @@ import {
   inferMarketCategory,
   marketCategoryBadgeStyle,
   marketCategoryLabel,
+  marketExplorerPriorityScore,
+  marketHoursUntilClose,
   marketMatchesCategory,
   type MarketCategoryId,
   type MarketSourceFilter,
@@ -73,7 +75,7 @@ function sourceTone(source?: string) {
 
 function topOutcomes(market: MarketWithVelocity): MarketOutcome[] {
   if (!market.outcomes?.length) return [];
-  return [...market.outcomes].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0)).slice(0, 2);
+  return [...market.outcomes].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0)).slice(0, 4);
 }
 
 const MarketExplorerCard = memo(function MarketExplorerCard({
@@ -87,6 +89,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
   const category = inferMarketCategory(market);
   const multiOutcome = !!(market.outcomes && market.outcomes.length > 1);
   const outcomes = topOutcomes(market);
+  const remainingOutcomeCount = Math.max(0, (market.outcomes?.length ?? 0) - outcomes.length);
   const yesProbability = Math.min(100, Math.max(0, market.probability));
   const noProbability = Math.min(100, Math.max(0, 100 - yesProbability));
 
@@ -94,7 +97,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
     <button
       type="button"
       onClick={() => onOpen(market)}
-      className="group w-full rounded-[22px] border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+      className="group w-full rounded-[20px] border p-3.5 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 md:p-4"
       style={{
         borderColor: "var(--border-subtle)",
         background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), var(--bg-base))",
@@ -126,16 +129,16 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
         )}
       </div>
 
-      <h3 className="mt-3 max-w-[22ch] font-heading text-[1.24rem] font-semibold leading-[1.06] tracking-[-0.045em]" style={{ color: "var(--text-1)" }}>
+      <h3 className="mt-3 max-w-[24ch] font-heading text-[1.08rem] font-semibold leading-[1.04] tracking-[-0.045em] md:text-[1.16rem]" style={{ color: "var(--text-1)" }}>
         {market.title}
       </h3>
 
       {multiOutcome ? (
-        <div className="mt-4 space-y-2.5">
+        <div className="mt-4 space-y-2">
           {outcomes.map((outcome) => (
             <div
               key={outcome.ticker ?? outcome.label}
-              className="flex items-center justify-between gap-4 rounded-[16px] border px-3.5 py-2.5"
+              className="flex items-center justify-between gap-3 rounded-[14px] border px-3 py-2.5"
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
             >
               <p className="min-w-0 truncate font-body text-sm" style={{ color: "var(--text-1)" }}>
@@ -146,6 +149,11 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
               </span>
             </div>
           ))}
+          {remainingOutcomeCount > 0 && (
+            <div className="rounded-[14px] border px-3 py-2 text-[11px] font-medium" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-3)" }}>
+              +{remainingOutcomeCount} more outcomes
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-2.5">
@@ -222,6 +230,12 @@ export function TerminalMarketExplorer() {
       .filter((market) => (source === "all" ? true : market.source === source))
       .filter((market) => marketMatchesCategory(market, category))
       .filter((market) => {
+        if (normalizedQuery) return true;
+        const hoursUntilClose = marketHoursUntilClose(market);
+        if (hoursUntilClose == null) return true;
+        return hoursUntilClose > 0;
+      })
+      .filter((market) => {
         if (!normalizedQuery) return true;
         return (
           market.title.toLowerCase().includes(normalizedQuery) ||
@@ -234,9 +248,7 @@ export function TerminalMarketExplorer() {
         const leftMoving = liveSignals.some((signal) => signal.marketId === (left.platform_id ?? left.ticker));
         const rightMoving = liveSignals.some((signal) => signal.marketId === (right.platform_id ?? right.ticker));
         if (leftMoving !== rightMoving) return rightMoving ? 1 : -1;
-        const leftScore = (left.volume_24h ?? left.volume ?? 0) + (left.open_interest ?? 0);
-        const rightScore = (right.volume_24h ?? right.volume ?? 0) + (right.open_interest ?? 0);
-        return rightScore - leftScore;
+        return marketExplorerPriorityScore(right) - marketExplorerPriorityScore(left);
       });
   }, [markets, source, category, deferredQuery, liveSignals]);
 
@@ -253,22 +265,22 @@ export function TerminalMarketExplorer() {
   };
 
   return (
-    <section className="mx-auto flex w-full max-w-[1360px] flex-col gap-5 px-3 py-4 md:px-5 md:py-6">
-      <div className="rounded-[24px] border p-4 md:p-5" style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 98%, transparent), var(--bg-base))" }}>
+    <section className="mx-auto flex w-full max-w-[1240px] flex-col gap-4 px-3 py-4 md:px-5 md:py-6">
+      <div className="rounded-[22px] border p-4 md:p-5" style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 98%, transparent), var(--bg-base))" }}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-2xl">
-              <p className="font-heading text-[1.55rem] font-semibold tracking-[-0.05em]" style={{ color: "var(--text-1)" }}>
+              <p className="font-heading text-[1.35rem] font-semibold tracking-[-0.05em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
                 Prediction market explorer
               </p>
               <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                Pick a venue, narrow the category, then open the market page for execution and risk.
+                Current, tradeable books first. Open the market page when you want routing, feasibility, and risk.
               </p>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-3 xl:w-[420px]">
+            <div className="grid gap-2 sm:grid-cols-3 xl:w-[390px]">
               {[
-                { label: "Tracked", value: markets.length.toLocaleString(), detail: "live market rows" },
+                { label: "Tracked", value: filtered.length.toLocaleString(), detail: "books in this view" },
                 { label: "Moving", value: liveSignals.length.toLocaleString(), detail: "signals in the last 30m" },
                 { label: "Venues", value: "2", detail: "Kalshi + Polymarket" },
               ].map((item) => (

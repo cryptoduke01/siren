@@ -1,5 +1,6 @@
 const JUPITER_PREDICTION_BASE = "https://api.jup.ag/prediction/v1";
 const JUPITER_PREDICTION_TIMEOUT_MS = 8_000;
+const JUPITER_PREDICTION_CACHE_MS = 5 * 60 * 1000;
 const JUPITER_SEARCH_STOPWORDS = new Set([
   "a",
   "an",
@@ -30,6 +31,7 @@ const JUPITER_SEARCH_STOPWORDS = new Set([
   "will",
   "with",
 ]);
+const jupiterPredictionCache = new Map<string, { expiresAt: number; value: unknown }>();
 
 type JupiterPredictionProvider = "kalshi" | "polymarket";
 
@@ -343,6 +345,11 @@ async function fetchPredictionJson<T>(path: string, searchParams?: URLSearchPara
   if (searchParams) {
     url.search = searchParams.toString();
   }
+  const cacheKey = url.toString();
+  const cached = jupiterPredictionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value as T;
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), JUPITER_PREDICTION_TIMEOUT_MS);
@@ -357,10 +364,18 @@ async function fetchPredictionJson<T>(path: string, searchParams?: URLSearchPara
     });
 
     if (!res.ok) {
+      if ((res.status === 429 || res.status >= 500) && cached?.value) {
+        return cached.value as T;
+      }
       throw new Error(`Jupiter prediction request failed (${res.status})`);
     }
 
-    return (await res.json()) as T;
+    const json = (await res.json()) as T;
+    jupiterPredictionCache.set(cacheKey, {
+      expiresAt: Date.now() + JUPITER_PREDICTION_CACHE_MS,
+      value: json,
+    });
+    return json;
   } finally {
     clearTimeout(timeout);
   }
@@ -419,7 +434,7 @@ export async function searchJupiterPredictionEvents({
       const target = normalizeProbability(targetProbability);
 
       const comparableMarkets = await Promise.all(
-        (detail.markets ?? []).slice(0, 6).map(async (market): Promise<JupiterPredictionComparableMarket | null> => {
+        (detail.markets ?? []).slice(0, 3).map(async (market): Promise<JupiterPredictionComparableMarket | null> => {
           const marketId = market.marketId?.trim();
           if (!marketId) return null;
 

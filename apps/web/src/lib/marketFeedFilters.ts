@@ -159,6 +159,47 @@ export function marketMatchesTimePreset(m: MarketWithVelocity, preset: MarketTim
   return true;
 }
 
+export function marketCloseTimeMs(m: MarketWithVelocity): number | null {
+  if (!m.close_time || !Number.isFinite(m.close_time)) return null;
+  return m.close_time < 1_000_000_000_000 ? m.close_time * 1000 : m.close_time;
+}
+
+export function marketHoursUntilClose(m: MarketWithVelocity): number | null {
+  const closeMs = marketCloseTimeMs(m);
+  if (!closeMs) return null;
+  return (closeMs - Date.now()) / (1000 * 60 * 60);
+}
+
+export function marketExplorerPriorityScore(m: MarketWithVelocity): number {
+  const volumeBase = Math.max(0, m.volume_24h ?? m.volume ?? 0);
+  const depthBase = Math.max(0, m.source === "polymarket" ? m.liquidity ?? 0 : m.open_interest ?? 0);
+  const quoteBonus =
+    ((m.yes_bid ?? 0) > 0 ? 1 : 0) +
+    ((m.yes_ask ?? 0) > 0 ? 1 : 0) +
+    ((m.no_bid ?? 0) > 0 ? 1 : 0) +
+    ((m.no_ask ?? 0) > 0 ? 1 : 0);
+  const hoursUntilClose = marketHoursUntilClose(m);
+
+  let freshnessWeight = 0.55;
+  if (hoursUntilClose != null) {
+    if (hoursUntilClose <= 0) return -1;
+    if (hoursUntilClose <= 1) freshnessWeight = 0.2;
+    else if (hoursUntilClose <= 24) freshnessWeight = 1.3;
+    else if (hoursUntilClose <= 24 * 7) freshnessWeight = 1.15;
+    else if (hoursUntilClose <= 24 * 30) freshnessWeight = 0.85;
+    else if (hoursUntilClose <= 24 * 90) freshnessWeight = 0.45;
+    else if (hoursUntilClose <= 24 * 180) freshnessWeight = 0.22;
+    else freshnessWeight = 0.08;
+  }
+
+  return freshnessWeight * (
+    Math.log1p(volumeBase) * 1.7 +
+    Math.log1p(depthBase) * 1.2 +
+    Math.abs(m.velocity_1h ?? 0) * 2.5 +
+    quoteBonus * 2
+  );
+}
+
 export function tickerHue(ticker: string): number {
   let h = 0;
   for (let i = 0; i < ticker.length; i++) h = (h * 31 + ticker.charCodeAt(i)) >>> 0;

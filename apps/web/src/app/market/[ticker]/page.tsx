@@ -39,7 +39,7 @@ export default function MarketSharePage() {
       <TopBar />
       <main className="flex-1 px-2 py-3 md:px-4 md:py-5 xl:px-6">
         {isLoading ? (
-          <div className="mx-auto h-[720px] w-full max-w-[1540px] rounded-[28px] border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }} />
+          <div className="mx-auto h-[720px] w-full max-w-[1280px] rounded-[28px] border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }} />
         ) : !marketExists ? (
           <div className="mx-auto max-w-3xl rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
             <p className="font-heading text-2xl font-semibold" style={{ color: "var(--text-1)" }}>
@@ -58,7 +58,7 @@ export default function MarketSharePage() {
             </button>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[1540px]">
+          <div className="mx-auto w-full max-w-[1280px]">
             <MarketExecutionSurface />
           </div>
         )}

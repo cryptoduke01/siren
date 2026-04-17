@@ -54,7 +54,7 @@ function FooterIconLink({
 
 export function Footer() {
   return (
-    <footer className="w-full border-t" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+    <footer className="mt-auto w-full shrink-0 border-t" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-5">
         <Link
           href="/"

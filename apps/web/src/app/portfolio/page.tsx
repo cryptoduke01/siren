@@ -11,6 +11,7 @@ import {
   ChevronDown, ArrowUp, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2, Settings,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { Footer } from "@/components/Footer";
 import { useToastStore } from "@/store/useToastStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
 import { useSirenStore } from "@/store/useSirenStore";
@@ -1378,13 +1379,13 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-12 pt-5 font-body md:px-6 md:pt-7 xl:px-8">
+      <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 pb-10 pt-5 font-body md:px-5 md:pt-6 xl:px-6">
 
         {/* ── Top row: Balance + Username ─────────────────── */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.95fr)]">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(300px,0.82fr)]">
 
           {/* Balance Card */}
-          <div className="rounded-xl border p-5"
+          <div className="rounded-xl border p-4 md:p-5"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
             <div className="flex items-center justify-between">
               <p className="font-sub text-[10px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
@@ -1412,13 +1413,13 @@ export default function PortfolioPage() {
 
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button type="button" onClick={() => { hapticLight(); setDepositOpen(true); }} disabled={!connected}
-                className="flex flex-col items-center gap-1 rounded-lg py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
+                className="flex h-12 items-center justify-center gap-2 rounded-lg px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
                 <CreditCard className="h-3.5 w-3.5" /> Deposit
               </button>
               <button type="button" disabled={!connected}
                 onClick={() => { hapticLight(); setWithdrawOpen(true); }}
-                className="flex flex-col items-center gap-1 rounded-lg border py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
+                className="flex h-12 items-center justify-center gap-2 rounded-lg border px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
                 <ArrowUp className="h-3.5 w-3.5" /> Withdraw
               </button>
@@ -1597,7 +1598,7 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.32fr)_minmax(320px,0.92fr)]">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(290px,0.88fr)]">
           <div className="space-y-4">
             <div className="rounded-[22px] border p-4 md:p-5"
               style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
@@ -2021,6 +2022,8 @@ export default function PortfolioPage() {
           <ArrowLeft className="h-3 w-3" /> Back
         </Link>
       </main>
+
+      <Footer />
 
       {depositOpen && walletKey && (
         <DepositModal

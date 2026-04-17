@@ -66,6 +66,10 @@ interface KalshiEventsResponse {
   events?: KalshiEventMetadata[];
 }
 
+interface KalshiEventResponse {
+  event?: KalshiEventMetadata;
+}
+
 const headers: Record<string, string> = {
   "Content-Type": "application/json",
 };
@@ -99,14 +103,14 @@ const VELOCITY_FETCH_LIMIT = 12;
 const MARKET_ACTIVITY_CACHE_MS = 60 * 1000;
 const KALSHI_TRADES_PAGE_LIMIT = 1000;
 const KALSHI_TRADES_MAX_PAGES = 12;
-const KALSHI_EVENTS_PAGE_LIMIT = 200;
-const KALSHI_EVENTS_MAX_PAGES = 2;
 const DFLOW_TIMEOUT_MS = 12_000;
 let marketsCache: { expiresAt: number; value: MarketWithVelocity[] } | null = null;
 let marketsInFlight: Promise<MarketWithVelocity[]> | null = null;
 const MAX_TRADE_ACTIVITY_CACHE = 200;
 const marketTradeActivityCache = new Map<string, { expiresAt: number; value: MarketTradeActivity }>();
 const marketTradeActivityInFlight = new Map<string, Promise<MarketTradeActivity>>();
+const kalshiEventMetadataCache = new Map<string, { expiresAt: number; value: KalshiEventMetadata | null }>();
+const kalshiEventMetadataInFlight = new Map<string, Promise<KalshiEventMetadata | null>>();
 
 function evictTradeActivityCache(): void {
   if (marketTradeActivityCache.size <= MAX_TRADE_ACTIVITY_CACHE) return;
@@ -155,8 +159,39 @@ function quoteToProbability(yesBid?: string, yesAsk?: string): number {
   return 50;
 }
 
-function normalizeKalshiOutcomeLabel(eventTitle: string, marketTitle: string, yesSubtitle?: string, subtitle?: string): string {
-  const preferred = yesSubtitle?.trim() || subtitle?.trim();
+function normalizeLabelText(value?: string | null): string {
+  return value?.replace(/\s+/g, " ").replace(/\?+$/, "").trim() ?? "";
+}
+
+function isGenericOutcomeLabel(label: string, eventTitle: string): boolean {
+  const normalized = normalizeLabelText(label).toLowerCase();
+  const normalizedEvent = normalizeLabelText(eventTitle).toLowerCase();
+  if (!normalized) return true;
+  if (normalized === normalizedEvent) return true;
+  if (
+    normalized === "who will" ||
+    normalized === "who" ||
+    normalized === "bitcoin" ||
+    normalized === "ethereum" ||
+    normalized === "president" ||
+    normalized === "us government" ||
+    normalized === "house control" ||
+    normalized === "dem nominee"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeKalshiOutcomeLabel(
+  eventTitle: string,
+  marketTitle: string,
+  yesSubtitle?: string,
+  subtitle?: string,
+): string {
+  const preferred = [yesSubtitle, subtitle]
+    .map((value) => normalizeLabelText(value))
+    .find((value) => value && !isGenericOutcomeLabel(value, eventTitle));
   if (preferred) return preferred;
 
   const cleanMarketTitle = marketTitle.trim();
@@ -175,49 +210,77 @@ function normalizeKalshiOutcomeLabel(eventTitle: string, marketTitle: string, ye
   label = label.replace(/\s+pass\b.*$/i, "");
   label = label.trim();
 
-  return label || cleanMarketTitle;
+  const normalizedFallback = normalizeLabelText(label || cleanMarketTitle);
+  return normalizedFallback || cleanEventTitle || "Outcome";
 }
 
 function hasVisibleMarketSignal(market: DFlowMarketResponse): boolean {
-  return (
-    parseFiniteNumber(market.yesBid) != null ||
-    parseFiniteNumber(market.yesAsk) != null ||
-    parseFiniteNumber(market.noBid) != null ||
-    parseFiniteNumber(market.noAsk) != null ||
+  const now = Date.now();
+  const closeMs =
+    typeof market.closeTime === "number"
+      ? market.closeTime < 1_000_000_000_000
+        ? market.closeTime * 1000
+        : market.closeTime
+      : null;
+  const openMs =
+    typeof market.openTime === "number"
+      ? market.openTime < 1_000_000_000_000
+        ? market.openTime * 1000
+        : market.openTime
+      : null;
+  if (closeMs && closeMs <= now) return false;
+  if (openMs && openMs > now) return false;
+
+  const hasQuote =
+    (parseFiniteNumber(market.yesBid) ?? 0) > 0 ||
+    (parseFiniteNumber(market.yesAsk) ?? 0) > 0 ||
+    (parseFiniteNumber(market.noBid) ?? 0) > 0 ||
+    (parseFiniteNumber(market.noAsk) ?? 0) > 0;
+  const hasFlow =
     (market.volume ?? 0) > 0 ||
-    (market.openInterest ?? 0) > 0 ||
-    Object.keys(market.accounts ?? {}).length > 0
+    (parseFiniteNumber(market.volume24hFp) ?? 0) > 0 ||
+    (market.openInterest ?? 0) > 0;
+
+  return (
+    hasQuote || hasFlow
   );
 }
 
-async function fetchKalshiEventMetadataMap(): Promise<Map<string, KalshiEventMetadata>> {
-  const byEventTicker = new Map<string, KalshiEventMetadata>();
-  let cursor: string | undefined;
+async function fetchKalshiEventMetadata(eventTicker: string): Promise<KalshiEventMetadata | null> {
+  const normalizedTicker = eventTicker.trim().toUpperCase();
+  if (!normalizedTicker) return null;
 
-  for (let page = 0; page < KALSHI_EVENTS_MAX_PAGES; page += 1) {
-    const qs = new URLSearchParams({
-      with_nested_markets: "true",
-      status: "open",
-      limit: String(KALSHI_EVENTS_PAGE_LIMIT),
-    });
-    if (cursor) qs.set("cursor", cursor);
+  const cached = kalshiEventMetadataCache.get(normalizedTicker);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-    const res = await fetch(`${KALSHI_API_BASE}/events?${qs.toString()}`);
-    if (!res.ok) {
-      if (res.status === 429) throw new Error("Kalshi events API rate limited");
-      throw new Error(`Kalshi events API error: ${res.status}`);
+  const inFlight = kalshiEventMetadataInFlight.get(normalizedTicker);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    try {
+      const res = await fetch(`${KALSHI_API_BASE}/events/${encodeURIComponent(normalizedTicker)}?with_nested_markets=true`, {
+        signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        if (res.status === 404) return null;
+        if (res.status === 429) throw new Error("Kalshi event API rate limited");
+        throw new Error(`Kalshi event API error: ${res.status}`);
+      }
+
+      const json = (await res.json()) as KalshiEventResponse;
+      const event = json.event ?? null;
+      kalshiEventMetadataCache.set(normalizedTicker, {
+        expiresAt: Date.now() + MARKETS_CACHE_MS,
+        value: event,
+      });
+      return event;
+    } finally {
+      kalshiEventMetadataInFlight.delete(normalizedTicker);
     }
+  })();
 
-    const json = (await res.json()) as KalshiEventsResponse;
-    for (const event of json.events ?? []) {
-      if (event?.event_ticker) byEventTicker.set(event.event_ticker, event);
-    }
-
-    cursor = json.cursor?.trim() || undefined;
-    if (!cursor) break;
-  }
-
-  return byEventTicker;
+  kalshiEventMetadataInFlight.set(normalizedTicker, promise);
+  return promise;
 }
 
 async function fetchAllActiveEvents(): Promise<NonNullable<DFlowEventsResponse["events"]>> {
@@ -377,29 +440,25 @@ export async function getMarketTradeActivity(ticker: string): Promise<MarketTrad
 }
 
 export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
-  const [events, kalshiEventMetadata] = await Promise.all([
-    fetchAllActiveEvents(),
-    fetchKalshiEventMetadataMap().catch(() => new Map<string, KalshiEventMetadata>()),
-  ]);
+  const events = await fetchAllActiveEvents();
   const markets: MarketWithVelocity[] = [];
 
-  for (const event of events) {
-    const eventMarkets = event.markets ?? [];
-    const seriesTicker = event.seriesTicker ?? event.ticker?.split("-").slice(0, -1).join("-") ?? "";
-    const activeMarkets = eventMarkets.filter((m) => m.status === "active" && hasVisibleMarketSignal(m));
-    if (activeMarkets.length === 0) continue;
-
-    const kalshiEvent = kalshiEventMetadata.get(event.ticker);
+  function buildOutcomeList(
+    event: NonNullable<DFlowEventsResponse["events"]>[number],
+    activeMarkets: DFlowMarketResponse[],
+    seriesTicker: string,
+    kalshiEvent?: KalshiEventMetadata | null,
+  ): MarketOutcome[] {
     const eventMarketMeta = new Map(
       (kalshiEvent?.markets ?? []).map((market) => [market.ticker, market]),
     );
 
-    const outcomes: MarketOutcome[] = activeMarkets.map((m) => {
+    return activeMarkets.map((m) => {
       const accountValues = m.accounts ? Object.values(m.accounts) : [];
       const firstAccount = accountValues.find((a) => a.yesMint && a.noMint);
       const kalshiMarket = eventMarketMeta.get(m.ticker);
       const label = normalizeKalshiOutcomeLabel(
-        event.title,
+        kalshiEvent?.title || event.title,
         m.title || kalshiMarket?.title || event.title,
         kalshiMarket?.yes_sub_title,
         m.subtitle || kalshiMarket?.subtitle,
@@ -430,9 +489,37 @@ export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity
         open_interest: m.openInterest,
       };
     });
+  }
+
+  function hasLowQualityOutcomeLabels(outcomes: MarketOutcome[], eventTitle: string): boolean {
+    if (outcomes.length <= 1) return false;
+    const normalized = outcomes.map((outcome) => normalizeLabelText(outcome.label).toLowerCase());
+    const uniqueCount = new Set(normalized).size;
+    const genericCount = normalized.filter((label) => isGenericOutcomeLabel(label, eventTitle)).length;
+    return uniqueCount <= Math.max(2, Math.floor(outcomes.length * 0.65)) || genericCount >= Math.ceil(outcomes.length / 3);
+  }
+
+  for (const event of events) {
+    const eventMarkets = event.markets ?? [];
+    const seriesTicker = event.seriesTicker ?? event.ticker?.split("-").slice(0, -1).join("-") ?? "";
+    const activeMarkets = eventMarkets.filter((m) => m.status === "active" && hasVisibleMarketSignal(m));
+    if (activeMarkets.length === 0) continue;
+
+    let kalshiEvent: KalshiEventMetadata | null = null;
+    let outcomes = buildOutcomeList(event, activeMarkets, seriesTicker);
+
+    if (hasLowQualityOutcomeLabels(outcomes, event.title)) {
+      kalshiEvent = await fetchKalshiEventMetadata(event.ticker).catch(() => null);
+      if (kalshiEvent) {
+        outcomes = buildOutcomeList(event, activeMarkets, seriesTicker, kalshiEvent);
+      }
+    }
 
     const isMultiOutcome = outcomes.length > 1;
     if (isMultiOutcome) {
+      if (hasLowQualityOutcomeLabels(outcomes, kalshiEvent?.title || event.title)) {
+        continue;
+      }
       const leader = [...outcomes].sort((left, right) => {
         const byProbability = (right.probability ?? 0) - (left.probability ?? 0);
         if (Math.abs(byProbability) > 0.01) return byProbability;
@@ -518,6 +605,38 @@ export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity
   return markets;
 }
 
+function getMarketPriorityScore(market: MarketWithVelocity): number {
+  const volumeBase = Math.max(0, market.volume_24h ?? market.volume ?? 0);
+  const depthBase = Math.max(0, market.source === "polymarket" ? market.liquidity ?? 0 : market.open_interest ?? 0);
+  const quoteBonus =
+    ((market.yes_bid ?? 0) > 0 ? 1 : 0) +
+    ((market.yes_ask ?? 0) > 0 ? 1 : 0) +
+    ((market.no_bid ?? 0) > 0 ? 1 : 0) +
+    ((market.no_ask ?? 0) > 0 ? 1 : 0);
+
+  let freshnessWeight = 0.5;
+  if (market.close_time) {
+    const closeMs = market.close_time < 1_000_000_000_000 ? market.close_time * 1000 : market.close_time;
+    const hours = (closeMs - Date.now()) / (1000 * 60 * 60);
+    if (hours <= 0) return -1;
+    if (hours <= 1) freshnessWeight = 0.2;
+    else if (hours <= 24) freshnessWeight = 1.35;
+    else if (hours <= 24 * 7) freshnessWeight = 1.15;
+    else if (hours <= 24 * 30) freshnessWeight = 0.9;
+    else if (hours <= 24 * 90) freshnessWeight = 0.45;
+    else if (hours <= 24 * 180) freshnessWeight = 0.22;
+    else if (hours <= 24 * 365) freshnessWeight = 0.1;
+    else freshnessWeight = 0.04;
+  }
+
+  return freshnessWeight * (
+    Math.log1p(volumeBase) * 1.7 +
+    Math.log1p(depthBase) * 1.25 +
+    Math.abs(market.velocity_1h ?? 0) * 2.5 +
+    quoteBonus * 2
+  );
+}
+
 async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
   const markets = await getActiveMarkets();
 
@@ -595,36 +714,13 @@ export async function getMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
         throw new Error(reasons.join(" | ") || "No markets available");
       }
 
-      const highVelocity = combined.filter((m) => Math.abs(m.velocity_1h) >= 0.5);
-      const rest = combined.filter((m) => Math.abs(m.velocity_1h) < 0.5);
-
-      highVelocity.sort((a, b) => Math.abs(b.velocity_1h) - Math.abs(a.velocity_1h));
-
-      for (let i = rest.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [rest[i], rest[j]] = [rest[j], rest[i]];
-      }
-
-      rest.sort((a, b) => {
-        const aScore = (a.volume ?? 0) + (a.volume_24h ?? 0) * 0.5 + (a.open_interest ?? 0) * 0.3;
-        const bScore = (b.volume ?? 0) + (b.volume_24h ?? 0) * 0.5 + (b.open_interest ?? 0) * 0.3;
-        const diff = bScore - aScore;
-        return diff + (Math.random() - 0.5) * Math.max(aScore, bScore) * 0.3;
+      const sorted = [...combined].sort((left, right) => {
+        const scoreDiff = getMarketPriorityScore(right) - getMarketPriorityScore(left);
+        if (Math.abs(scoreDiff) > 0.01) return scoreDiff;
+        const velocityDiff = Math.abs(right.velocity_1h ?? 0) - Math.abs(left.velocity_1h ?? 0);
+        if (Math.abs(velocityDiff) > 0.01) return velocityDiff;
+        return (right.volume_24h ?? right.volume ?? 0) - (left.volume_24h ?? left.volume ?? 0);
       });
-
-      const interleaved: MarketWithVelocity[] = [];
-      let kalshiIdx = 0;
-      let polyIdx = 0;
-      const kalshiRest = rest.filter((m) => m.source === "kalshi");
-      const polyRest = rest.filter((m) => m.source === "polymarket");
-
-      interleaved.push(...highVelocity);
-      while (kalshiIdx < kalshiRest.length || polyIdx < polyRest.length) {
-        if (kalshiIdx < kalshiRest.length) interleaved.push(kalshiRest[kalshiIdx++]);
-        if (polyIdx < polyRest.length) interleaved.push(polyRest[polyIdx++]);
-      }
-
-      const sorted = interleaved;
 
       marketsCache = {
         expiresAt: Date.now() + MARKETS_CACHE_MS,
