@@ -5,9 +5,14 @@ import { API_URL } from "@/lib/apiUrl";
 
 export type TorqueRelayReadiness = {
   configured: boolean;
-  relayMode: "custom_webhook";
-  webhookHost: string | null;
+  relayMode: "torque_ingest";
+  ingestHost: string | null;
   eventNames: string[];
+  requiredSchemas: Array<{
+    eventName: string;
+    name: string;
+    fields: string[];
+  }>;
   suggestedCampaigns: Array<{
     name: string;
     objective: string;

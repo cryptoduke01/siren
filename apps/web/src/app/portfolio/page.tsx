@@ -2009,8 +2009,8 @@ export default function PortfolioPage() {
                 </p>
                 <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                   {torqueReadiness?.configured
-                    ? `Events are routed toward ${torqueReadiness.webhookHost ?? "your configured endpoint"} whenever Siren logs an execution outcome.`
-                    : "Set `TORQUE_CUSTOM_EVENTS_WEBHOOK_URL` to turn recent execution outcomes into live campaign events."}
+                    ? `Events are routed toward ${torqueReadiness.ingestHost ?? "Torque ingest"} whenever Siren logs an execution outcome.`
+                    : "Set `TORQUE_API_KEY` to turn recent execution outcomes into live Torque custom events."}
                 </p>
               </div>
 
@@ -2030,6 +2030,24 @@ export default function PortfolioPage() {
                   </div>
                 ))}
               </div>
+
+              {!!torqueReadiness?.requiredSchemas?.length && (
+                <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                    Required custom events
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {torqueReadiness.requiredSchemas.map((schema) => (
+                      <div key={schema.eventName} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                        <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>{schema.eventName}</p>
+                        <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                          {schema.name} · fields: {schema.fields.join(", ")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {!!torqueReadiness?.suggestedCampaigns?.length && (
                 <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>

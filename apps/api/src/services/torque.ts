@@ -4,6 +4,7 @@ const TORQUE_EVENT_NAMES = [
   "trade_attempt_failed",
   "partial_fill_recorded",
 ] as const;
+const TORQUE_INGEST_URL = "https://ingest.torque.so/events";
 
 type LoggedTradeAttemptPayload = {
   wallet: string | null;
@@ -30,12 +31,34 @@ function safeHostname(value?: string | null): string | null {
 }
 
 export function getTorqueRelayReadiness() {
-  const webhookUrl = process.env.TORQUE_CUSTOM_EVENTS_WEBHOOK_URL?.trim() || "";
+  const apiKey = process.env.TORQUE_API_KEY?.trim() || "";
   return {
-    configured: Boolean(webhookUrl),
-    relayMode: "custom_webhook" as const,
-    webhookHost: safeHostname(webhookUrl),
+    configured: Boolean(apiKey),
+    relayMode: "torque_ingest" as const,
+    ingestHost: safeHostname(TORQUE_INGEST_URL),
     eventNames: [...TORQUE_EVENT_NAMES],
+    requiredSchemas: [
+      {
+        eventName: "trade_attempt_logged",
+        name: "Trade Attempt Logged",
+        fields: ["venue", "mode", "market", "side", "inputAsset", "outputAsset", "amount", "status"],
+      },
+      {
+        eventName: "trade_attempt_success",
+        name: "Trade Attempt Success",
+        fields: ["venue", "mode", "market", "side", "amount", "status", "txSignature"],
+      },
+      {
+        eventName: "trade_attempt_failed",
+        name: "Trade Attempt Failed",
+        fields: ["venue", "mode", "market", "side", "amount", "status", "errorMessage"],
+      },
+      {
+        eventName: "partial_fill_recorded",
+        name: "Partial Fill Recorded",
+        fields: ["venue", "mode", "market", "side", "amount", "status", "filledFraction"],
+      },
+    ],
     suggestedCampaigns: [
       {
         name: "first_clean_close",
@@ -51,12 +74,12 @@ export function getTorqueRelayReadiness() {
       },
     ],
     frictionLog: [
-      "Custom event ingestion shape is still something Siren has to infer from the outside unless a concrete webhook contract is documented.",
+      "Event schemas must be created before ingestion becomes query-ready, so there is still a dashboard/setup dependency before incentives can be built.",
       "Trading products need clearer examples for behavior-based rewards, not just volume-based incentives.",
     ],
-    summary: webhookUrl
-      ? "Siren can relay execution outcome events into Torque-compatible growth primitives."
-      : "Set TORQUE_CUSTOM_EVENTS_WEBHOOK_URL to relay Siren execution events into Torque campaigns.",
+    summary: apiKey
+      ? "Siren can relay execution outcome events directly into Torque's ingestion pipeline."
+      : "Set TORQUE_API_KEY to relay Siren execution events into Torque custom events.",
   };
 }
 
@@ -68,26 +91,23 @@ function getTorqueEventName(payload: LoggedTradeAttemptPayload): (typeof TORQUE_
 }
 
 export async function emitTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPayload): Promise<void> {
-  const webhookUrl = process.env.TORQUE_CUSTOM_EVENTS_WEBHOOK_URL?.trim();
-  if (!webhookUrl) return;
-
   const apiKey = process.env.TORQUE_API_KEY?.trim();
+  if (!apiKey || !payload.wallet) return;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4_000);
 
   try {
-    await fetch(webhookUrl, {
+    await fetch(TORQUE_INGEST_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
+        "x-api-key": apiKey,
       },
       body: JSON.stringify({
-        source: "siren",
-        event: getTorqueEventName(payload),
-        timestamp: new Date().toISOString(),
-        wallet: payload.wallet,
-        properties: {
+        userPubkey: payload.wallet,
+        timestamp: Date.now(),
+        eventName: getTorqueEventName(payload),
+        data: {
           venue: payload.venue,
           mode: payload.mode,
           market: payload.market,
@@ -98,6 +118,7 @@ export async function emitTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPay
           status: payload.status,
           txSignature: payload.tx_signature,
           errorMessage: payload.error_message,
+          filledFraction: payload.metadata.filledFraction ?? null,
           ...payload.metadata,
         },
       }),
