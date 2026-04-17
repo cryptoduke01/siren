@@ -37,7 +37,10 @@ export interface SelectedToken {
   name: string;
   symbol: string;
   assetType?: "spot" | "prediction";
+  decimals?: number;
+  balance?: number;
   price?: number;
+  entryPrice?: number;
   volume24h?: number;
   liquidityUsd?: number;
   fdvUsd?: number;

@@ -166,6 +166,13 @@ export interface DflowPositionRow {
   quantity?: number;
   /** Approximate mark in USD per share for this side (YES: prob/100, NO: (100-prob)/100). */
   currentPriceUsd?: number;
+  /** Per-share mark in cents for UI/PnL convenience. */
+  currentPrice?: number;
+  /** Average entry in cents derived from Siren trade logs when available. */
+  entryPrice?: number;
+  /** Mark-to-market PnL derived from Siren trade logs when available. */
+  pnlUsd?: number;
+  pnlPct?: number;
   /** Mark-to-market USD: quantity * currentPriceUsd. */
   marketValueUsd?: number;
   verified: true;

@@ -23,7 +23,7 @@ import {
 } from "@/lib/dflowProof";
 import { buildPolymarketFundingConfig } from "@/lib/privyFunding";
 import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
-import { getPositionEntry } from "@/lib/positionEntryStorage";
+import { getPositionEntry, setPositionEntry } from "@/lib/positionEntryStorage";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 import { API_URL } from "@/lib/apiUrl";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -335,17 +335,19 @@ export function UnifiedBuyPanel() {
       const accounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
         mint: new PublicKey(selectedToken.mint),
       });
-      const acc = accounts.value[0];
-      const info = (acc?.account?.data as { parsed?: { info?: { tokenAmount?: { uiAmount: number } } } })?.parsed?.info;
-      return info?.tokenAmount?.uiAmount ?? 0;
+      const matching = accounts.value[0];
+      const info = (matching?.account?.data as { parsed?: { info?: { tokenAmount?: { uiAmount?: number } } } })?.parsed?.info;
+      return info?.tokenAmount?.uiAmount ?? selectedToken.balance ?? 0;
     },
     enabled: !!publicKey && !!selectedToken && sellMode,
     staleTime: 10_000,
   });
+  const effectiveTokenBalance =
+    tokenBalance > 0 ? tokenBalance : selectedToken?.balance != null && selectedToken.balance > 0 ? selectedToken.balance : 0;
   const { data: positionExecutionPreview, isLoading: positionExecutionPreviewLoading } = usePositionExecutionPreview({
     mint: buyPanelMode === "position" ? selectedToken?.mint : undefined,
     wallet: buyPanelMode === "position" ? walletKey : null,
-    balance: buyPanelMode === "position" && sellMode ? tokenBalance : null,
+    balance: buyPanelMode === "position" && sellMode ? effectiveTokenBalance : null,
     marketTicker: buyPanelMode === "position" ? selectedToken?.marketTicker ?? null : null,
   });
 
@@ -644,7 +646,7 @@ export function UnifiedBuyPanel() {
       let inputMint: string;
       let outputMint: string;
       let amount: string;
-      const sellDecimals = 6;
+      const sellDecimals = selectedToken.decimals ?? 6;
       let partialSellFilled = false;
 
       let amountNum: number;
@@ -771,6 +773,8 @@ export function UnifiedBuyPanel() {
       if (isSell) setSellAmount("");
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["portfolio-balances", publicKey.toBase58()] });
       setBuyPanelOpen(false);
       logTradeAttempt({
         wallet: publicKey?.toBase58(),
@@ -792,9 +796,10 @@ export function UnifiedBuyPanel() {
       const realizedSummary = (() => {
         if (!isPredictionToken || !selectedToken.mint) return null;
         const entry = getPositionEntry(selectedToken.mint);
-        if (!entry || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
+        const avgEntryCents = entry?.avgCents ?? selectedToken.entryPrice ?? null;
+        if (avgEntryCents == null || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
         const soldValueUsd = amountNum * tokenPriceUsd;
-        const costUsd = amountNum * (entry.avgCents / 100);
+        const costUsd = amountNum * (avgEntryCents / 100);
         if (costUsd <= 0) return null;
         const pnlUsd = soldValueUsd - costUsd;
         const pnlPct = (pnlUsd / costUsd) * 100;
@@ -1209,6 +1214,9 @@ export function UnifiedBuyPanel() {
       }
 
       const tokenAmountApprox = amountNum / marketPriceUsd;
+      if (selectedMarketMint && marketPriceUsd > 0) {
+        setPositionEntry(selectedMarketMint, marketPriceUsd * 100);
+      }
       recordLocalTrade({
         mint: selectedMarketMint,
         side: "buy",
@@ -1793,7 +1801,7 @@ export function UnifiedBuyPanel() {
                                   type="button"
                                   onClick={() => {
                                     hapticLight();
-                                    const amt = tokenBalance > 0 ? (tokenBalance * pct) / 100 : 0;
+                                    const amt = effectiveTokenBalance > 0 ? (effectiveTokenBalance * pct) / 100 : 0;
                                     setSellAmount(amt > 0 ? amt.toString() : "");
                                   }}
                                   className="flex-1 py-1.5 rounded-md text-[11px] font-heading font-semibold transition-all duration-100"
@@ -1828,7 +1836,7 @@ export function UnifiedBuyPanel() {
                               type="number"
                               step="any"
                               min="0"
-                              placeholder={tokenBalance > 0 ? tokenBalance.toLocaleString() : "0"}
+                              placeholder={effectiveTokenBalance > 0 ? effectiveTokenBalance.toLocaleString() : "0"}
                               value={sellAmount}
                               onChange={(e) => setSellAmount(e.target.value)}
                               className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"

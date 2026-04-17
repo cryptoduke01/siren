@@ -47,6 +47,7 @@ interface Position {
   currentPrice?: number;
   quantity?: number;
   balance?: number;
+  decimals?: number;
   pnlUsd?: number;
   pnlPct?: number;
   status?: string;
@@ -794,7 +795,10 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
         mint: p.mint,
         name: p.title || p.ticker,
         symbol: p.ticker,
+        decimals: p.decimals,
+        balance: shares,
         price: typeof current === "number" ? current : prob > 1 ? prob / 100 : prob,
+        entryPrice: p.entryPrice,
         assetType: "prediction",
         marketTicker: p.ticker,
         marketTitle: p.title,
@@ -912,8 +916,9 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
 
         {!settled && (
           <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-            To estimate profit or loss, enter what you paid per share in cents (for example 20), then Save. We do not see
-            your Kalshi history automatically.
+            {savedEntry || p.entryPrice != null
+              ? "Siren is already tracking a cost basis for this line. Edit it here if you want to override the default on this device."
+              : "If Siren did not capture your original fill, enter what you paid per share in cents and Save to track profit automatically on this device."}
           </p>
         )}
 

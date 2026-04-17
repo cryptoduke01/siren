@@ -10,6 +10,7 @@ import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboar
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
 import { getJupiterPredictionTradingStatus, searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
 import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness } from "./services/torque.js";
+import { getWalletPositionStats } from "./services/positionStats.js";
 import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
@@ -292,6 +293,44 @@ function getFieldRisk(market: NonNullable<ReturnType<typeof getExecutionMarketBy
     label,
     summary,
   };
+}
+
+async function getAugmentedDflowPositions(walletAddress: string) {
+  const positionsResult = await getDflowPositionsForWallet(walletAddress);
+  if (positionsResult.error) return positionsResult;
+
+  try {
+    const supabase = getSupabaseAdminClient();
+    const statsByMint = await getWalletPositionStats(supabase, walletAddress);
+    const positions = positionsResult.positions.map((position) => {
+      const stat = statsByMint.get(position.mint);
+      if (!stat || stat.avgEntryUsd == null || stat.avgEntryCents == null) {
+        return {
+          ...position,
+          currentPrice: typeof position.currentPriceUsd === "number" ? position.currentPriceUsd * 100 : undefined,
+        };
+      }
+
+      const qty = position.quantity ?? position.balance ?? stat.openQty;
+      const markUsd = position.currentPriceUsd ?? null;
+      const pnlUsd =
+        markUsd != null && Number.isFinite(markUsd) && qty > 0 ? qty * (markUsd - stat.avgEntryUsd) : undefined;
+      const costUsd = qty > 0 ? qty * stat.avgEntryUsd : 0;
+      const pnlPct = pnlUsd != null && costUsd > 0 ? (pnlUsd / costUsd) * 100 : undefined;
+
+      return {
+        ...position,
+        entryPrice: Number(stat.avgEntryCents.toFixed(4)),
+        currentPrice: typeof markUsd === "number" ? Number((markUsd * 100).toFixed(4)) : undefined,
+        pnlUsd: pnlUsd != null ? Number(pnlUsd.toFixed(4)) : undefined,
+        pnlPct: pnlPct != null ? Number(pnlPct.toFixed(4)) : undefined,
+      };
+    });
+
+    return { positions };
+  } catch (error) {
+    return positionsResult;
+  }
 }
 
 function parsePositiveFloat(value?: string | null): number | null {
@@ -1898,6 +1937,7 @@ export function registerRoutes(app: FastifyInstance) {
 
       return reply.send({
         success: true,
+        provider: "dflow",
         transaction: result.transaction,
         executionMode: result.executionMode,
         lastValidBlockHeight: result.lastValidBlockHeight,
@@ -3097,7 +3137,7 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: "address query param required" });
     }
     try {
-      const positions = await getDflowPositionsForWallet(addr);
+      const positions = await getAugmentedDflowPositions(addr);
       if (positions.error) {
         app.log.warn({ wallet: `${addr.slice(0, 6)}...${addr.slice(-4)}`, err: positions.error }, "DFlow positions lookup degraded");
         return reply.status(503).send({ success: false, error: positions.error });
@@ -3152,7 +3192,7 @@ export function registerRoutes(app: FastifyInstance) {
     const writeSnapshot = async () => {
       if (closed) return;
       try {
-        const data = await getDflowPositionsForWallet(addr);
+        const data = await getAugmentedDflowPositions(addr);
         if (data.error) {
           reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: data.error })}\n\n`);
           return;
