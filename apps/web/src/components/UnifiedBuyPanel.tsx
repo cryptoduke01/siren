@@ -1325,11 +1325,11 @@ export function UnifiedBuyPanel() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50"
+            className="fixed inset-0 z-50 md:hidden"
             aria-hidden="true"
           >
             <div
-              className="absolute inset-0 bg-black/50 md:bg-black/30"
+              className="absolute inset-0 bg-black/55 md:hidden"
               onClick={onClose}
             />
           </motion.div>
@@ -1339,10 +1339,10 @@ export function UnifiedBuyPanel() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 top-[8%] z-[51] flex w-full flex-col overflow-hidden rounded-t-[28px] border-t md:top-0 md:right-0 md:left-auto md:w-[520px] md:max-w-[520px] md:rounded-none md:border-t-0 md:border-l"
+            className="fixed inset-x-0 bottom-0 top-[8%] z-[51] flex w-full flex-col overflow-hidden rounded-t-[28px] border-t md:inset-x-auto md:bottom-4 md:right-4 md:top-[90px] md:w-[430px] md:max-w-[430px] md:rounded-[24px] md:border"
             style={{
               background: "var(--bg-surface)",
-              boxShadow: "-8px 0 32px rgba(0,0,0,0.35)",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.38)",
               borderColor: "var(--border-subtle)",
             }}
           >

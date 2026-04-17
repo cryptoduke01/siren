@@ -1373,10 +1373,10 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-12 pt-6 md:pt-8 font-body">
+      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-12 pt-5 font-body md:px-6 md:pt-7 xl:px-8">
 
         {/* ── Top row: Balance + Username ─────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.95fr)]">
 
           {/* Balance Card */}
           <div className="rounded-xl border p-5"
@@ -1417,6 +1417,27 @@ export default function PortfolioPage() {
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
                 <ArrowUp className="h-3.5 w-3.5" /> Withdraw
               </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[
+                { label: "Open book", value: `$${fmtUsd(openBookUsd)}` },
+                { label: "Dry powder", value: `$${fmtUsd(usdc + usdt)}` },
+                { label: "Status", value: verified ? "Ready" : "Needs ID" },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-lg border px-3 py-3"
+                  style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+                >
+                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                    {item.label}
+                  </p>
+                  <p className="mt-1 font-heading text-xs font-semibold" style={{ color: "var(--text-1)" }}>
+                    {item.value}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1517,10 +1538,10 @@ export default function PortfolioPage() {
         </div>
 
         <div
-          className="mt-4 rounded-xl border p-4"
+          className="mt-4 rounded-[22px] border p-4 md:p-5"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
         >
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(250px,0.75fr)] lg:items-start">
             <div>
               <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
                 Portfolio command
@@ -1545,7 +1566,7 @@ export default function PortfolioPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
             {[
               { label: "Open book", value: String(openPositions.length), detail: "positions live", tone: "var(--text-1)" },
               { label: "Settled", value: String(settledPositions.length), detail: "resolved lines", tone: "var(--text-1)" },
@@ -1571,251 +1592,383 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* ── Swap ──────────────────────────────────────────── */}
-        <div className="mt-4 rounded-xl border overflow-hidden"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-          <button type="button" className="flex w-full items-center justify-between px-4 py-3"
-            onClick={() => { hapticLight(); setSwapOpen(!swapOpen); }}>
-            <div className="flex items-center gap-2">
-              <ArrowRightLeft className="h-4 w-4" style={{ color: "var(--accent)" }} />
-              <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Swap
-              </span>
-            </div>
-            <ChevronDown style={{ color: "var(--text-3)" }}
-              className={`h-4 w-4 transition-transform duration-200 ${swapOpen ? "rotate-180" : ""}`} />
-          </button>
-          {swapOpen && (
-            <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
-              <SwapPanel onActivityLogged={() => setActivityEpoch((n) => n + 1)} />
-            </div>
-          )}
-        </div>
-
-        {/* ── Recent activity (on-device) ───────────────────── */}
-        {connected && walletKey && (
-          <div
-            className="mt-4 rounded-xl border p-5"
-            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-          >
-            <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Recent activity
-            </h2>
-            <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Your recent swaps and market trades. Saved on this device only.
-            </p>
-            {localActivity.length === 0 ? (
-              <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
-                Nothing here yet. Make a trade to get started.
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.32fr)_minmax(320px,0.92fr)]">
+          <div className="space-y-4">
+            <div className="rounded-[22px] border p-4 md:p-5"
+              style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex items-center justify-between">
+                <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                  Positions
+                </h2>
+                {positions.length > 0 && (
+                  <span className="font-money tabular-nums text-xs font-semibold" style={{ color: pnlColor(totalPnl) }}>
+                    {totalPnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(totalPnl))}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                Open positions refresh while this page is open so prices stay current.
               </p>
-            ) : (
-              <ul className="mt-5 space-y-3">
-                {localActivity.map((row, idx) => (
-                  <li
-                    key={`${row.ts}-${row.mint}-${idx}`}
-                    className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
-                    style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
-                  >
-                    <p className="font-body text-sm leading-snug min-w-0" style={{ color: "var(--text-1)" }}>
-                      {formatActivitySummary(row)}
-                    </p>
-                    <time
-                      className="font-sub text-[11px] shrink-0 tabular-nums pt-0.5"
-                      style={{ color: "var(--text-3)" }}
-                      dateTime={new Date(row.ts).toISOString()}
-                    >
-                      {formatActivityTime(row.ts)}
-                    </time>
-                  </li>
+
+              <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>
+                {(["open", "settled"] as const).map((tab) => (
+                  <button key={tab} type="button"
+                    onClick={() => { hapticLight(); setPositionTab(tab); }}
+                    className="flex-1 rounded-md py-1.5 font-heading text-xs font-semibold capitalize transition-colors"
+                    style={{
+                      background: positionTab === tab ? "var(--bg-surface)" : "transparent",
+                      color: positionTab === tab ? "var(--text-1)" : "var(--text-3)",
+                    }}>
+                    {tab}{" "}
+                    <span className="font-sub text-[10px] tabular-nums">
+                      ({tab === "open" ? openPositions.length : settledPositions.length})
+                    </span>
+                  </button>
                 ))}
-              </ul>
-            )}
-          </div>
-        )}
+              </div>
 
-        {connected && (
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Correlated risk groups
-              </h2>
-              <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                Positions that appear to lean on the same narrative. This is the first pass at concentration awareness.
-              </p>
-              {correlatedRiskClusters.length === 0 ? (
-                <p className="mt-6 py-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
-                  No strong overlap detected yet. As your open book grows, Siren will cluster related exposure here.
-                </p>
-              ) : (
-                <div className="mt-5 space-y-3">
-                  {correlatedRiskClusters.map((cluster) => (
-                    <div
-                      key={cluster.label}
-                      className="rounded-xl border px-4 py-3"
-                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{cluster.label}</p>
-                          <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                            {cluster.positions.length} open positions share this narrative
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
-                            ${fmtUsd(cluster.exposureUsd)}
-                          </p>
-                          <p className="mt-1 font-mono text-[11px] tabular-nums" style={{ color: pnlColor(cluster.pnlUsd) }}>
-                            {cluster.pnlUsd >= 0 ? "+" : "-"}${fmtUsd(Math.abs(cluster.pnlUsd))}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+              <div className="mt-3 flex flex-col gap-3">
+                {positionsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
+                  </div>
+                ) : activeTab.length === 0 ? (
+                  <p className="py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
+                    {positionTab === "open" ? "No open positions yet." : "No settled positions yet."}
+                  </p>
+                ) : (
+                  activeTab.map((p, i) => (
+                    <PositionRow
+                      key={`${p.ticker}-${i}`}
+                      position={p}
+                      onEntrySaved={() => setEntryEpoch((n) => n + 1)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border overflow-hidden"
+              style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <button type="button" className="flex w-full items-center justify-between px-4 py-3.5"
+                onClick={() => { hapticLight(); setSwapOpen(!swapOpen); }}>
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft className="h-4 w-4" style={{ color: "var(--accent)" }} />
+                  <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    Swap
+                  </span>
+                </div>
+                <ChevronDown style={{ color: "var(--text-3)" }}
+                  className={`h-4 w-4 transition-transform duration-200 ${swapOpen ? "rotate-180" : ""}`} />
+              </button>
+              {swapOpen && (
+                <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
+                  <SwapPanel onActivityLogged={() => setActivityEpoch((n) => n + 1)} />
                 </div>
               )}
             </div>
 
-            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Post-trade reports
-              </h2>
-              <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                Recent route outcomes from Siren’s attempt log. This is the base layer for execution reporting.
-              </p>
-
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {[
-                  { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
-                  { label: "Success rate", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
-                  { label: "Partial fills", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
-                    <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>{item.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {(tradeAttemptData?.rows?.length ?? 0) === 0 ? (
-                <p className="mt-6 py-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
-                  No persisted execution reports yet. Once trades are logged through Supabase, your recent outcomes will show here.
+            {connected && walletKey && (
+              <div
+                className="rounded-[22px] border p-5"
+                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+              >
+                <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                  Recent activity
+                </h2>
+                <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Your recent swaps and market trades. Saved on this device only.
                 </p>
-              ) : (
-                <ul className="mt-5 space-y-3">
-                  {tradeAttemptData?.rows.slice(0, 6).map((row, idx) => (
-                    (() => {
-                      const narrative = buildTradeAttemptNarrative(row);
-                      return (
-                        <li
-                          key={`${row.createdAt}-${row.txSignature ?? row.market ?? idx}`}
+                {localActivity.length === 0 ? (
+                  <p className="mt-6 py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
+                    Nothing here yet. Make a trade to get started.
+                  </p>
+                ) : (
+                  <ul className="mt-5 space-y-3">
+                    {localActivity.map((row, idx) => (
+                      <li
+                        key={`${row.ts}-${row.mint}-${idx}`}
+                        className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
+                        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                      >
+                        <p className="min-w-0 font-body text-sm leading-snug" style={{ color: "var(--text-1)" }}>
+                          {formatActivitySummary(row)}
+                        </p>
+                        <time
+                          className="shrink-0 pt-0.5 font-sub text-[11px] tabular-nums"
+                          style={{ color: "var(--text-3)" }}
+                          dateTime={new Date(row.ts).toISOString()}
+                        >
+                          {formatActivityTime(row.ts)}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          <aside className="space-y-4 xl:sticky xl:top-[94px] xl:self-start">
+            {connected && (
+              <>
+                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                  <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    Correlated risk groups
+                  </h2>
+                  <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    Positions leaning on the same narrative, grouped for concentration awareness.
+                  </p>
+                  {correlatedRiskClusters.length === 0 ? (
+                    <p className="mt-5 py-2 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                      No strong overlap detected yet. As your open book grows, Siren will cluster related exposure here.
+                    </p>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      {correlatedRiskClusters.map((cluster) => (
+                        <div
+                          key={cluster.label}
                           className="rounded-xl border px-4 py-3"
                           style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                  className="rounded-full px-2 py-0.5 font-sub text-[10px] uppercase tracking-[0.16em]"
-                                  style={{
-                                    background: row.status === "success" ? "color-mix(in srgb, var(--up) 16%, transparent)" : "color-mix(in srgb, var(--down) 14%, transparent)",
-                                    color: row.status === "success" ? "var(--up)" : "var(--down)",
-                                  }}
-                                >
-                                  {row.status}
-                                </span>
-                                <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                                  {row.venue} · {row.mode}
-                                </span>
-                              </div>
-                              <p className="mt-2 font-body text-sm" style={{ color: "var(--text-1)" }}>
-                                {narrative.title}
+                              <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{cluster.label}</p>
+                              <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                                {cluster.positions.length} positions · ${fmtUsd(cluster.exposureUsd)} exposed
                               </p>
-                              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                                <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Attempted</p>
-                                  <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
-                                    {formatAttemptAmount(row)}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Siren advice</p>
-                                  <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                                    {narrative.advice}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Outcome</p>
-                                  <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: row.status === "success" ? "var(--up)" : "var(--text-2)" }}>
-                                    {narrative.result}
-                                  </p>
-                                </div>
-                              </div>
-                              {narrative.risk && (
-                                <p className="mt-2 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                                  Risk context: {narrative.risk}
-                                </p>
-                              )}
                             </div>
-                            <time className="font-sub text-[11px] text-right" style={{ color: "var(--text-3)" }} dateTime={row.createdAt}>
-                              {new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                            </time>
+                            <p className="font-mono text-[11px] tabular-nums" style={{ color: pnlColor(cluster.pnlUsd) }}>
+                              {cluster.pnlUsd >= 0 ? "+" : "-"}${fmtUsd(Math.abs(cluster.pnlUsd))}
+                            </p>
                           </div>
-                        </li>
-                      );
-                    })()
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-        {connected && (
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
                   <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    GoldRush wallet intelligence
+                    Post-trade reports
                   </h2>
                   <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Structured on-chain balance context for execution readiness, reserves, and concentration.
+                    Recent route outcomes from Siren’s attempt log.
                   </p>
-                </div>
-                <span
-                  className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
-                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-base)" }}
-                >
-                  Covalent
-                </span>
-              </div>
 
-              {goldRushLoading ? (
-                <div className="mt-5 flex items-center gap-3">
-                  <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
-                  <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Reading wallet balances through GoldRush...
-                  </p>
-                </div>
-              ) : goldRushError || !goldRushIntelligence ? (
-                <p className="mt-6 py-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
-                  GoldRush wallet intelligence is unavailable right now. Siren could not complete the live wallet read in this environment.
-                </p>
-              ) : (
-                <>
-                  <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <div className="mt-4 grid grid-cols-3 gap-2">
                     {[
-                      { label: "Idle stables", value: `$${fmtUsd(goldRushIntelligence.summary.stablecoinUsd)}`, tone: "var(--accent)" },
-                      { label: "Visible wallet", value: `$${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}`, tone: "var(--text-1)" },
-                      { label: "Recent flow", value: `${goldRushIntelligence.summary.recentTxnCount}`, tone: "var(--text-1)" },
-                      { label: "Risk", value: `${goldRushIntelligence.summary.riskScore}/100`, tone: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)" },
+                      { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
+                      { label: "Success", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
+                      { label: "Partial", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
                     ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="rounded-xl border px-3 py-3"
-                        style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-                      >
+                      <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                        <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
+                        <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(tradeAttemptData?.rows?.length ?? 0) === 0 ? (
+                    <p className="mt-5 py-2 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                      No persisted execution reports yet. Once trades are logged through Supabase, recent outcomes will show here.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 space-y-3">
+                      {tradeAttemptData?.rows.slice(0, 4).map((row, idx) => {
+                        const narrative = buildTradeAttemptNarrative(row);
+                        return (
+                          <li
+                            key={`${row.createdAt}-${row.txSignature ?? row.market ?? idx}`}
+                            className="rounded-xl border px-4 py-3"
+                            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span
+                                    className="rounded-full px-2 py-0.5 font-sub text-[10px] uppercase tracking-[0.16em]"
+                                    style={{
+                                      background: row.status === "success" ? "color-mix(in srgb, var(--up) 16%, transparent)" : "color-mix(in srgb, var(--down) 14%, transparent)",
+                                      color: row.status === "success" ? "var(--up)" : "var(--down)",
+                                    }}
+                                  >
+                                    {row.status}
+                                  </span>
+                                  <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                                    {row.venue} · {row.mode}
+                                  </span>
+                                </div>
+                                <p className="mt-2 font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                  {narrative.title}
+                                </p>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+                                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Attempted</p>
+                                    <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                                      {formatAttemptAmount(row)}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Siren advice</p>
+                                    <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                                      {narrative.advice}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Outcome</p>
+                                    <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: row.status === "success" ? "var(--up)" : "var(--text-2)" }}>
+                                      {narrative.result}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <time className="font-sub text-[11px] text-right" style={{ color: "var(--text-3)" }} dateTime={row.createdAt}>
+                                {new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                              </time>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        GoldRush wallet intelligence
+                      </h2>
+                      <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        Structured wallet context for reserves, concentration, and execution readiness.
+                      </p>
+                    </div>
+                    <span
+                      className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
+                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-base)" }}
+                    >
+                      Covalent
+                    </span>
+                  </div>
+
+                  {goldRushLoading ? (
+                    <div className="mt-5 flex items-center gap-3">
+                      <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
+                      <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                        Reading wallet balances through GoldRush...
+                      </p>
+                    </div>
+                  ) : goldRushError || !goldRushIntelligence ? (
+                    <p className="mt-5 py-2 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                      GoldRush wallet intelligence is unavailable right now. Siren could not complete the live wallet read in this environment.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        {[
+                          { label: "Idle stables", value: `$${fmtUsd(goldRushIntelligence.summary.stablecoinUsd)}`, tone: "var(--accent)" },
+                          { label: "Visible", value: `$${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}`, tone: "var(--text-1)" },
+                          { label: "Recent flow", value: `${goldRushIntelligence.summary.recentTxnCount}`, tone: "var(--text-1)" },
+                          { label: "Risk", value: `${goldRushIntelligence.summary.riskScore}/100`, tone: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)" },
+                        ].map((item) => (
+                          <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                            <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                              {item.label}
+                            </p>
+                            <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
+                              {item.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+                        <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                          <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                            Siren read
+                          </p>
+                          <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            {goldRushIntelligence.narrative.reserveRead}
+                          </p>
+                          <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                            {goldRushIntelligence.narrative.readiness}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                          <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                            Activity monitor
+                          </p>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            {[
+                              { label: "Inbound", value: `$${fmtUsd(goldRushIntelligence.summary.inboundUsd)}` },
+                              { label: "Outbound", value: `$${fmtUsd(goldRushIntelligence.summary.outboundUsd)}` },
+                              { label: "Open book", value: `$${fmtUsd(openBookUsd)}` },
+                              { label: "Last active", value: goldRushIntelligence.summary.lastActiveAt ? new Date(goldRushIntelligence.summary.lastActiveAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Quiet" },
+                            ].map((item) => (
+                              <div key={item.label} className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
+                                <p className="mt-1 font-heading text-xs font-semibold" style={{ color: "var(--text-1)" }}>{item.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {goldRushIntelligence.alerts.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          {goldRushIntelligence.alerts.slice(0, 4).map((alert) => (
+                            <div
+                              key={alert.label}
+                              className="rounded-xl border px-4 py-3"
+                              style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                  {alert.label}
+                                </p>
+                                <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "var(--yellow)" : "var(--accent)" }}>
+                                  {alert.level}
+                                </span>
+                              </div>
+                              <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                                {alert.summary}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        Torque growth relay
+                      </h2>
+                      <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        Execution outcomes can emit campaign-grade events for rebates and retention loops.
+                      </p>
+                    </div>
+                    <span
+                      className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
+                      style={{ borderColor: "var(--border-subtle)", color: torqueReadiness?.configured ? "var(--up)" : "var(--text-3)", background: "var(--bg-base)" }}
+                    >
+                      {torqueReadiness?.configured ? "Relay live" : "Relay pending"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {[
+                      { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
+                      { label: "Success", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
+                      { label: "Partial", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
+                      { label: "Events", value: String(torqueReadiness?.eventNames.length ?? 0), tone: "var(--text-1)" },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                         <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
                           {item.label}
                         </p>
@@ -1826,318 +1979,36 @@ export default function PortfolioPage() {
                     ))}
                   </div>
 
-                  <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                        Siren read
-                      </p>
-                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        {goldRushIntelligence.narrative.reserveRead}
-                      </p>
-                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        {goldRushIntelligence.narrative.concentrationRead}
-                      </p>
-                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        {goldRushIntelligence.narrative.readiness}
-                      </p>
-                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        {goldRushIntelligence.narrative.activityRead}
-                      </p>
-                      <div className="mt-3 inline-flex items-center rounded-full border px-3 py-1.5 font-sub text-[10px] uppercase tracking-[0.16em]" style={{ borderColor: "var(--border-subtle)", color: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)", background: "var(--bg-surface)" }}>
-                        {goldRushIntelligence.summary.riskLabel} execution risk
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                        Activity monitor
-                      </p>
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        {[
-                          { label: "Inbound", value: `$${fmtUsd(goldRushIntelligence.summary.inboundUsd)}` },
-                          { label: "Outbound", value: `$${fmtUsd(goldRushIntelligence.summary.outboundUsd)}` },
-                          { label: "Open book", value: `$${fmtUsd(openBookUsd)}` },
-                          { label: "Last active", value: goldRushIntelligence.summary.lastActiveAt ? new Date(goldRushIntelligence.summary.lastActiveAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Quiet" },
-                        ].map((item) => (
-                          <div key={item.label} className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                            <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
-                            <p className="mt-1 font-heading text-xs font-semibold" style={{ color: "var(--text-1)" }}>{item.value}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      Relay status
+                    </p>
+                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      {torqueReadiness?.summary ?? "Torque relay metadata is unavailable right now."}
+                    </p>
                   </div>
 
-                  <div className="mt-4 grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
-                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  {!!torqueReadiness?.requiredSchemas?.length && (
+                    <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                        Top holdings
+                        Required custom events
                       </p>
                       <div className="mt-3 space-y-2">
-                        {goldRushIntelligence.holdings.slice(0, 4).map((holding) => (
-                          <div key={`${holding.symbol}-${holding.contractAddress ?? "native"}`} className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="font-body text-sm truncate" style={{ color: "var(--text-1)" }}>
-                                {holding.symbol}
-                                {holding.isStable ? " · stable" : holding.isNative ? " · native" : ""}
-                              </p>
-                              <p className="mt-0.5 font-body text-[11px] truncate" style={{ color: "var(--text-3)" }}>
-                                {holding.name}
-                              </p>
-                            </div>
-                            <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
-                              ${fmtUsd(holding.quoteUsd)}
+                        {torqueReadiness.requiredSchemas.map((schema) => (
+                          <div key={schema.eventName} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                            <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>{schema.eventName}</p>
+                            <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                              {schema.fields.join(" · ")}
                             </p>
                           </div>
                         ))}
                       </div>
                     </div>
-
-                    <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                        Recent wallet activity
-                      </p>
-                      {goldRushIntelligence.activity.length === 0 ? (
-                        <p className="mt-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                          No recent on-chain flow was returned from GoldRush for this wallet.
-                        </p>
-                      ) : (
-                        <div className="mt-3 space-y-2">
-                          {goldRushIntelligence.activity.map((row) => (
-                            <div key={row.txHash} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
-                                  {row.direction === "in" ? "Inbound flow" : row.direction === "out" ? "Outbound flow" : row.direction === "self" ? "Self move" : "Unknown flow"}
-                                </p>
-                                <span className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: row.direction === "out" ? "var(--yellow)" : row.direction === "in" ? "var(--up)" : "var(--text-3)" }}>
-                                  {row.successful ? row.direction : "failed"}
-                                </span>
-                              </div>
-                              <div className="mt-2 flex items-center justify-between gap-3">
-                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
-                                  ${fmtUsd(row.valueUsd)}
-                                </p>
-                                <div className="flex items-center gap-3">
-                                  {row.timestamp && (
-                                    <time className="font-sub text-[11px]" style={{ color: "var(--text-3)" }} dateTime={row.timestamp}>
-                                      {new Date(row.timestamp).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                                    </time>
-                                  )}
-                                  {row.explorerUrl && (
-                                    <a href={row.explorerUrl} target="_blank" rel="noopener noreferrer" className="font-sub text-[11px]" style={{ color: "var(--accent)" }}>
-                                      Explorer
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {goldRushIntelligence.alerts.length > 0 && (
-                    <div className="mt-4 grid gap-2">
-                      {goldRushIntelligence.alerts.map((alert) => (
-                        <div
-                          key={alert.label}
-                          className="rounded-xl border px-4 py-3"
-                          style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
-                              {alert.label}
-                            </p>
-                            <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "var(--yellow)" : "var(--accent)" }}>
-                              {alert.level}
-                            </span>
-                          </div>
-                          <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                            {alert.summary}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
                   )}
-                </>
-              )}
-            </div>
-
-            <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    Torque growth relay
-                  </h2>
-                  <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Execution outcomes can now emit campaign-grade events for rebates, leaderboards, and retention loops.
-                  </p>
                 </div>
-                <span
-                  className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
-                  style={{ borderColor: "var(--border-subtle)", color: torqueReadiness?.configured ? "var(--up)" : "var(--text-3)", background: "var(--bg-base)" }}
-                >
-                  {torqueReadiness?.configured ? "Relay live" : "Relay pending"}
-                </span>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {[
-                  { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
-                  { label: "Success", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
-                  { label: "Partial", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
-                  { label: "Events", value: String(torqueReadiness?.eventNames.length ?? 0), tone: "var(--text-1)" },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      {item.label}
-                    </p>
-                    <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
-                      {item.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                  Relay status
-                </p>
-                <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                  {torqueReadiness?.summary ?? "Torque relay metadata is unavailable right now."}
-                </p>
-                <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                  {torqueReadiness?.configured
-                    ? `Events are routed toward ${torqueReadiness.ingestHost ?? "Torque ingest"} whenever Siren logs an execution outcome.`
-                    : "Set `TORQUE_API_KEY` to turn recent execution outcomes into live Torque custom events."}
-                </p>
-              </div>
-
-              <div className="mt-4 grid gap-2">
-                {(torqueReadiness?.eventNames ?? ["trade_attempt_logged", "trade_attempt_success", "trade_attempt_failed", "partial_fill_recorded"]).map((eventName) => (
-                  <div
-                    key={eventName}
-                    className="flex items-center justify-between rounded-xl border px-3 py-3"
-                    style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-                  >
-                    <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>
-                      {eventName}
-                    </p>
-                    <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      ready for campaign triggers
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              {!!torqueReadiness?.requiredSchemas?.length && (
-                <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                    Required custom events
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {torqueReadiness.requiredSchemas.map((schema) => (
-                      <div key={schema.eventName} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                        <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>{schema.eventName}</p>
-                        <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                          {schema.name} · fields: {schema.fields.join(", ")}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!!torqueReadiness?.suggestedCampaigns?.length && (
-                <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                    Suggested campaigns
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {torqueReadiness.suggestedCampaigns.map((campaign) => (
-                      <div key={campaign.name} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                        <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>{campaign.name}</p>
-                        <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                          {campaign.objective}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!!torqueReadiness?.frictionLog?.length && (
-                <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                    Friction log
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {torqueReadiness.frictionLog.map((item) => (
-                      <p key={item} className="font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                        {item}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Positions ─────────────────────────────────────── */}
-        <div className="mt-4 rounded-xl border p-4"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-          <div className="flex items-center justify-between">
-            <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Positions
-            </h2>
-            {positions.length > 0 && (
-              <span className="font-money tabular-nums text-xs font-semibold" style={{ color: pnlColor(totalPnl) }}>
-                {totalPnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(totalPnl))}
-              </span>
+              </>
             )}
-          </div>
-          <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Open positions refresh while this page is open so prices stay current.
-          </p>
-
-          <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>
-            {(["open", "settled"] as const).map((tab) => (
-              <button key={tab} type="button"
-                onClick={() => { hapticLight(); setPositionTab(tab); }}
-                className="flex-1 rounded-md py-1.5 font-heading text-xs font-semibold capitalize transition-colors"
-                style={{
-                  background: positionTab === tab ? "var(--bg-surface)" : "transparent",
-                  color: positionTab === tab ? "var(--text-1)" : "var(--text-3)",
-                }}>
-                {tab}{" "}
-                <span className="font-sub text-[10px] tabular-nums">
-                  ({tab === "open" ? openPositions.length : settledPositions.length})
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-3 flex flex-col gap-3">
-            {positionsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
-              </div>
-            ) : activeTab.length === 0 ? (
-              <p className="py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
-                {positionTab === "open" ? "No open positions yet." : "No settled positions yet."}
-              </p>
-            ) : (
-              activeTab.map((p, i) => (
-                <PositionRow
-                  key={`${p.ticker}-${i}`}
-                  position={p}
-                  onEntrySaved={() => setEntryEpoch((n) => n + 1)}
-                />
-              ))
-            )}
-          </div>
+          </aside>
         </div>
 
         <Link href="/" className="mt-6 inline-flex items-center gap-1.5 font-body text-xs"

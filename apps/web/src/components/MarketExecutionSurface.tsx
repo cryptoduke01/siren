@@ -823,7 +823,7 @@ function PredictionMarketFocusPanel({
           "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 38%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
       }}
     >
-      <div className="grid gap-5 px-4 py-4 sm:px-5 sm:py-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)]">
+      <div className="grid gap-5 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,360px)]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -866,7 +866,7 @@ function PredictionMarketFocusPanel({
           </div>
 
           <h2
-            className="mt-4 max-w-[17ch] break-words font-heading text-[clamp(1.05rem,1.8vw,1.55rem)] font-bold leading-[0.95] tracking-[-0.045em]"
+            className="mt-4 max-w-[22ch] break-words font-heading text-[clamp(1.4rem,2.5vw,2.35rem)] font-bold leading-[0.96] tracking-[-0.05em]"
             style={{ color: "var(--text-1)" }}
           >
             {market.title}
@@ -878,47 +878,7 @@ function PredictionMarketFocusPanel({
               : "Size YES or NO with execution-aware routing. Kalshi outcomes via DFlow; Polymarket via your linked wallet when available."}
           </p>
 
-          {multiOutcome && (
-            <div className="mt-4 rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                  Outcome field
-                </p>
-                <p className="font-body text-xs" style={{ color: "var(--accent)" }}>
-                  {selectedOutcomeLabel ? `Routing ${selectedOutcomeLabel}` : "Choose a route target"}
-                </p>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {sortedOutcomes.slice(0, 10).map((outcome) => {
-                  const isActive = outcome.ticker === market.ticker;
-                  return (
-                    <button
-                      key={outcome.ticker ?? outcome.label}
-                      type="button"
-                      onClick={() => outcome.ticker && onSelectOutcome(outcome.ticker)}
-                      className="inline-flex items-center gap-2 rounded-full border px-3 py-2 font-body text-[11px] font-medium transition-colors"
-                      style={{
-                        borderColor: isActive
-                          ? "color-mix(in srgb, var(--accent) 42%, transparent)"
-                          : "var(--border-subtle)",
-                        background: isActive
-                          ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))"
-                          : "var(--bg-surface)",
-                        color: isActive ? "var(--text-1)" : "var(--text-2)",
-                      }}
-                    >
-                      <span className="max-w-[16ch] truncate">{outcome.label}</span>
-                      <span className="font-mono font-semibold" style={{ color: "var(--accent)" }}>
-                        {outcome.probability.toFixed(1)}%
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
             <CompactMarketStat
               label={multiOutcome && selectedOutcomeLabel ? selectedOutcomeLabel : "YES"}
               value={formatCentsFromProbability(market.probability, "yes")}
@@ -942,7 +902,7 @@ function PredictionMarketFocusPanel({
         </div>
 
         <div
-          className="self-start rounded-[20px] border p-4"
+          className="self-start rounded-[20px] border p-4 xl:sticky xl:top-5"
           style={{
             borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
             background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), var(--bg-surface))",
@@ -994,6 +954,48 @@ function PredictionMarketFocusPanel({
             </div>
           </div>
         </div>
+
+        {multiOutcome && (
+          <div className="xl:col-span-2">
+            <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                  Outcome field
+                </p>
+                <p className="font-body text-xs" style={{ color: "var(--accent)" }}>
+                  {selectedOutcomeLabel ? `Routing ${selectedOutcomeLabel}` : "Choose a route target"}
+                </p>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                {sortedOutcomes.slice(0, 10).map((outcome) => {
+                  const isActive = outcome.ticker === market.ticker;
+                  return (
+                    <button
+                      key={outcome.ticker ?? outcome.label}
+                      type="button"
+                      onClick={() => outcome.ticker && onSelectOutcome(outcome.ticker)}
+                      className="inline-flex min-w-0 items-center justify-between gap-2 rounded-[16px] border px-3 py-2.5 font-body text-[11px] font-medium transition-colors"
+                      style={{
+                        borderColor: isActive
+                          ? "color-mix(in srgb, var(--accent) 42%, transparent)"
+                          : "var(--border-subtle)",
+                        background: isActive
+                          ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))"
+                          : "var(--bg-surface)",
+                        color: isActive ? "var(--text-1)" : "var(--text-2)",
+                      }}
+                    >
+                      <span className="min-w-0 truncate">{outcome.label}</span>
+                      <span className="font-mono font-semibold" style={{ color: "var(--accent)" }}>
+                        {outcome.probability.toFixed(1)}%
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -1188,7 +1190,7 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
   return (
     <div
       ref={surfaceRef}
-      className="flex flex-col h-full min-h-0 min-w-0 p-4 md:p-6 overflow-y-auto overflow-x-hidden"
+      className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] min-w-0 flex-col overflow-y-auto overflow-x-hidden px-3 py-4 md:px-5 md:py-6"
       style={{ background: "var(--bg-void)" }}
     >
       {selectedMarket && (

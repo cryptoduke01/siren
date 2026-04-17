@@ -21,6 +21,37 @@ type LoggedTradeAttemptPayload = {
   metadata: Record<string, unknown>;
 };
 
+function parseNumericValue(value?: string | number | null): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function buildRouteLabel(payload: LoggedTradeAttemptPayload): string {
+  return [payload.venue, payload.mode].filter(Boolean).join(":") || "unknown";
+}
+
+function buildAssetPair(payload: LoggedTradeAttemptPayload): string {
+  const input = payload.input_asset?.trim();
+  const output = payload.output_asset?.trim();
+  if (input && output) return `${input}->${output}`;
+  return input || output || "unknown";
+}
+
+function buildFailureReason(message?: string | null): string {
+  const lower = message?.toLowerCase().trim() ?? "";
+  if (!lower) return "unknown";
+  if (lower.includes("route")) return "no_route";
+  if (lower.includes("insufficient")) return "insufficient_balance";
+  if (lower.includes("verify") || lower.includes("proof") || lower.includes("jurisdiction")) return "verification";
+  if (lower.includes("slippage") || lower.includes("price")) return "price_move";
+  if (lower.includes("thin") || lower.includes("depth") || lower.includes("partial")) return "thin_liquidity";
+  return "other";
+}
+
 function safeHostname(value?: string | null): string | null {
   if (!value) return null;
   try {
@@ -41,22 +72,22 @@ export function getTorqueRelayReadiness() {
       {
         eventName: "trade_attempt_logged",
         name: "Trade Attempt Logged",
-        fields: ["venue", "mode", "market", "side", "inputAsset", "outputAsset", "amount", "status"],
+        fields: ["route", "market", "side", "assetPair", "status", "amount:number"],
       },
       {
         eventName: "trade_attempt_success",
         name: "Trade Attempt Success",
-        fields: ["venue", "mode", "market", "side", "amount", "status", "txSignature"],
+        fields: ["route", "market", "side", "status", "txSignature", "amount:number"],
       },
       {
         eventName: "trade_attempt_failed",
         name: "Trade Attempt Failed",
-        fields: ["venue", "mode", "market", "side", "amount", "status", "errorMessage"],
+        fields: ["route", "market", "side", "status", "failureReason", "amount:number"],
       },
       {
         eventName: "partial_fill_recorded",
         name: "Partial Fill Recorded",
-        fields: ["venue", "mode", "market", "side", "amount", "status", "filledFraction"],
+        fields: ["route", "market", "side", "status", "amount:number", "filledFraction:number"],
       },
     ],
     suggestedCampaigns: [
@@ -108,18 +139,15 @@ export async function emitTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPay
         timestamp: Date.now(),
         eventName: getTorqueEventName(payload),
         data: {
-          venue: payload.venue,
-          mode: payload.mode,
-          market: payload.market,
-          side: payload.side,
-          inputAsset: payload.input_asset,
-          outputAsset: payload.output_asset,
-          amount: payload.amount,
+          route: buildRouteLabel(payload),
+          market: payload.market ?? "unknown",
+          side: payload.side ?? "unknown",
+          assetPair: buildAssetPair(payload),
+          amount: parseNumericValue(payload.amount),
           status: payload.status,
-          txSignature: payload.tx_signature,
-          errorMessage: payload.error_message,
-          filledFraction: payload.metadata.filledFraction ?? null,
-          ...payload.metadata,
+          txSignature: payload.tx_signature ?? undefined,
+          failureReason: buildFailureReason(payload.error_message),
+          filledFraction: parseNumericValue(payload.metadata.filledFraction as string | number | null | undefined),
         },
       }),
       signal: controller.signal,
