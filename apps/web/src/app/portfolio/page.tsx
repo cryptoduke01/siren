@@ -465,17 +465,60 @@ function symbolForMint(mint: string): string {
 }
 
 function formatActivitySummary(row: LocalTradeLedgerRow): string {
-  const sym = symbolForMint(row.mint);
+  const sym = row.tokenSymbol ?? symbolForMint(row.mint);
+  const tokenName = row.tokenName?.trim();
+
+  if ((row.activityKind === "prediction" || (row.stakeUsd != null && row.stakeUsd > 0)) && row.side === "buy") {
+    return tokenName ? `Opened ${tokenName}` : "Opened a prediction trade";
+  }
+  if (row.activityKind === "prediction" && row.side === "sell") {
+    return tokenName ? `Closed ${tokenName}` : "Closed a prediction trade";
+  }
+  if (row.activityKind === "swap" || row.solAmount > 0) {
+    return `Swapped ${fmtToken(row.solAmount, 4)} SOL for about ${fmtToken(row.tokenAmount, 2)} ${sym}`;
+  }
   if (row.side === "sell") {
-    return `Sold · ${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${sym}`;
+    return `Sold ${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${sym}`;
   }
-  if (row.stakeUsd != null && row.stakeUsd > 0) {
-    return `Prediction · $${fmtUsd(row.stakeUsd)} → ~${fmtToken(row.tokenAmount, 2)} shares (${sym})`;
+  return tokenName ? `Bought ${tokenName}` : `Bought about ${fmtToken(row.tokenAmount, 4)} ${sym}`;
+}
+
+function formatActivityDetail(row: LocalTradeLedgerRow): string | null {
+  const sym = row.tokenSymbol ?? symbolForMint(row.mint);
+  if ((row.activityKind === "prediction" || (row.stakeUsd != null && row.stakeUsd > 0)) && row.side === "buy") {
+    return row.stakeUsd != null && row.stakeUsd > 0
+      ? `Spent $${fmtUsd(row.stakeUsd)} to open this position.`
+      : `Received about ${fmtToken(row.tokenAmount, 2)} shares.`;
   }
-  if (row.solAmount > 0) {
-    return `Swapped · ${fmtToken(row.solAmount, 4)} SOL → ~${fmtToken(row.tokenAmount, 2)} ${sym}`;
+  if (row.activityKind === "prediction" && row.side === "sell") {
+    return `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} shares closed.`;
   }
-  return `Bought · ~${fmtToken(row.tokenAmount, 4)} ${sym}`;
+  if (row.activityKind === "swap" || row.solAmount > 0) {
+    return `Swap into ${sym}.`;
+  }
+  return null;
+}
+
+function activityBadge(row: LocalTradeLedgerRow): { label: string; bg: string; color: string } {
+  if (row.activityKind === "prediction" || (row.stakeUsd != null && row.stakeUsd > 0)) {
+    return {
+      label: "Prediction trade",
+      bg: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
+      color: "var(--accent)",
+    };
+  }
+  if (row.activityKind === "swap" || row.solAmount > 0) {
+    return {
+      label: "Swap",
+      bg: "color-mix(in srgb, var(--kalshi) 12%, var(--bg-surface))",
+      color: "var(--kalshi)",
+    };
+  }
+  return {
+    label: row.side === "sell" ? "Token sale" : "Token buy",
+    bg: "var(--bg-elevated)",
+    color: "var(--text-2)",
+  };
 }
 
 function formatActivityTime(ts: number): string {
@@ -589,6 +632,9 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
         solAmount: fromToken.symbol === "SOL" ? amtNum : 0,
         tokenAmount: outUi,
         priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : 0,
+        tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
+        tokenSymbol: toToken.symbol,
+        activityKind: "swap",
       });
       fetch(`${API_URL}/api/trades/log`, {
         method: "POST",
@@ -1192,7 +1238,13 @@ export default function PortfolioPage() {
 
   // ── Positions ─────────────────────────────────────────────────
 
-  const { data: positions = [], isLoading: positionsLoading } = useQuery({
+  const {
+    data: positions = [],
+    isLoading: positionsLoading,
+    isFetching: positionsFetching,
+    isError: positionsError,
+    refetch: refetchPositions,
+  } = useQuery({
     queryKey: ["dflow-positions", walletKey],
     queryFn: async (): Promise<Position[]> => {
       if (!publicKey) return [];
@@ -1211,6 +1263,7 @@ export default function PortfolioPage() {
     staleTime: 12_000,
     refetchInterval: 90_000,
     refetchOnWindowFocus: true,
+    placeholderData: (previous) => previous,
   });
 
   useEffect(() => {
@@ -1247,6 +1300,7 @@ export default function PortfolioPage() {
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");
   const activeTab = positionTab === "open" ? openPositions : settledPositions;
+  const showingLastKnownPositions = positionsError && positions.length > 0;
   const openBookUsd = useMemo(
     () => openPositions.reduce((sum, position) => sum + positionMarketValueUsd(position), 0),
     [openPositions],
@@ -1379,7 +1433,7 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-[1180px] flex-1 px-4 pb-10 pt-5 font-body md:px-5 md:pt-6 xl:px-6">
+      <main className="mx-auto w-full max-w-[1120px] flex-1 px-4 pb-10 pt-5 font-body md:px-5 md:pt-6 xl:px-6">
 
         {/* ── Top row: Balance + Username ─────────────────── */}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)]">
@@ -1411,15 +1465,15 @@ export default function PortfolioPage() {
               </p>
             )}
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               <button type="button" onClick={() => { hapticLight(); setDepositOpen(true); }} disabled={!connected}
-                className="inline-flex h-11 min-w-[148px] items-center justify-center gap-2 rounded-lg px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 font-heading text-[11px] font-semibold disabled:opacity-40 sm:min-w-[132px]"
                 style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
                 <CreditCard className="h-3.5 w-3.5" /> Deposit
               </button>
               <button type="button" disabled={!connected}
                 onClick={() => { hapticLight(); setWithdrawOpen(true); }}
-                className="inline-flex h-11 min-w-[148px] items-center justify-center gap-2 rounded-lg border px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border px-3 font-heading text-[11px] font-semibold disabled:opacity-40 sm:min-w-[132px]"
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
                 <ArrowUp className="h-3.5 w-3.5" /> Withdraw
               </button>
@@ -1547,13 +1601,13 @@ export default function PortfolioPage() {
           className="mt-4 rounded-[22px] border p-4 md:p-5"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
         >
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(230px,0.7fr)] lg:items-start">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.72fr)] lg:items-start">
             <div>
               <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
-                Portfolio command
+                Portfolio
               </p>
               <h2 className="mt-1 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-                Live exposure, realized outcomes, and execution readiness in one glance.
+                Your open positions, resolved trades, and trade access in one place.
               </h2>
             </div>
             <div
@@ -1561,7 +1615,7 @@ export default function PortfolioPage() {
               style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
             >
               <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
-                Largest live line
+                Biggest open position
               </p>
               <p className="mt-1 max-w-[220px] truncate font-body text-sm font-medium" style={{ color: "var(--text-1)" }}>
                 {largestOpenPosition?.title ?? "No open positions"}
@@ -1574,10 +1628,10 @@ export default function PortfolioPage() {
 
           <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
             {[
-              { label: "Open book", value: String(openPositions.length), detail: "positions live", tone: "var(--text-1)" },
-              { label: "Settled", value: String(settledPositions.length), detail: "resolved lines", tone: "var(--text-1)" },
+              { label: "Open positions", value: String(openPositions.length), detail: "still live", tone: "var(--text-1)" },
+              { label: "Resolved", value: String(settledPositions.length), detail: "already settled", tone: "var(--text-1)" },
               { label: "Net P&L", value: `${totalPnl >= 0 ? "+" : "-"}$${fmtUsd(Math.abs(totalPnl))}`, detail: "across tracked positions", tone: pnlColor(totalPnl) },
-              { label: "Execution", value: verified ? "Kalshi ready" : "ID check", detail: verified ? "verification complete" : "complete venue verification", tone: verified ? "var(--up)" : "var(--accent)" },
+              { label: "Trade access", value: verified ? "Kalshi ready" : "Needs ID", detail: verified ? "verification complete" : "finish verification", tone: verified ? "var(--up)" : "var(--accent)" },
             ].map((item) => (
               <div
                 key={item.label}
@@ -1616,6 +1670,31 @@ export default function PortfolioPage() {
                 Open positions refresh while this page is open so prices stay current.
               </p>
 
+              {positionsError && (
+                <div
+                  className="mt-3 flex items-center justify-between gap-3 rounded-xl border px-3 py-3"
+                  style={{ borderColor: "color-mix(in srgb, var(--yellow) 26%, transparent)", background: "color-mix(in srgb, var(--yellow) 7%, var(--bg-base))" }}
+                >
+                  <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    {showingLastKnownPositions
+                      ? "Live refresh slipped for a moment. Showing your last synced positions instead of clearing the list."
+                      : "Siren could not refresh your positions just now. Retry in a moment."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticLight();
+                      void refetchPositions();
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border px-3 py-1.5 font-heading text-[11px] font-semibold"
+                    style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-surface)" }}
+                  >
+                    <RefreshCw className={`h-3 w-3 ${positionsFetching ? "animate-spin" : ""}`} />
+                    Retry
+                  </button>
+                </div>
+              )}
+
               <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>
                 {(["open", "settled"] as const).map((tab) => (
                   <button key={tab} type="button"
@@ -1634,13 +1713,13 @@ export default function PortfolioPage() {
               </div>
 
               <div className="mt-3 flex flex-col gap-3">
-                {positionsLoading ? (
+                {positionsLoading && positions.length === 0 ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
                   </div>
                 ) : activeTab.length === 0 ? (
                   <p className="py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
-                    {positionTab === "open" ? "No open positions yet." : "No settled positions yet."}
+                    {positionTab === "open" ? "No open positions yet." : "No resolved positions yet."}
                   </p>
                 ) : (
                   activeTab.map((p, i) => (
@@ -1661,7 +1740,7 @@ export default function PortfolioPage() {
                 <div className="flex items-center gap-2">
                   <ArrowRightLeft className="h-4 w-4" style={{ color: "var(--accent)" }} />
                   <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    Swap
+                    Swap tokens
                   </span>
                 </div>
                 <ChevronDown style={{ color: "var(--text-3)" }}
@@ -1683,7 +1762,7 @@ export default function PortfolioPage() {
                   Recent activity
                 </h2>
                 <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Your recent swaps and market trades. Saved on this device only.
+                  Your latest swaps and prediction trades. Saved on this device only.
                 </p>
                 {localActivity.length === 0 ? (
                   <p className="mt-6 py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
@@ -1697,9 +1776,22 @@ export default function PortfolioPage() {
                         className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
                         style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
                       >
-                        <p className="min-w-0 font-body text-sm leading-snug" style={{ color: "var(--text-1)" }}>
-                          {formatActivitySummary(row)}
-                        </p>
+                        <div className="min-w-0">
+                          <span
+                            className="inline-flex rounded-full px-2 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
+                            style={{ background: activityBadge(row).bg, color: activityBadge(row).color }}
+                          >
+                            {activityBadge(row).label}
+                          </span>
+                          <p className="mt-2 min-w-0 font-body text-sm leading-snug" style={{ color: "var(--text-1)" }}>
+                            {formatActivitySummary(row)}
+                          </p>
+                          {formatActivityDetail(row) && (
+                            <p className="mt-1 font-body text-[12px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                              {formatActivityDetail(row)}
+                            </p>
+                          )}
+                        </div>
                         <time
                           className="shrink-0 pt-0.5 font-sub text-[11px] tabular-nums"
                           style={{ color: "var(--text-3)" }}
@@ -1720,10 +1812,10 @@ export default function PortfolioPage() {
               <>
                 <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
                   <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    Correlated risk groups
+                    Related positions
                   </h2>
                   <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Positions leaning on the same narrative, grouped for concentration awareness.
+                    Positions leaning on the same story, grouped so concentration risk is easier to spot.
                   </p>
                   {correlatedRiskClusters.length === 0 ? (
                     <p className="mt-5 py-2 font-body text-sm" style={{ color: "var(--text-3)" }}>
@@ -1756,17 +1848,17 @@ export default function PortfolioPage() {
 
                 <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
                   <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    Post-trade reports
+                    Trade results
                   </h2>
                   <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Recent route outcomes from Siren’s attempt log.
+                    Recent trade outcomes Siren recorded.
                   </p>
 
                   <div className="mt-4 grid grid-cols-3 gap-2">
                     {[
                       { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
-                      { label: "Success", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
-                      { label: "Partial", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
+                      { label: "Clean fills", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
+                      { label: "Partial fills", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
                     ].map((item) => (
                       <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                         <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
@@ -1810,19 +1902,19 @@ export default function PortfolioPage() {
                                 </p>
                                 <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
                                   <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Attempted</p>
+                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Tried</p>
                                     <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
                                       {formatAttemptAmount(row)}
                                     </p>
                                   </div>
                                   <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Siren advice</p>
+                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Siren said</p>
                                     <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
                                       {narrative.advice}
                                     </p>
                                   </div>
                                   <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Outcome</p>
+                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>What happened</p>
                                     <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: row.status === "success" ? "var(--up)" : "var(--text-2)" }}>
                                       {narrative.result}
                                     </p>

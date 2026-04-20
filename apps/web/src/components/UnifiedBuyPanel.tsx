@@ -592,6 +592,9 @@ export function UnifiedBuyPanel() {
         tokenAmount: number;
         priceUsd: number;
         stakeUsd?: number;
+        tokenName?: string;
+        tokenSymbol?: string;
+        activityKind?: "prediction" | "swap" | "token";
       }> = [];
       if (rawTrades) {
         try {
@@ -609,6 +612,9 @@ export function UnifiedBuyPanel() {
         tokenAmount,
         priceUsd,
         ...(stake != null ? { stakeUsd: stake } : {}),
+        tokenName,
+        tokenSymbol,
+        activityKind: stake != null ? "prediction" : "token",
       });
       if (trades.length > 1000) {
         trades = trades.slice(trades.length - 1000);

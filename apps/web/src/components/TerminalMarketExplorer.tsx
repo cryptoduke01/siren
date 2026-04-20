@@ -270,33 +270,33 @@ export function TerminalMarketExplorer() {
   };
 
   return (
-    <section className="mx-auto flex w-full max-w-[1240px] flex-col gap-4 px-3 py-4 md:px-5 md:py-6">
-      <div className="rounded-[22px] border p-4 md:p-5" style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 98%, transparent), var(--bg-base))" }}>
+    <section className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-3 py-4 md:px-5 md:py-6">
+      <div className="rounded-[22px] border p-3.5 md:p-5" style={{ borderColor: "var(--border-subtle)", background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 98%, transparent), var(--bg-base))" }}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-2xl">
-              <p className="font-heading text-[1.35rem] font-semibold tracking-[-0.05em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
+              <p className="font-heading text-[1.15rem] font-semibold tracking-[-0.05em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
                 Prediction market explorer
               </p>
-              <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+              <p className="mt-2 font-body text-[13px] leading-relaxed md:text-sm" style={{ color: "var(--text-2)" }}>
                 Current, tradeable books first. Open the market page when you want routing, feasibility, and risk.
               </p>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-3 xl:w-[390px]">
+            <div className="grid grid-cols-3 gap-2 xl:w-[390px]">
               {[
                 { label: "Tracked", value: filtered.length.toLocaleString(), detail: "books in this view" },
                 { label: "Moving", value: liveSignals.length.toLocaleString(), detail: "signals in the last 30m" },
                 { label: "Venues", value: "2", detail: "Kalshi + Polymarket" },
               ].map((item) => (
-                <div key={item.label} className="rounded-[18px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <div key={item.label} className="rounded-[18px] border px-2.5 py-2.5 md:px-3.5 md:py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
                   <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
                     {item.label}
                   </p>
-                  <p className="mt-2 font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>
+                  <p className="mt-1.5 font-heading text-base font-semibold md:text-xl" style={{ color: "var(--text-1)" }}>
                     {item.value}
                   </p>
-                  <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                  <p className="mt-1 font-body text-[10px] leading-snug md:text-[11px]" style={{ color: "var(--text-3)" }}>
                     {item.detail}
                   </p>
                 </div>

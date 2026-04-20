@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, BookOpen, Check, Copy, Loader2, Scale, Shield, Upload } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { Footer } from "@/components/Footer";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useResultModalStore } from "@/store/useResultModalStore";
 import { hapticLight } from "@/lib/haptics";
@@ -107,7 +108,7 @@ export default function SettingsPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-12 pt-6 md:pt-8 font-body">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-12 pt-6 md:px-5 md:pt-8 font-body">
         <Link
           href="/portfolio"
           className="inline-flex items-center gap-1.5 font-sub text-xs mb-6"
@@ -117,17 +118,19 @@ export default function SettingsPage() {
           <ArrowLeft className="h-3 w-3" /> Back to portfolio
         </Link>
 
-        <h1 className="font-heading text-xl font-bold" style={{ color: "var(--text-1)" }}>
-          Settings
-        </h1>
-        <p className="mt-2 font-sub text-sm" style={{ color: "var(--text-3)" }}>
-          Manage your profile surface, wallet identity, and the links users rely on when they need context.
-        </p>
+        <div className="max-w-2xl">
+          <h1 className="font-heading text-2xl font-bold" style={{ color: "var(--text-1)" }}>
+            Settings
+          </h1>
+          <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+            Manage your profile, wallet identity, and the links people rely on when they need context about you or Siren.
+          </p>
+        </div>
 
-        <div className="mt-8 grid gap-4">
+        <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)] lg:items-start">
           {!connected || !walletKey ? (
             <div
-              className="rounded-xl border p-5"
+              className="rounded-2xl border p-5 lg:col-span-2"
               style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
             >
               <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
@@ -139,142 +142,146 @@ export default function SettingsPage() {
             </div>
           ) : (
             <>
-              <div
-                className="rounded-xl border p-5"
-                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
-                      Account
-                    </p>
-                    <h2 className="mt-1 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                      Wallet identity and execution readiness
-                    </h2>
+              <div className="space-y-4">
+                <div
+                  className="rounded-2xl border p-5"
+                  style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
+                        Account
+                      </p>
+                      <h2 className="mt-1 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                        Wallet identity and trading status
+                      </h2>
+                    </div>
+                    <span
+                      className="rounded-full px-2.5 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
+                      style={{
+                        background: verified ? "color-mix(in srgb, var(--up) 14%, transparent)" : "color-mix(in srgb, var(--accent) 14%, transparent)",
+                        color: verified ? "var(--up)" : "var(--accent)",
+                      }}
+                    >
+                      {verified ? "Ready" : "Needs review"}
+                    </span>
                   </div>
-                  <span
-                    className="rounded-full px-2.5 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
-                    style={{
-                      background: verified ? "color-mix(in srgb, var(--up) 14%, transparent)" : "color-mix(in srgb, var(--accent) 14%, transparent)",
-                      color: verified ? "var(--up)" : "var(--accent)",
-                    }}
-                  >
-                    {verified ? "Ready" : "Needs review"}
-                  </span>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Connected wallet
+                      </p>
+                      <p className="mt-2 break-all font-mono text-xs leading-relaxed" style={{ color: "var(--text-1)" }}>
+                        {walletKey}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void copyAddress()}
+                        className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                        style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+                      >
+                        {addressCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        {addressCopied ? "Copied" : "Copy address"}
+                      </button>
+                    </div>
+
+                    <div className="rounded-xl border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Trading access
+                      </p>
+                      <div className="mt-2 flex items-start gap-2">
+                        <Shield className="mt-0.5 h-4 w-4 shrink-0" style={{ color: verified ? "var(--up)" : "var(--accent)" }} />
+                        <div>
+                          <p className="font-body text-sm leading-relaxed" style={{ color: verified ? "var(--up)" : "var(--text-1)" }}>
+                            {verified ? "Ready to trade Kalshi from Siren." : "Identity verification still needs attention."}
+                          </p>
+                          <Link
+                            href="/portfolio"
+                            onClick={() => hapticLight()}
+                            className="mt-3 inline-flex items-center gap-2 text-xs font-semibold"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            Review this in portfolio
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Connected wallet
-                    </p>
-                    <p className="mt-1 break-all font-mono text-xs" style={{ color: "var(--text-1)" }}>
-                      {walletKey}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void copyAddress()}
-                      className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
-                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
-                    >
-                      {addressCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                      {addressCopied ? "Copied" : "Copy address"}
-                    </button>
-                  </div>
-
-                  <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Venue identity
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <Shield className="h-4 w-4" style={{ color: verified ? "var(--up)" : "var(--accent)" }} />
-                      <span className="font-body text-sm" style={{ color: verified ? "var(--up)" : "var(--text-1)" }}>
-                        {verified ? "Ready to trade Kalshi from Siren" : "Identity verification still needs attention"}
-                      </span>
+                <div
+                  className="rounded-2xl border p-5"
+                  style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                        Profile photo
+                      </h2>
+                      <p className="mt-1 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        Used on share cards and around the app.
+                      </p>
                     </div>
-                    <Link
-                      href="/portfolio"
-                      onClick={() => hapticLight()}
-                      className="mt-3 inline-flex items-center gap-2 text-xs font-semibold"
-                      style={{ color: "var(--accent)" }}
-                    >
-                      Review verification in portfolio
+                    <Link href="/portfolio" onClick={() => hapticLight()} className="font-sub text-[11px]" style={{ color: "var(--accent)" }}>
+                      Open portfolio
                     </Link>
                   </div>
-                </div>
-              </div>
 
-              <div
-                className="rounded-xl border p-5"
-                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                      Profile photo
-                    </h2>
-                    <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-                      Used on share cards and across the app. Username is still managed from the portfolio page.
-                    </p>
+                  <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center">
+                    {profile?.avatar_url ? (
+                      <img
+                        src={profile.avatar_url}
+                        alt=""
+                        className="h-20 w-20 rounded-full object-cover border"
+                        style={{ borderColor: "var(--border-subtle)" }}
+                      />
+                    ) : (
+                      <div
+                        className="flex h-20 w-20 items-center justify-center rounded-full font-heading text-lg font-bold"
+                        style={{ background: "var(--bg-elevated)", color: "var(--text-3)" }}
+                      >
+                        {isLoading ? "…" : (profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 py-2.5 font-heading text-xs font-semibold transition-colors hover:brightness-110 focus-within:outline-none focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2"
+                      style={{
+                        borderColor: "var(--accent)",
+                        color: "var(--accent)",
+                        opacity: uploading ? 0.6 : 1,
+                      }}>
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      {uploading ? "Uploading…" : "Upload photo"}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        disabled={uploading}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          void onPickAvatar(f ?? null);
+                        }}
+                      />
+                    </label>
                   </div>
-                  <Link href="/portfolio" onClick={() => hapticLight()} className="font-sub text-[11px]" style={{ color: "var(--accent)" }}>
-                    Open portfolio
-                  </Link>
-                </div>
-
-                <div className="mt-4 flex items-center gap-4">
-                  {profile?.avatar_url ? (
-                    <img
-                      src={profile.avatar_url}
-                      alt=""
-                      className="h-20 w-20 rounded-full object-cover border"
-                      style={{ borderColor: "var(--border-subtle)" }}
-                    />
-                  ) : (
-                    <div
-                      className="h-20 w-20 rounded-full flex items-center justify-center font-heading text-lg font-bold"
-                      style={{ background: "var(--bg-elevated)", color: "var(--text-3)" }}
-                    >
-                      {isLoading ? "…" : (profile?.display_name || profile?.username || "?").charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-4 py-2.5 font-heading text-xs font-semibold transition-colors hover:brightness-110 focus-within:outline-none focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2"
-                    style={{
-                      borderColor: "var(--accent)",
-                      color: "var(--accent)",
-                      opacity: uploading ? 0.6 : 1,
-                    }}>
-                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    {uploading ? "Uploading…" : "Upload photo"}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="sr-only"
-                      disabled={uploading}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        void onPickAvatar(f ?? null);
-                      }}
-                    />
-                  </label>
                 </div>
               </div>
             </>
           )}
 
           <div
-            className="rounded-xl border p-5"
+            className="rounded-2xl border p-5"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
             <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
               Docs and policies
             </h2>
-            <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Keep the core references close when users need product context or legal detail.
+            <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Keep the core references close when you need product context or legal detail.
             </p>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
               <a
                 href="https://docs.onsiren.xyz"
                 target="_blank"
@@ -308,6 +315,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }
