@@ -2894,7 +2894,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /**
    * Public leaderboard: **prediction-market traders only** (Kalshi / Polymarket-style logged trades).
-   * Query: window=7d|30d|all|alltime, metric=volume|winRate.
+   * Query: window=7d|30d|all|alltime, metric=execution|volume|winRate.
    * All-time uses the most recent 25k rows (FIFO win rate) so the route stays bounded.
    */
   app.get<{ Querystring: { window?: string; metric?: string } }>(
@@ -2903,8 +2903,8 @@ export function registerRoutes(app: FastifyInstance) {
       const win = (req.query.window || "7d").toLowerCase();
       const window =
         win === "30d" ? "30d" : win === "all" || win === "alltime" ? "all" : "7d";
-      const metricRaw = (req.query.metric || "volume").toLowerCase().replace(/_/g, "");
-      const metric = metricRaw === "winrate" ? "winRate" : "volume";
+      const metricRaw = (req.query.metric || "execution").toLowerCase().replace(/_/g, "");
+      const metric = metricRaw === "winrate" ? "winRate" : metricRaw === "execution" ? "execution" : "volume";
       try {
         const client = getSupabaseAdminClient();
         const built = await buildLeaderboard({

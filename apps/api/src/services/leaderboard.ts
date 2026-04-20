@@ -30,11 +30,21 @@ export interface LeaderboardRow {
   subtitle?: string;
   volumeUsd: number;
   tradeCount: number;
+  attemptCount?: number;
   /** Traders only; null when no decisive sells. */
   winRate: number | null;
+  successRate?: number | null;
+  executionScore?: number | null;
   wins: number;
   losses: number;
   avatarUrl?: string | null;
+}
+
+export interface TradeAttemptRow {
+  wallet: string | null;
+  mode: string | null;
+  status: string;
+  created_at: string;
 }
 
 function notional(t: SirenTradeRow): number {
@@ -63,6 +73,13 @@ function isSirenTradesMissingError(err: { message?: string; code?: string } | nu
     msg.includes("schema cache") ||
     msg.includes("does not exist")
   );
+}
+
+function isTradeAttemptsMissingError(err: { message?: string; code?: string } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message || "").toLowerCase();
+  const code = (err.code || "").toLowerCase();
+  return code === "42p01" || msg.includes("siren_trade_attempts") || msg.includes("does not exist");
 }
 
 async function fetchTradesInWindow(
@@ -102,6 +119,36 @@ async function fetchTradesInWindow(
   }
 
   return { rows: out, truncated: out.length >= MAX_TRADE_ROWS };
+}
+
+async function fetchTradeAttemptsInWindow(
+  client: SupabaseClient,
+  sinceIso: string | null,
+): Promise<{ rows: TradeAttemptRow[]; missingTable?: boolean }> {
+  const out: TradeAttemptRow[] = [];
+  let from = 0;
+
+  while (out.length < MAX_TRADE_ROWS) {
+    let q = client
+      .from("siren_trade_attempts")
+      .select("wallet,mode,status,created_at")
+      .order("created_at", { ascending: true });
+    if (sinceIso) q = q.gte("created_at", sinceIso);
+    const { data, error } = await q.range(from, from + PAGE - 1);
+    if (error) {
+      if (isTradeAttemptsMissingError(error)) {
+        return { rows: [], missingTable: true };
+      }
+      throw new Error(error.message || "siren_trade_attempts query failed");
+    }
+    const rows = (data ?? []) as TradeAttemptRow[];
+    if (rows.length === 0) break;
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+
+  return { rows: out };
 }
 
 type Lot = { qty: number; px: number };
@@ -195,14 +242,26 @@ function sortAndRank(
     subtitle?: string;
     volumeUsd: number;
     tradeCount: number;
+    attemptCount?: number;
     wins: number;
     losses: number;
     winRate: number | null;
+    successRate?: number | null;
+    executionScore?: number | null;
   }>,
-  metric: "volume" | "winRate",
+  metric: "volume" | "winRate" | "execution",
   limit: number,
 ): LeaderboardRow[] {
   const sorted = [...entries].sort((a, b) => {
+    if (metric === "execution") {
+      const ae = a.executionScore ?? -1;
+      const be = b.executionScore ?? -1;
+      if (be !== ae) return be - ae;
+      const as = a.successRate ?? -1;
+      const bs = b.successRate ?? -1;
+      if (bs !== as) return bs - as;
+      return b.volumeUsd - a.volumeUsd;
+    }
     if (metric === "winRate") {
       const ar = a.winRate ?? -1;
       const br = b.winRate ?? -1;
@@ -219,16 +278,46 @@ function sortAndRank(
     subtitle: e.subtitle,
     volumeUsd: e.volumeUsd,
     tradeCount: e.tradeCount,
+    attemptCount: e.attemptCount,
     winRate: e.winRate,
+    successRate: e.successRate,
+    executionScore: e.executionScore,
     wins: e.wins,
     losses: e.losses,
   }));
 }
 
+function processExecutionStats(attempts: TradeAttemptRow[]): Map<
+  string,
+  { attemptCount: number; successCount: number; partialCount: number; closeAttempts: number; closeSuccess: number }
+> {
+  const byWallet = new Map<
+    string,
+    { attemptCount: number; successCount: number; partialCount: number; closeAttempts: number; closeSuccess: number }
+  >();
+
+  for (const row of attempts) {
+    const wallet = (row.wallet || "").trim();
+    if (!wallet) continue;
+    const current =
+      byWallet.get(wallet) ?? { attemptCount: 0, successCount: 0, partialCount: 0, closeAttempts: 0, closeSuccess: 0 };
+    current.attemptCount += 1;
+    if (row.status === "success") current.successCount += 1;
+    if (row.status === "partial") current.partialCount += 1;
+    if ((row.mode || "").toLowerCase() === "sell") {
+      current.closeAttempts += 1;
+      if (row.status === "success" || row.status === "partial") current.closeSuccess += 1;
+    }
+    byWallet.set(wallet, current);
+  }
+
+  return byWallet;
+}
+
 export async function buildLeaderboard(params: {
   client: SupabaseClient;
   window: "7d" | "30d" | "all";
-  metric: "volume" | "winRate";
+  metric: "volume" | "winRate" | "execution";
   limit?: number;
 }): Promise<{
   window: string;
@@ -290,6 +379,19 @@ export async function buildLeaderboard(params: {
   }
 
   const predictionTrades = trades.filter(isPredictionMarketTrade);
+  let executionStats = new Map<
+    string,
+    { attemptCount: number; successCount: number; partialCount: number; closeAttempts: number; closeSuccess: number }
+  >();
+  try {
+    const fetchedAttempts = await fetchTradeAttemptsInWindow(client, sinceIso);
+    if (!fetchedAttempts.missingTable) {
+      executionStats = processExecutionStats(fetchedAttempts.rows);
+    }
+  } catch {
+    // Keep leaderboard working even if attempt telemetry is unavailable.
+  }
+
   if (predictionTrades.length === 0) {
     return {
       window,
@@ -305,15 +407,35 @@ export async function buildLeaderboard(params: {
   const entries = [...stats.entries()].map(([wallet, s]) => {
     const decided = s.wins + s.losses;
     const winRate = decided > 0 ? (s.wins / decided) * 100 : null;
+    const attempts = executionStats.get(wallet) ?? executionStats.get(walletKey(wallet));
+    const attemptCount = attempts?.attemptCount ?? 0;
+    const successRate =
+      attemptCount > 0 ? (((attempts?.successCount ?? 0) + (attempts?.partialCount ?? 0) * 0.5) / attemptCount) * 100 : null;
+    const closeRate =
+      (attempts?.closeAttempts ?? 0) > 0 ? ((attempts?.closeSuccess ?? 0) / (attempts?.closeAttempts ?? 1)) * 100 : null;
+    const executionScore =
+      successRate == null
+        ? null
+        : Number(
+            Math.min(
+              100,
+              successRate * 0.7 +
+                (closeRate ?? successRate) * 0.2 +
+                Math.min(10, Math.log10(Math.max(1, attemptCount)) * 5),
+            ).toFixed(1),
+          );
     return {
       id: wallet,
       label: wallet.slice(0, 4) + "…" + wallet.slice(-4),
-      subtitle: `${s.tradeCount} trades`,
+      subtitle: executionScore != null ? `${executionScore.toFixed(0)} execution score` : `${s.tradeCount} trades`,
       volumeUsd: s.volumeUsd,
       tradeCount: s.tradeCount,
+      attemptCount,
       wins: s.wins,
       losses: s.losses,
       winRate,
+      successRate,
+      executionScore,
     };
   });
   return {

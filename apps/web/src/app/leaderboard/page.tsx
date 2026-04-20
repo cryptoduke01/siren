@@ -15,7 +15,10 @@ interface LeaderboardEntry {
   subtitle?: string;
   volumeUsd: number;
   tradeCount: number;
+  attemptCount?: number;
   winRate: number | null;
+  successRate?: number | null;
+  executionScore?: number | null;
   wins: number;
   losses: number;
   avatarUrl?: string | null;
@@ -35,7 +38,7 @@ function PodiumCard({
 }: {
   entry: LeaderboardEntry | undefined;
   place: 1 | 2 | 3;
-  metric: "volume" | "winRate";
+  metric: "volume" | "winRate" | "execution";
 }) {
   const border =
     place === 1 ? "#d4a20d" : place === 2 ? "#9ca3af" : "#b45309";
@@ -52,18 +55,26 @@ function PodiumCard({
   }
 
   const main =
-    metric === "winRate"
+    metric === "execution"
+      ? entry.executionScore != null
+        ? `${entry.executionScore.toFixed(0)}`
+        : "—"
+      : metric === "winRate"
       ? entry.winRate != null
         ? `${entry.winRate.toFixed(0)}%`
         : "—"
       : fmtVol(entry.volumeUsd);
   const subSecondary =
-    metric === "winRate"
+    metric === "execution"
+      ? entry.successRate != null
+        ? `${entry.successRate.toFixed(0)}% clean routing`
+        : "No execution score yet"
+      : metric === "winRate"
       ? fmtVol(entry.volumeUsd)
       : entry.winRate != null
         ? `${entry.winRate.toFixed(0)}% win rate`
         : "Win rate —";
-  const sub = `${subSecondary} · ${entry.tradeCount} trades`;
+  const sub = `${subSecondary} · ${entry.attemptCount ?? entry.tradeCount} attempts`;
 
   return (
     <div
@@ -100,7 +111,7 @@ function PodiumCard({
 
 export default function LeaderboardPage() {
   const [windowKey, setWindowKey] = useState<"7d" | "30d" | "all">("7d");
-  const [metric, setMetric] = useState<"volume" | "winRate">("volume");
+  const [metric, setMetric] = useState<"execution" | "volume" | "winRate">("execution");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["leaderboard", windowKey, metric],
@@ -158,7 +169,7 @@ export default function LeaderboardPage() {
           </h1>
         </div>
         <p className="font-sub text-sm mb-6 leading-relaxed" style={{ color: "var(--text-3)" }}>
-          See who is trading best in Siren. Only market trades count here. Token swaps do not.
+          See who is actually executing well in Siren. This board now favors clean fills, close discipline, and real prediction-market trading quality.
         </p>
 
         <div className="flex flex-wrap gap-2 mb-3">
@@ -214,16 +225,16 @@ export default function LeaderboardPage() {
             type="button"
             onClick={() => {
               hapticLight();
-              setMetric("winRate");
+              setMetric("execution");
             }}
             className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 font-heading text-[11px] font-semibold"
             style={{
-              background: metric === "winRate" ? "var(--bg-surface)" : "transparent",
-              color: metric === "winRate" ? "var(--accent)" : "var(--text-3)",
+              background: metric === "execution" ? "var(--bg-surface)" : "transparent",
+              color: metric === "execution" ? "var(--accent)" : "var(--text-3)",
             }}
           >
             <Target className="h-3.5 w-3.5" />
-            Sort by win rate
+            Sort by execution
           </button>
           <button
             type="button"
@@ -308,6 +319,12 @@ export default function LeaderboardPage() {
                         </p>
                         <p className="font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
                           {fmtVol(e.volumeUsd)} volume
+                          {e.successRate != null && (
+                            <span>
+                              {" · "}
+                              {e.successRate.toFixed(0)}% execution
+                            </span>
+                          )}
                           {e.winRate != null && (
                             <span>
                               {" · "}
@@ -320,17 +337,29 @@ export default function LeaderboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-money text-base font-bold tabular-nums" style={{ color: "var(--accent)" }}>
-                          {metric === "winRate"
+                          {metric === "execution"
+                            ? e.executionScore != null
+                              ? `${e.executionScore.toFixed(0)}`
+                              : "—"
+                            : metric === "winRate"
                             ? e.winRate != null
                               ? `${e.winRate.toFixed(0)}%`
                               : "—"
                             : fmtVol(e.volumeUsd)}
                         </p>
                         <p className="font-sub text-[9px]" style={{ color: "var(--text-3)" }}>
-                          {metric === "winRate" ? "win rate (sorted)" : "volume (sorted)"}
+                          {metric === "execution" ? "execution (sorted)" : metric === "winRate" ? "win rate (sorted)" : "volume (sorted)"}
                         </p>
                         <p className="font-sub text-[9px] mt-0.5 tabular-nums" style={{ color: "var(--text-3)" }}>
-                          {metric === "winRate" ? fmtVol(e.volumeUsd) : e.winRate != null ? `${e.winRate.toFixed(0)}% WR` : "—"}
+                          {metric === "execution"
+                            ? e.successRate != null
+                              ? `${e.successRate.toFixed(0)}% success`
+                              : fmtVol(e.volumeUsd)
+                            : metric === "winRate"
+                              ? fmtVol(e.volumeUsd)
+                              : e.winRate != null
+                                ? `${e.winRate.toFixed(0)}% WR`
+                                : "—"}
                         </p>
                       </div>
                     </li>
