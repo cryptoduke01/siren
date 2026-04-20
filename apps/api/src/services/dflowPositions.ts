@@ -10,6 +10,14 @@ import type { DflowPositionRow } from "@siren/shared";
 
 const METADATA_URL = process.env.DFLOW_METADATA_API_URL || "https://dev-prediction-markets-api.dflow.net";
 const DFLOW_API_KEY = process.env.DFLOW_API_KEY || "";
+const POSITION_CACHE_TTL_MS = 3 * 60 * 1000;
+
+type CachedWalletPositions = {
+  positions: DflowPositionRow[];
+  updatedAt: string;
+};
+
+const walletPositionCache = new Map<string, CachedWalletPositions>();
 
 function metadataHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -75,6 +83,9 @@ function collectWalletTokens(connection: Connection, owner: PublicKey): Promise<
 export async function getDflowPositionsForWallet(walletAddress: string): Promise<{
   positions: DflowPositionRow[];
   error?: string;
+  stale?: boolean;
+  updatedAt?: string;
+  degradedReason?: string;
 }> {
   let owner: PublicKey;
   try {
@@ -93,10 +104,26 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
   try {
     tokens = await collectWalletTokens(connection, owner);
   } catch (e) {
-    return { positions: [], error: `RPC token accounts failed: ${(e as Error).message}` };
+    const message = `RPC token accounts failed: ${(e as Error).message}`;
+    const cached = walletPositionCache.get(walletAddress);
+    if (cached && Date.now() - Date.parse(cached.updatedAt) <= POSITION_CACHE_TTL_MS) {
+      return {
+        positions: cached.positions,
+        stale: true,
+        updatedAt: cached.updatedAt,
+        degradedReason: message,
+      };
+    }
+    return { positions: [], error: message };
   }
 
-  if (tokens.length === 0) return { positions: [] };
+  if (tokens.length === 0) {
+    walletPositionCache.set(walletAddress, {
+      positions: [],
+      updatedAt: new Date().toISOString(),
+    });
+    return { positions: [], updatedAt: new Date().toISOString() };
+  }
 
   const addresses = tokens.map((t) => t.mint);
   let outcomeMints: string[];
@@ -116,10 +143,18 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
     return { positions: [], error: `filter_outcome_mints: ${(e as Error).message}` };
   }
 
-  if (outcomeMints.length === 0) return { positions: [] };
+  if (outcomeMints.length === 0) {
+    const updatedAt = new Date().toISOString();
+    walletPositionCache.set(walletAddress, { positions: [], updatedAt });
+    return { positions: [], updatedAt };
+  }
 
   const outcomeTokens = tokens.filter((t) => outcomeMints.includes(t.mint));
-  if (outcomeTokens.length === 0) return { positions: [] };
+  if (outcomeTokens.length === 0) {
+    const updatedAt = new Date().toISOString();
+    walletPositionCache.set(walletAddress, { positions: [], updatedAt });
+    return { positions: [], updatedAt };
+  }
 
   let markets: Array<{
     ticker: string;
@@ -203,5 +238,7 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
     });
   }
 
-  return { positions };
+  const updatedAt = new Date().toISOString();
+  walletPositionCache.set(walletAddress, { positions, updatedAt });
+  return { positions, updatedAt };
 }

@@ -327,7 +327,12 @@ async function getAugmentedDflowPositions(walletAddress: string) {
       };
     });
 
-    return { positions };
+    return {
+      positions,
+      stale: positionsResult.stale,
+      updatedAt: positionsResult.updatedAt,
+      degradedReason: positionsResult.degradedReason,
+    };
   } catch (error) {
     return positionsResult;
   }
@@ -3191,6 +3196,12 @@ export function registerRoutes(app: FastifyInstance) {
         app.log.warn({ wallet: `${addr.slice(0, 6)}...${addr.slice(-4)}`, err: positions.error }, "DFlow positions lookup degraded");
         return reply.status(503).send({ success: false, error: positions.error });
       }
+      if (positions.stale) {
+        app.log.warn(
+          { wallet: `${addr.slice(0, 6)}...${addr.slice(-4)}`, err: positions.degradedReason },
+          "DFlow positions served from stale cache",
+        );
+      }
       return reply.send({ success: true, data: positions });
     } catch (e) {
       app.log.error(e);
@@ -3257,7 +3268,7 @@ export function registerRoutes(app: FastifyInstance) {
     await writeSnapshot();
     const interval = setInterval(() => {
       void writeSnapshot();
-    }, 12_000);
+    }, 45_000);
 
     req.raw.on("close", () => {
       clearInterval(interval);
