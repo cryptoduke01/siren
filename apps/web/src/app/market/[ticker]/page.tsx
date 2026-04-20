@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { MarketExecutionSurface } from "@/components/MarketExecutionSurface";
-import { useMarkets } from "@/hooks/useMarkets";
+import { useMarketByTicker } from "@/hooks/useMarketByTicker";
 import { useSirenStore } from "@/store/useSirenStore";
 import { toSelectedMarket } from "@/lib/marketSelection";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
@@ -15,7 +15,7 @@ export default function MarketSharePage() {
   const router = useRouter();
   const ticker = params.ticker as string;
   const { connected, isReady } = useSirenWallet();
-  const { data: markets = [], isLoading } = useMarkets();
+  const { data: market, isLoading, isFetching, isError } = useMarketByTicker(ticker);
   const { selectedMarket, setSelectedMarket } = useSirenStore();
 
   useEffect(() => {
@@ -23,30 +23,30 @@ export default function MarketSharePage() {
   }, [connected, isReady, router]);
 
   useEffect(() => {
-    if (!ticker || markets.length === 0) return;
-    const market = markets.find((item) => item.ticker === ticker);
     if (market) {
       setSelectedMarket(toSelectedMarket(market));
     }
-  }, [ticker, markets, setSelectedMarket]);
+  }, [market, setSelectedMarket]);
 
   if (!isReady || !connected) return null;
 
-  const marketExists = markets.some((item) => item.ticker === ticker);
+  const hasLocalFallback = selectedMarket?.ticker === ticker;
+  const showMarket = !!market || hasLocalFallback;
+  const showNotFound = !isLoading && !isFetching && !showMarket && isError;
 
   return (
     <div className="flex min-h-dvh flex-col" style={{ background: "var(--bg-void)" }}>
       <TopBar />
       <main className="flex-1 px-2 py-3 md:px-4 md:py-5 xl:px-6">
-        {isLoading ? (
+        {isLoading || (isFetching && !showMarket) ? (
           <div className="mx-auto h-[720px] w-full max-w-[1280px] rounded-[28px] border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }} />
-        ) : !marketExists ? (
+        ) : showNotFound ? (
           <div className="mx-auto max-w-3xl rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
             <p className="font-heading text-2xl font-semibold" style={{ color: "var(--text-1)" }}>
               Market not found.
             </p>
             <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-              This market is no longer in the live feed or the ticker changed. Go back to the explorer and reopen it from the latest market list.
+              This market is not in the live feed right now. Siren keeps the last opened market on screen while data refreshes, but this one could not be recovered from the current venue feed.
             </p>
             <button
               type="button"

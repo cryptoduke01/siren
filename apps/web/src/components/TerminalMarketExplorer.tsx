@@ -212,7 +212,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
 
 export function TerminalMarketExplorer() {
   const router = useRouter();
-  const { data: markets = [], isLoading, isError, refetch } = useMarkets();
+  const { data: markets = [], isLoading, isFetching, isFetched, isError, refetch } = useMarkets();
   const { signals } = useSignals();
   const { setSelectedMarket } = useSirenStore();
   const { query, setQuery, source, setSource, category, setCategory } = useExplorerStore();
@@ -233,7 +233,11 @@ export function TerminalMarketExplorer() {
         if (normalizedQuery) return true;
         const hoursUntilClose = marketHoursUntilClose(market);
         if (hoursUntilClose == null) return true;
-        return hoursUntilClose > 0;
+        if (hoursUntilClose <= 0) return false;
+        const recentVolume = market.volume_24h ?? market.volume ?? 0;
+        const activeSignal = Math.abs(market.velocity_1h ?? 0) >= 0.5;
+        const isNearTerm = hoursUntilClose <= 24 * 90;
+        return isNearTerm || recentVolume >= 25_000 || activeSignal;
       })
       .filter((market) => {
         if (!normalizedQuery) return true;
@@ -253,6 +257,7 @@ export function TerminalMarketExplorer() {
   }, [markets, source, category, deferredQuery, liveSignals]);
 
   const visibleMarkets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const showWarmLoader = !isError && (isLoading || (!isFetched && markets.length === 0) || (isFetching && markets.length === 0));
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE);
@@ -350,7 +355,7 @@ export function TerminalMarketExplorer() {
         </div>
       </div>
 
-      {isLoading ? (
+      {showWarmLoader ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 9 }).map((_, index) => (
             <div
@@ -383,10 +388,12 @@ export function TerminalMarketExplorer() {
       ) : filtered.length === 0 ? (
         <div className="rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>
-            No markets match this view yet.
+            {deferredQuery || source !== "all" || category !== "all" ? "No markets match this view yet." : "Warming the live market feed."}
           </p>
           <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Clear the search or switch venue/category filters to widen the market set.
+            {deferredQuery || source !== "all" || category !== "all"
+              ? "Clear the search or switch venue/category filters to widen the market set."
+              : "Siren is refreshing current Kalshi and Polymarket books. Hold for a moment and the grid will fill in."}
           </p>
         </div>
       ) : (

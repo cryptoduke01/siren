@@ -52,6 +52,7 @@ interface KalshiEventMarketMetadata {
   subtitle?: string;
   yes_sub_title?: string;
   no_sub_title?: string;
+  custom_strike?: Record<string, string>;
 }
 
 interface KalshiEventMetadata {
@@ -188,8 +189,9 @@ function normalizeKalshiOutcomeLabel(
   marketTitle: string,
   yesSubtitle?: string,
   subtitle?: string,
+  customStrikeLabel?: string,
 ): string {
-  const preferred = [yesSubtitle, subtitle]
+  const preferred = [customStrikeLabel, yesSubtitle, subtitle]
     .map((value) => normalizeLabelText(value))
     .find((value) => value && !isGenericOutcomeLabel(value, eventTitle));
   if (preferred) return preferred;
@@ -212,6 +214,14 @@ function normalizeKalshiOutcomeLabel(
 
   const normalizedFallback = normalizeLabelText(label || cleanMarketTitle);
   return normalizedFallback || cleanEventTitle || "Outcome";
+}
+
+function getKalshiCustomStrikeLabel(market?: KalshiEventMarketMetadata): string | undefined {
+  if (!market?.custom_strike) return undefined;
+  const values = Object.values(market.custom_strike)
+    .map((value) => normalizeLabelText(value))
+    .filter(Boolean);
+  return values[0];
 }
 
 function hasVisibleMarketSignal(market: DFlowMarketResponse): boolean {
@@ -459,9 +469,10 @@ export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity
       const kalshiMarket = eventMarketMeta.get(m.ticker);
       const label = normalizeKalshiOutcomeLabel(
         kalshiEvent?.title || event.title,
-        m.title || kalshiMarket?.title || event.title,
+        kalshiMarket?.title || m.title || event.title,
         kalshiMarket?.yes_sub_title,
-        m.subtitle || kalshiMarket?.subtitle,
+        kalshiMarket?.subtitle || m.subtitle,
+        getKalshiCustomStrikeLabel(kalshiMarket),
       );
       const probability = quoteToProbability(m.yesBid, m.yesAsk);
       const seriesSlug = seriesTicker.toLowerCase();
@@ -517,6 +528,12 @@ export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity
 
     const isMultiOutcome = outcomes.length > 1;
     if (isMultiOutcome) {
+      const cleanedOutcomes = outcomes.filter(
+        (outcome) => !isGenericOutcomeLabel(outcome.label, kalshiEvent?.title || event.title),
+      );
+      if (cleanedOutcomes.length >= 2 && cleanedOutcomes.length >= Math.ceil(outcomes.length * 0.6)) {
+        outcomes = cleanedOutcomes;
+      }
       if (hasLowQualityOutcomeLabels(outcomes, kalshiEvent?.title || event.title)) {
         continue;
       }

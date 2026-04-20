@@ -2004,7 +2004,32 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.send({ success: true, data: markets });
     } catch (e) {
       app.log.warn(e);
-      return reply.send({ success: true, data: [] });
+      return reply.status(503).send({
+        success: false,
+        error: e instanceof Error ? e.message : "Market feed unavailable",
+      });
+    }
+  });
+
+  app.get<{ Params: { ticker: string } }>("/api/markets/:ticker", async (req, reply) => {
+    const ticker = req.params.ticker?.trim();
+    if (!ticker) {
+      return reply.status(400).send({ success: false, error: "ticker required" });
+    }
+
+    try {
+      const markets = await withTimeout(getMarketsWithVelocity(), MARKET_ROUTE_TIMEOUT_MS, "market-by-ticker");
+      const market = getExecutionMarketByTicker(markets, ticker);
+      if (!market) {
+        return reply.status(404).send({ success: false, error: "Market not found" });
+      }
+      return reply.send({ success: true, data: market });
+    } catch (error) {
+      req.log.warn(error, "Failed to load market by ticker");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "Market unavailable",
+      });
     }
   });
 

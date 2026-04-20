@@ -1379,10 +1379,10 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 pb-10 pt-5 font-body md:px-5 md:pt-6 xl:px-6">
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-4 pb-10 pt-5 font-body md:px-5 md:pt-6 xl:px-6">
 
         {/* ── Top row: Balance + Username ─────────────────── */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(300px,0.82fr)]">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)]">
 
           {/* Balance Card */}
           <div className="rounded-xl border p-4 md:p-5"
@@ -1411,15 +1411,15 @@ export default function PortfolioPage() {
               </p>
             )}
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" onClick={() => { hapticLight(); setDepositOpen(true); }} disabled={!connected}
-                className="flex h-12 items-center justify-center gap-2 rounded-lg px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
+                className="inline-flex h-11 min-w-[148px] items-center justify-center gap-2 rounded-lg px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
                 <CreditCard className="h-3.5 w-3.5" /> Deposit
               </button>
               <button type="button" disabled={!connected}
                 onClick={() => { hapticLight(); setWithdrawOpen(true); }}
-                className="flex h-12 items-center justify-center gap-2 rounded-lg border px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
+                className="inline-flex h-11 min-w-[148px] items-center justify-center gap-2 rounded-lg border px-3 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
                 <ArrowUp className="h-3.5 w-3.5" /> Withdraw
               </button>
@@ -1547,7 +1547,7 @@ export default function PortfolioPage() {
           className="mt-4 rounded-[22px] border p-4 md:p-5"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
         >
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(250px,0.75fr)] lg:items-start">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(230px,0.7fr)] lg:items-start">
             <div>
               <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
                 Portfolio command
@@ -1572,7 +1572,7 @@ export default function PortfolioPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
             {[
               { label: "Open book", value: String(openPositions.length), detail: "positions live", tone: "var(--text-1)" },
               { label: "Settled", value: String(settledPositions.length), detail: "resolved lines", tone: "var(--text-1)" },
@@ -1598,7 +1598,7 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(290px,0.88fr)]">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.16fr)_minmax(280px,0.84fr)]">
           <div className="space-y-4">
             <div className="rounded-[22px] border p-4 md:p-5"
               style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>

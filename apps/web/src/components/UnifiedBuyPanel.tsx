@@ -29,6 +29,7 @@ import { API_URL } from "@/lib/apiUrl";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
+const MIN_SOL_ROUTE_HEADROOM_SOL = 0.003;
 const POLYMARKET_HOST = "https://clob.polymarket.com";
 const POLYGON_CHAIN_ID = 137;
 
@@ -109,7 +110,7 @@ function getFriendlyTradeError(message: string, fallback: string): string {
     lower.includes("lamports") ||
     lower.includes("attempt to debit an account")
   ) {
-    return "Not enough SOL to pay network fees. Add a small SOL balance, then try again.";
+    return "This transaction likely needs a little more SOL headroom for fees or rent-exempt token-account setup. Keep a few thousandths of a SOL free, then try again.";
   }
   if (lower.includes("user rejected") || lower.includes("rejected the request") || lower.includes("4001")) {
     return "Wallet signature was canceled.";
@@ -327,6 +328,17 @@ export function UnifiedBuyPanel() {
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
+  const { data: nativeSolBalance = 0 } = useQuery({
+    queryKey: ["solana-native-balance", publicKey?.toBase58()],
+    queryFn: async () => {
+      if (!publicKey) return 0;
+      const lamports = await connection.getBalance(publicKey);
+      return lamports / LAMPORTS_PER_SOL;
+    },
+    enabled: !!publicKey,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
@@ -457,6 +469,7 @@ export function UnifiedBuyPanel() {
     parsedSellTokenAmount != null &&
     suggestedSellChunkContracts != null &&
     parsedSellTokenAmount > suggestedSellChunkContracts;
+  const solHeadroomTooLow = nativeSolBalance > 0 && nativeSolBalance < MIN_SOL_ROUTE_HEADROOM_SOL;
 
   useEffect(() => {
     const identity = publicKey?.toBase58() ?? evmAddress ?? null;
@@ -639,6 +652,13 @@ export function UnifiedBuyPanel() {
     try {
       if (!isSell) {
         setError("Add size from the market trade panel.");
+        setLoading(false);
+        return;
+      }
+      if (solHeadroomTooLow) {
+        setError(
+          `Keep about ${MIN_SOL_ROUTE_HEADROOM_SOL.toFixed(3)} SOL free for close routing. You currently have ${nativeSolBalance.toFixed(4)} SOL.`,
+        );
         setLoading(false);
         return;
       }
@@ -1152,6 +1172,12 @@ export function UnifiedBuyPanel() {
       setError(`Not enough Solana USDC. You have ${formatTokenAmount(solanaUsdcBalance, 2)} USDC ready to trade.`);
       return;
     }
+    if (solHeadroomTooLow) {
+      setError(
+        `Siren wants about ${MIN_SOL_ROUTE_HEADROOM_SOL.toFixed(3)} SOL free for network fees and token-account rent. You currently have ${nativeSolBalance.toFixed(4)} SOL.`,
+      );
+      return;
+    }
 
     const marketPriceUsd = selectedMarketPriceUsd;
     if (marketPriceUsd == null || marketPriceUsd <= 0) {
@@ -1572,6 +1598,14 @@ export function UnifiedBuyPanel() {
                           </p>
                         </>
                       )}
+                      {buyPanelMode === "market" && (
+                        <p className="mt-3 text-[11px] leading-relaxed" style={{ color: solHeadroomTooLow ? "var(--yellow)" : "var(--text-3)" }}>
+                          SOL headroom: {nativeSolBalance.toFixed(4)} SOL free.
+                          {solHeadroomTooLow
+                            ? ` Siren keeps about ${MIN_SOL_ROUTE_HEADROOM_SOL.toFixed(3)} SOL clear for fees and rent-exempt token-account setup.`
+                            : " Fee and rent headroom looks okay."}
+                        </p>
+                      )}
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1624,7 +1658,7 @@ export function UnifiedBuyPanel() {
 
                     <button
                       onClick={executePredictionMarketTrade}
-                      disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked || routeLooksBlocked}
+                      disabled={loading || executionPreviewLoading || !selectedMarketInstrumentId || predictionTradeBlocked || routeLooksBlocked}
                       className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
                       style={{
                         background: marketSide === "yes" ? "var(--accent)" : "var(--down)",
@@ -1637,6 +1671,8 @@ export function UnifiedBuyPanel() {
                         </>
                       ) : predictionTradeBlocked ? (
                         "Unavailable in your region"
+                      ) : executionPreviewLoading ? (
+                        "Checking route"
                       ) : routeLooksBlocked ? (
                         "Route not ready"
                       ) : isKalshiMarketTrade && !proofVerified && !dflowProofLoading ? (
