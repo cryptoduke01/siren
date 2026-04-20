@@ -121,6 +121,15 @@ function getFriendlyTradeError(message: string, fallback: string): string {
   if (lower.includes("route not found")) {
     return "No executable route found for this size right now. Try a smaller sell amount.";
   }
+  if (lower.includes("no yes buyers are live") || lower.includes("no no buyers are live")) {
+    return "There are no live buyers on your side of this market right now, so Siren cannot close the position yet.";
+  }
+  if (lower.includes("no route to sell this position")) {
+    return "This position has no sell route right now. Liquidity or settlement is not available yet.";
+  }
+  if (lower.includes("no executable route found")) {
+    return "Siren could not find a live close route for this size. Try again later or reduce the amount.";
+  }
   if (lower.includes("validation error") || lower.includes("400")) {
     return "We could not get a live quote for this order right now. Please try again.";
   }

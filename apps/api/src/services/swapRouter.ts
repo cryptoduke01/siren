@@ -13,7 +13,11 @@ import { shouldBlockByCountry } from "../lib/geo-fence.js";
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-const DFLOW_METADATA_URL = process.env.DFLOW_METADATA_API_URL || "https://dev-prediction-markets-api.dflow.net";
+const DFLOW_METADATA_URL =
+  process.env.DFLOW_METADATA_API_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://e.prediction-markets-api.dflow.net"
+    : "https://dev-prediction-markets-api.dflow.net");
 
 let marketMintsCache: Set<string> = new Set();
 let marketMintsCacheTs = 0;
@@ -55,10 +59,12 @@ async function explainPredictionSellRouteFailure(inputMint: string): Promise<str
     if (!res.ok) return null;
     const payload = (await res.json()) as {
       market?: {
+        title?: string | null;
         yesBid?: string | null;
         noBid?: string | null;
         accounts?: Record<string, { yesMint?: string; noMint?: string }>;
       };
+      title?: string | null;
       yesBid?: string | null;
       noBid?: string | null;
       accounts?: Record<string, { yesMint?: string; noMint?: string }>;
@@ -75,7 +81,9 @@ async function explainPredictionSellRouteFailure(inputMint: string): Promise<str
     const sellingSide = matching.yesMint === inputMint ? "yes" : "no";
     const sideBid = sellingSide === "yes" ? market.yesBid : market.noBid;
     if (!sideBid || sideBid === "0" || sideBid === "0.0") {
-      return `No ${sellingSide.toUpperCase()} bids are currently available for this market. Try again later or sell a smaller amount.`;
+      const cleanTitle = payload?.market?.title || payload?.title || "this market";
+      const sideLabel = sellingSide.toUpperCase();
+      return `No ${sideLabel} buyers are live for ${cleanTitle} right now, so Siren cannot close that side yet. Try again later when a bid appears.`;
     }
     return "No executable route found for this exact size right now. Try selling a smaller amount.";
   } catch {

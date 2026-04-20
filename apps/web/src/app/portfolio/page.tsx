@@ -2045,10 +2045,10 @@ export default function PortfolioPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                        Torque growth relay
+                        Rewards and streaks
                       </h2>
                       <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                        Execution outcomes can emit campaign-grade events for rebates and retention loops.
+                        Powered by Torque so Siren can turn real execution outcomes into rewards, nudges, and retention loops.
                       </p>
                     </div>
                     <span
@@ -2079,28 +2079,53 @@ export default function PortfolioPage() {
 
                   <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                     <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Relay status
+                      What this unlocks
                     </p>
                     <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                      {torqueReadiness?.summary ?? "Torque relay metadata is unavailable right now."}
+                      {torqueReadiness?.configured
+                        ? "Siren can now log trade outcomes into Torque, which is the base layer for rebates, clean-close milestones, and execution-quality campaigns."
+                        : "Torque is not fully live yet. Once configured, Siren can turn trade outcomes into user-facing reward loops."}
                     </p>
+                  </div>
+
+                  <div className="mt-4 grid gap-2">
+                    {[
+                      {
+                        label: "Clean close rewards",
+                        summary: "Reward traders who close positions cleanly without repeated failed attempts.",
+                      },
+                      {
+                        label: "Resolve-before-expiry nudges",
+                        summary: "Warn and incentivize users to reduce exposure before thin end-of-resolution books.",
+                      },
+                      {
+                        label: "Execution leaderboard",
+                        summary: "Rank traders by execution quality and discipline, not just raw size.",
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-xl border px-4 py-3"
+                        style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+                      >
+                        <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
+                          {item.label}
+                        </p>
+                        <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                          {item.summary}
+                        </p>
+                      </div>
+                    ))}
                   </div>
 
                   {!!torqueReadiness?.requiredSchemas?.length && (
                     <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                        Required custom events
+                        Relay health
                       </p>
-                      <div className="mt-3 space-y-2">
-                        {torqueReadiness.requiredSchemas.map((schema) => (
-                          <div key={schema.eventName} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                            <p className="font-mono text-xs" style={{ color: "var(--text-1)" }}>{schema.eventName}</p>
-                            <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                              {schema.fields.join(" · ")}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {torqueReadiness.eventNames.length} event types are mapped and ready for campaign triggers behind the scenes.
+                      </p>
                     </div>
                   )}
                 </div>

@@ -745,6 +745,9 @@ function getTradeErrorStatus(error?: string | null): number {
     lower.includes("insufficient") ||
     lower.includes("slippage") ||
     lower.includes("400") ||
+    lower.includes("no executable route found") ||
+    lower.includes("no route to sell this position") ||
+    lower.includes("buyers are live") ||
     lower.includes("route_not_found") ||
     lower.includes("route not found")
   ) {
