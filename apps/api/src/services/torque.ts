@@ -21,6 +21,18 @@ type LoggedTradeAttemptPayload = {
   metadata: Record<string, unknown>;
 };
 
+export type TorqueEmissionPreview = {
+  eventName: (typeof TORQUE_EVENT_NAMES)[number];
+  route: string;
+  market: string;
+  side: string;
+  status: string;
+  amount: number | null;
+  txSignature: string | null;
+  failureReason: string | null;
+  filledFraction: number | null;
+};
+
 function parseNumericValue(value?: string | number | null): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -121,6 +133,21 @@ function getTorqueEventName(payload: LoggedTradeAttemptPayload): (typeof TORQUE_
   return "trade_attempt_logged";
 }
 
+export function previewTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPayload): TorqueEmissionPreview {
+  const eventName = getTorqueEventName(payload);
+  return {
+    eventName,
+    route: buildRouteLabel(payload),
+    market: payload.market ?? "unknown",
+    side: payload.side ?? "unknown",
+    status: payload.status,
+    amount: parseNumericValue(payload.amount),
+    txSignature: payload.tx_signature ?? null,
+    failureReason: eventName === "trade_attempt_failed" ? buildFailureReason(payload.error_message) : null,
+    filledFraction: parseNumericValue(payload.metadata.filledFraction as string | number | null | undefined),
+  };
+}
+
 export async function emitTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPayload): Promise<void> {
   const apiKey = process.env.TORQUE_API_KEY?.trim();
   if (!apiKey || !payload.wallet) return;
@@ -128,6 +155,7 @@ export async function emitTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPay
   const timeout = setTimeout(() => controller.abort(), 4_000);
 
   try {
+    const event = previewTorqueTradeAttemptEvent(payload);
     await fetch(TORQUE_INGEST_URL, {
       method: "POST",
       headers: {
@@ -137,17 +165,17 @@ export async function emitTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPay
       body: JSON.stringify({
         userPubkey: payload.wallet,
         timestamp: Date.now(),
-        eventName: getTorqueEventName(payload),
+        eventName: event.eventName,
         data: {
-          route: buildRouteLabel(payload),
-          market: payload.market ?? "unknown",
-          side: payload.side ?? "unknown",
+          route: event.route,
+          market: event.market,
+          side: event.side,
           assetPair: buildAssetPair(payload),
-          amount: parseNumericValue(payload.amount),
-          status: payload.status,
-          txSignature: payload.tx_signature ?? undefined,
-          failureReason: buildFailureReason(payload.error_message),
-          filledFraction: parseNumericValue(payload.metadata.filledFraction as string | number | null | undefined),
+          amount: event.amount,
+          status: event.status,
+          txSignature: event.txSignature ?? undefined,
+          failureReason: event.failureReason ?? undefined,
+          filledFraction: event.filledFraction ?? undefined,
         },
       }),
       signal: controller.signal,

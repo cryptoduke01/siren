@@ -9,7 +9,7 @@ import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
 import { getJupiterPredictionTradingStatus, searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
-import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness } from "./services/torque.js";
+import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
 import { getWalletPositionStats } from "./services/positionStats.js";
 import {
   sendWelcomeWithAccessCode,
@@ -2859,6 +2859,98 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch execution summary" });
+    }
+  });
+
+  /** Admin: recent relay-eligible Torque emissions derived from persisted attempt logs. */
+  app.get<{ Querystring: { limit?: string } }>("/api/admin/torque/emissions", async (req, reply) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10) || 20, 1), 100);
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from("siren_trade_attempts")
+        .select("wallet,venue,mode,market,side,input_asset,output_asset,amount,status,tx_signature,error_message,created_at,metadata")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        if (error.message?.toLowerCase().includes("siren_trade_attempts")) {
+          return reply.send({
+            success: true,
+            data: {
+              rows: [],
+              summary: {
+                relayEnabled: Boolean(process.env.TORQUE_API_KEY?.trim()),
+                emittedRows: 0,
+                leaderboardCandidates: 0,
+                cleanCloseCandidates: 0,
+                expiryNudges: 0,
+              },
+            },
+          });
+        }
+        return reply.status(503).send({ success: false, error: error.message || "Failed to fetch Torque emissions" });
+      }
+
+      const rows = ((data ?? []) as TradeAttemptRow[]).map((row) => {
+        const metadata = normalizeMetadata(row.metadata);
+        const preview = previewTorqueTradeAttemptEvent({
+          wallet: row.wallet,
+          venue: row.venue,
+          mode: row.mode,
+          market: row.market,
+          side: row.side,
+          input_asset: row.input_asset,
+          output_asset: row.output_asset,
+          amount: row.amount,
+          status: row.status,
+          tx_signature: row.tx_signature,
+          error_message: row.error_message,
+          metadata,
+        });
+
+        return {
+          wallet: row.wallet,
+          createdAt: row.created_at,
+          venue: row.venue,
+          mode: row.mode,
+          market: row.market,
+          preview,
+          relayEligible: Boolean(process.env.TORQUE_API_KEY?.trim()) && Boolean(row.wallet),
+          campaignHints: [
+            row.status === "success" && (row.side === "sell" || row.mode.toLowerCase().includes("sell")) ? "first_clean_close" : null,
+            typeof metadata.resolutionRisk === "string" && metadata.resolutionRisk.toLowerCase() === "high" ? "resolve_before_expiry" : null,
+            row.status === "success" ? "execution_leaderboard" : null,
+          ].filter((value): value is string => Boolean(value)),
+        };
+      });
+
+      const successfulSellCandidates = rows.filter(
+        (row) =>
+          row.preview.eventName === "trade_attempt_success" &&
+          (row.preview.side === "sell" || row.mode.toLowerCase().includes("sell")),
+      ).length;
+      const expiryNudges = rows.filter((row) => row.campaignHints.includes("resolve_before_expiry")).length;
+      const leaderboardCandidates = new Set(
+        rows.filter((row) => row.campaignHints.includes("execution_leaderboard")).map((row) => row.wallet).filter(Boolean),
+      ).size;
+
+      return reply.send({
+        success: true,
+        data: {
+          rows,
+          summary: {
+            relayEnabled: Boolean(process.env.TORQUE_API_KEY?.trim()),
+            emittedRows: rows.length,
+            leaderboardCandidates,
+            cleanCloseCandidates: successfulSellCandidates,
+            expiryNudges,
+          },
+        },
+      });
+    } catch (e) {
+      app.log.error(e);
+      return reply.status(500).send({ success: false, error: "Failed to fetch Torque emissions" });
     }
   });
 

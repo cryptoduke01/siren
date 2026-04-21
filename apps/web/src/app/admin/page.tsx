@@ -103,6 +103,36 @@ type ExecutionSummary = {
   topMarkets: Array<{ market: string; count: number }>;
 };
 
+type TorqueEmissionData = {
+  rows: Array<{
+    wallet: string | null;
+    createdAt: string;
+    venue: string;
+    mode: string;
+    market: string | null;
+    relayEligible: boolean;
+    campaignHints: string[];
+    preview: {
+      eventName: string;
+      route: string;
+      market: string;
+      side: string;
+      status: string;
+      amount: number | null;
+      txSignature: string | null;
+      failureReason: string | null;
+      filledFraction: number | null;
+    };
+  }>;
+  summary: {
+    relayEnabled: boolean;
+    emittedRows: number;
+    leaderboardCandidates: number;
+    cleanCloseCandidates: number;
+    expiryNudges: number;
+  };
+};
+
 type DispatchResult = {
   sent: number;
   failed: number;
@@ -352,6 +382,7 @@ export default function AdminPage() {
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
   const [volumeLoading, setVolumeLoading] = useState(false);
   const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
+  const [torqueEmissionData, setTorqueEmissionData] = useState<TorqueEmissionData | null>(null);
   const [audienceEmailInput, setAudienceEmailInput] = useState("");
   const [audienceEmailResult, setAudienceEmailResult] = useState<DispatchResult | null>(null);
   const [waitlistPage, setWaitlistPage] = useState(1);
@@ -624,6 +655,25 @@ export default function AdminPage() {
     }
   }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
 
+  const loadTorqueEmissions = useCallback(async () => {
+    if (!adminPasscode.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/api/admin/torque/emissions?limit=12`, {
+        credentials: "omit",
+        headers: adminHeaders,
+      });
+      const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Failed to load Torque relay activity");
+      setTorqueEmissionData(data.data ?? null);
+    } catch {
+      setTorqueEmissionData(null);
+    }
+  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
+
   const loadUserStats = useCallback(async () => {
     if (!adminPasscode.trim()) return;
     try {
@@ -704,7 +754,8 @@ export default function AdminPage() {
     if (!hasAccess || tab !== "volume") return;
     void loadVolume();
     void loadExecutionSummary();
-  }, [hasAccess, tab, loadExecutionSummary, loadVolume]);
+    void loadTorqueEmissions();
+  }, [hasAccess, tab, loadExecutionSummary, loadTorqueEmissions, loadVolume]);
 
   const refresh = () => {
     void loadUserStats();
@@ -714,6 +765,7 @@ export default function AdminPage() {
     else if (tab === "volume") {
       void loadVolume();
       void loadExecutionSummary();
+      void loadTorqueEmissions();
     }
   };
 
@@ -1672,6 +1724,82 @@ export default function AdminPage() {
                         </span>
                       )}
                     </p>
+                  </div>
+
+                  <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Torque relay activity</p>
+                        <p className="mt-1 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                          Recent execution events Siren can turn into rewards, nudges, and leaderboard credit.
+                        </p>
+                      </div>
+                      <span
+                        className="rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.14em]"
+                        style={{
+                          borderColor: SUBTLE_BORDER,
+                          background: SOFT_BG,
+                          color: torqueEmissionData?.summary.relayEnabled ? "var(--accent)" : "var(--text-3)",
+                        }}
+                      >
+                        {torqueEmissionData?.summary.relayEnabled ? "Relay live" : "Relay pending"}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      {[
+                        { label: "Recent emissions", value: formatCompactNumber(torqueEmissionData?.summary.emittedRows ?? 0), hint: "Latest relay-eligible trade events" },
+                        { label: "Clean close candidates", value: formatCompactNumber(torqueEmissionData?.summary.cleanCloseCandidates ?? 0), hint: "Successful sells ready for reward logic" },
+                        { label: "Leaderboard wallets", value: formatCompactNumber(torqueEmissionData?.summary.leaderboardCandidates ?? 0), hint: "Wallets earning execution-quality credit" },
+                      ].map((item) => (
+                        <div key={item.label} className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
+                          <p className="mt-2 font-heading text-lg" style={{ color: "var(--text-1)" }}>{item.value}</p>
+                          <p className="mt-1 font-body text-[11px] leading-5" style={{ color: "var(--text-3)" }}>{item.hint}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {(torqueEmissionData?.rows?.length ?? 0) === 0 ? (
+                        <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
+                          No relay activity yet. Once trade attempts start landing, this feed shows what Siren is turning into reward logic.
+                        </p>
+                      ) : (
+                        torqueEmissionData?.rows.map((row) => (
+                          <div key={`${row.createdAt}-${row.preview.eventName}-${row.wallet ?? "anon"}`} className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full px-2.5 py-1 text-[10px] font-heading uppercase tracking-[0.14em]" style={{ background: BADGE_BG, color: "var(--accent)" }}>
+                                  {row.preview.eventName}
+                                </span>
+                                <span className="font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                  {row.market || row.preview.market}
+                                </span>
+                              </div>
+                              <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                                {new Date(row.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-3 font-body text-[11px]" style={{ color: "var(--text-2)" }}>
+                              <span>{row.preview.route}</span>
+                              <span>{row.preview.side}</span>
+                              <span>{typeof row.preview.amount === "number" ? row.preview.amount.toLocaleString() : "—"}</span>
+                              {row.preview.failureReason && <span style={{ color: "var(--down)" }}>{row.preview.failureReason}</span>}
+                            </div>
+                            {row.campaignHints.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {row.campaignHints.map((hint) => (
+                                  <span key={`${row.createdAt}-${hint}`} className="rounded-full border px-2 py-1 text-[10px] font-heading uppercase tracking-[0.14em]" style={{ borderColor: SUBTLE_BORDER, color: "var(--text-2)" }}>
+                                    {hint.replaceAll("_", " ")}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                   <div className="overflow-hidden rounded-[24px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
                     <div className="overflow-x-auto">

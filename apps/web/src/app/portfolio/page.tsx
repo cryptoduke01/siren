@@ -1381,6 +1381,47 @@ export default function PortfolioPage() {
   });
   const { data: goldRushIntelligence, isLoading: goldRushLoading, isError: goldRushError } = useGoldRushWalletIntelligence(walletKey, signMessage);
   const { data: torqueReadiness } = useTorqueRelayReadiness();
+  const torqueCampaignProgress = useMemo(() => {
+    const attempts = tradeAttemptData?.summary.attempts ?? 0;
+    const successRate = tradeAttemptData?.summary.successRate ?? 0;
+    const failedAttempts = tradeAttemptData?.summary.failedCount ?? 0;
+    const successfulSells = tradeAttemptData?.rows.filter(
+      (row) => row.status === "success" && (row.side === "sell" || row.mode.toLowerCase().includes("sell")),
+    ).length ?? 0;
+    const highResolutionWatch = openPositions.filter((position) => {
+      const closesAt = position.title ? Date.parse(String((position as Position & { closesAt?: string }).closesAt ?? "")) : NaN;
+      return Number.isFinite(closesAt) && closesAt - Date.now() < 3 * 24 * 60 * 60 * 1000;
+    }).length;
+
+    return [
+      {
+        label: "First clean close",
+        status: successfulSells > 0 ? "Unlocked" : failedAttempts > 0 ? "In progress" : "Not started",
+        summary:
+          successfulSells > 0
+            ? "You already have a successful close that can count toward reward logic."
+            : failedAttempts > 0
+              ? "You’ve started trading. The next clean exit can unlock your first close reward."
+              : "Enter and close your first position without repeat route failures.",
+      },
+      {
+        label: "Resolve-before-expiry",
+        status: highResolutionWatch > 0 ? "Watch now" : "Ready",
+        summary:
+          highResolutionWatch > 0
+            ? `${highResolutionWatch} open position${highResolutionWatch > 1 ? "s are" : " is"} close enough to resolution for early-exit nudges.`
+            : "When resolution windows get thin, Siren can nudge you before liquidity disappears.",
+      },
+      {
+        label: "Execution leaderboard",
+        status: attempts >= 3 ? "Live" : "Building",
+        summary:
+          attempts >= 3
+            ? `You have ${attempts} tracked attempts with a ${Math.round(successRate)}% execution success rate feeding the ranks.`
+            : "Once you build enough real attempts, Siren can rank you on execution quality instead of raw size.",
+      },
+    ];
+  }, [openPositions, tradeAttemptData]);
 
   // ── Identity ──────────────────────────────────────────────────
 
@@ -2097,7 +2138,7 @@ export default function PortfolioPage() {
                       { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
                       { label: "Success", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
                       { label: "Partial", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
-                      { label: "Events", value: String(torqueReadiness?.eventNames.length ?? 0), tone: "var(--text-1)" },
+                      { label: "Campaigns", value: String(torqueCampaignProgress.length), tone: "var(--text-1)" },
                     ].map((item) => (
                       <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                         <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
@@ -2122,28 +2163,20 @@ export default function PortfolioPage() {
                   </div>
 
                   <div className="mt-4 grid gap-2">
-                    {[
-                      {
-                        label: "Clean close rewards",
-                        summary: "Reward traders who close positions cleanly without repeated failed attempts.",
-                      },
-                      {
-                        label: "Resolve-before-expiry nudges",
-                        summary: "Warn and incentivize users to reduce exposure before thin end-of-resolution books.",
-                      },
-                      {
-                        label: "Execution leaderboard",
-                        summary: "Rank traders by execution quality and discipline, not just raw size.",
-                      },
-                    ].map((item) => (
+                    {torqueCampaignProgress.map((item) => (
                       <div
                         key={item.label}
                         className="rounded-xl border px-4 py-3"
                         style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
                       >
-                        <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
-                          {item.label}
-                        </p>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
+                            {item.label}
+                          </p>
+                          <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: item.status === "Unlocked" || item.status === "Live" ? "var(--up)" : item.status === "Watch now" ? "var(--yellow)" : "var(--text-3)" }}>
+                            {item.status}
+                          </span>
+                        </div>
                         <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
                           {item.summary}
                         </p>
@@ -2157,7 +2190,7 @@ export default function PortfolioPage() {
                         Relay health
                       </p>
                       <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        {torqueReadiness.eventNames.length} event types are mapped and ready for campaign triggers behind the scenes.
+                        {torqueReadiness.eventNames.length} event types are mapped and the reward layer can now react to real execution outcomes.
                       </p>
                     </div>
                   )}
