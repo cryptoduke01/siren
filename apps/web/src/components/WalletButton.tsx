@@ -7,9 +7,10 @@ import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { hapticLight } from "@/lib/haptics";
 import { ChevronDown, Copy, LogOut, KeyRound, EyeOff } from "lucide-react";
 import { API_URL } from "@/lib/apiUrl";
+import { getWalletAuthHeaders } from "@/lib/requestAuth";
 
 export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
-  const { connected, publicKey, evmAddress, disconnect, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
+  const { connected, publicKey, evmAddress, disconnect, canExportPrivateKey, exportPrivateKey, signMessage } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [privateKey, setPrivateKey] = useState<string | null>(null);
@@ -24,12 +25,20 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
 
   useEffect(() => {
     if (!connected || !publicKey) return;
-    fetch(`${API_URL}/api/users/track`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet: publicKey.toBase58(), signupSource: "wallet" }),
-    }).catch(() => {});
-  }, [connected, publicKey]);
+    const wallet = publicKey.toBase58();
+    void (async () => {
+      try {
+        const authHeaders = await getWalletAuthHeaders({ wallet, signMessage, scope: "write" });
+        await fetch(`${API_URL}/api/users/track`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify({ wallet, signupSource: "wallet" }),
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [connected, publicKey, signMessage]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -133,6 +142,9 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
               <>
                 <p className="font-body text-xs mb-2" style={{ color: "var(--down)" }}>
                   Keep this secret. Anyone with this key can control your wallet.
+                </p>
+                <p className="font-body text-[11px] mb-3" style={{ color: "var(--text-3)" }}>
+                  Only export if you are moving the wallet into another trusted app. Do not paste it into websites, chats, or support messages.
                 </p>
                 <textarea
                   readOnly

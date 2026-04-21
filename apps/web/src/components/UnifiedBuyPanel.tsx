@@ -25,6 +25,7 @@ import { buildPolymarketFundingConfig } from "@/lib/privyFunding";
 import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
 import { getPositionEntry, setPositionEntry } from "@/lib/positionEntryStorage";
 import { fetchSolPriceUsd } from "@/lib/pricing";
+import { getWalletAuthHeaders } from "@/lib/requestAuth";
 import { API_URL } from "@/lib/apiUrl";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -166,11 +167,12 @@ function extractErrorMessage(error: unknown): string {
   return "Trade failed";
 }
 
-function logTradeFailure(context: Record<string, unknown>) {
+function logTradeFailure(context: Record<string, unknown>, authHeaders?: Record<string, string> | null) {
   console.warn("[siren-trade-failure]", context);
+  if (!authHeaders) return;
   void fetch(`${API_URL}/api/trade-errors/log`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     credentials: "omit",
     keepalive: true,
     body: JSON.stringify({
@@ -182,10 +184,11 @@ function logTradeFailure(context: Record<string, unknown>) {
   });
 }
 
-function logTradeAttempt(context: Record<string, unknown>) {
+function logTradeAttempt(context: Record<string, unknown>, authHeaders?: Record<string, string> | null) {
+  if (!authHeaders) return;
   void fetch(`${API_URL}/api/trade-attempts/log`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     credentials: "omit",
     keepalive: true,
     body: JSON.stringify(context),
@@ -272,6 +275,10 @@ export function UnifiedBuyPanel() {
   const isPolymarketTrade = buyPanelMode === "market" && selectedMarketSource === "polymarket";
   const selectedOutcomeLabel = selectedMarket?.selected_outcome_label?.trim() || null;
   const walletKey = publicKey?.toBase58();
+  const getWriteAuthHeaders = async () =>
+    walletKey && signMessage ? getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" }) : null;
+  const getReadAuthHeaders = async () =>
+    walletKey && signMessage ? getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "read" }) : null;
   const deferredSolAmount = useDeferredValue(solAmount);
   const deferredSellAmount = useDeferredValue(sellAmount);
 
@@ -304,8 +311,10 @@ export function UnifiedBuyPanel() {
       if (!publicKey) {
         return { verified: false };
       }
+      const authHeaders = await getReadAuthHeaders();
       const res = await fetch(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`, {
         credentials: "omit",
+        headers: authHeaders ?? undefined,
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -534,7 +543,7 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
   };
 
-  const recordLocalTrade = ({
+  const recordLocalTrade = async ({
     mint,
     side,
     volumeSol,
@@ -557,6 +566,7 @@ export function UnifiedBuyPanel() {
     txSignature: string;
   }) => {
     if (typeof window === "undefined" || !publicKey) return;
+    const authHeaders = await getWriteAuthHeaders();
 
     if (volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0) {
       const key = `siren-volume-${publicKey.toBase58()}`;
@@ -581,11 +591,13 @@ export function UnifiedBuyPanel() {
       }
       window.localStorage.setItem(key, JSON.stringify(entries));
 
-      fetch(`${API_URL}/api/volume/log`, {
+      if (authHeaders) {
+        fetch(`${API_URL}/api/volume/log`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol }),
-      }).catch(() => {});
+        }).catch(() => {});
+      }
     }
 
     const stake = stakeUsd != null && Number.isFinite(stakeUsd) && stakeUsd > 0 ? stakeUsd : null;
@@ -632,21 +644,23 @@ export function UnifiedBuyPanel() {
       window.dispatchEvent(new CustomEvent("siren-activity-logged"));
     }
 
-    fetch(`${API_URL}/api/trades/log`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        wallet: publicKey.toBase58(),
-        mint,
-        side,
-        tokenAmount,
-        priceUsd,
-        tokenName,
-        tokenSymbol,
-        txSignature,
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    if (authHeaders) {
+      fetch(`${API_URL}/api/trades/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          wallet: publicKey.toBase58(),
+          mint,
+          side,
+          tokenAmount,
+          priceUsd,
+          tokenName,
+          tokenSymbol,
+          txSignature,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
   };
 
   const executeSwap = async () => {
@@ -790,7 +804,7 @@ export function UnifiedBuyPanel() {
           volumeSol = amountNum * approxSolPerToken;
         }
 
-        recordLocalTrade({
+        await recordLocalTrade({
           mint: selectedToken.mint,
           side: "sell",
           volumeSol,
@@ -811,6 +825,7 @@ export function UnifiedBuyPanel() {
       queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["portfolio-balances", publicKey.toBase58()] });
       setBuyPanelOpen(false);
+      const telemetryHeaders = await getWriteAuthHeaders();
       logTradeAttempt({
         wallet: publicKey?.toBase58(),
         venue: tokenRouteLabel,
@@ -827,7 +842,7 @@ export function UnifiedBuyPanel() {
           partialSellFilled,
           ...positionExecutionPreviewMetadata,
         },
-      });
+      }, telemetryHeaders);
       const realizedSummary = (() => {
         if (!isPredictionToken || !selectedToken.mint) return null;
         const entry = getPositionEntry(selectedToken.mint);
@@ -854,6 +869,7 @@ export function UnifiedBuyPanel() {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const friendly = getFriendlyTradeError(msg, "Swap failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
+      const telemetryHeaders = await getWriteAuthHeaders();
       logTradeFailure({
         venue: tokenRouteLabel,
         mode: isSell ? "sell" : "buy",
@@ -863,7 +879,7 @@ export function UnifiedBuyPanel() {
         amount: isSell ? sellAmount : solAmount,
         wallet: publicKey?.toBase58(),
         message: msg,
-      });
+      }, telemetryHeaders);
       logTradeAttempt({
         wallet: publicKey?.toBase58(),
         venue: tokenRouteLabel,
@@ -879,7 +895,7 @@ export function UnifiedBuyPanel() {
           assetType: selectedToken?.assetType ?? null,
           ...positionExecutionPreviewMetadata,
         },
-      });
+      }, telemetryHeaders);
       setError(friendly);
       showResultModal({
         type: "error",
@@ -1075,7 +1091,7 @@ export function UnifiedBuyPanel() {
           : undefined;
 
       const tokenAmountApprox = selectedMarketPriceUsd && selectedMarketPriceUsd > 0 ? amountNum / selectedMarketPriceUsd : null;
-      recordLocalTrade({
+      await recordLocalTrade({
         mint: selectedPolymarketTokenId,
         side: "buy",
         volumeSol: null,
@@ -1101,7 +1117,7 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         status: "success",
         txSignature,
-      });
+      }, null);
       showResultModal({
         type: "success",
         title: "Polymarket order sent",
@@ -1138,7 +1154,7 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         wallet: evmAddress,
         message: msg,
-      });
+      }, null);
       logTradeAttempt({
         wallet: evmAddress,
         venue: "polymarket",
@@ -1150,7 +1166,7 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         status: "failed",
         errorMessage: msg,
-      });
+      }, null);
       setError(friendly);
       showResultModal({
         type: "error",
@@ -1258,7 +1274,7 @@ export function UnifiedBuyPanel() {
       if (selectedMarketMint && marketPriceUsd > 0) {
         setPositionEntry(selectedMarketMint, marketPriceUsd * 100);
       }
-      recordLocalTrade({
+      await recordLocalTrade({
         mint: selectedMarketMint,
         side: "buy",
         volumeSol: solPriceUsd > 0 ? amountNum / solPriceUsd : null,
@@ -1292,6 +1308,7 @@ export function UnifiedBuyPanel() {
 
       setBuyPanelOpen(false);
       setSuccess(null);
+      const telemetryHeaders = await getWriteAuthHeaders();
       logTradeAttempt({
         wallet: publicKey?.toBase58(),
         venue: selectedMarket.source,
@@ -1309,7 +1326,7 @@ export function UnifiedBuyPanel() {
           settlementStatus: asyncStatus?.status ?? null,
           ...executionPreviewMetadata,
         },
-      });
+      }, telemetryHeaders);
       showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Trade complete",
@@ -1327,6 +1344,7 @@ export function UnifiedBuyPanel() {
       const msg = e instanceof Error ? e.message : "Prediction trade failed";
       const friendly = getFriendlyTradeError(msg, "Prediction market trade failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
+      const telemetryHeaders = await getWriteAuthHeaders();
       logTradeFailure({
         venue: selectedMarket.source,
         mode: "buy-market",
@@ -1336,7 +1354,7 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         wallet: publicKey?.toBase58(),
         message: msg,
-      });
+      }, telemetryHeaders);
       logTradeAttempt({
         wallet: publicKey?.toBase58(),
         venue: selectedMarket.source,
@@ -1349,7 +1367,7 @@ export function UnifiedBuyPanel() {
         status: "failed",
         errorMessage: msg,
         metadata: executionPreviewMetadata,
-      });
+      }, telemetryHeaders);
       setError(friendly);
       showResultModal({
         type: "error",

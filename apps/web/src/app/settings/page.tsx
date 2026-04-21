@@ -10,11 +10,12 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useResultModalStore } from "@/store/useResultModalStore";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
+import { getWalletAuthHeaders } from "@/lib/requestAuth";
 
 const MAX_FILE_BYTES = 1_500_000;
 
 export default function SettingsPage() {
-  const { publicKey, connected } = useSirenWallet();
+  const { publicKey, connected, signMessage } = useSirenWallet();
   const walletKey = publicKey?.toBase58() ?? null;
   const queryClient = useQueryClient();
   const showResultModal = useResultModalStore((s) => s.show);
@@ -41,7 +42,11 @@ export default function SettingsPage() {
     queryKey: ["dflow-proof-status", walletKey],
     queryFn: async () => {
       if (!walletKey) return { verified: false };
-      const res = await fetch(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(walletKey)}`, { credentials: "omit" });
+      const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "read" });
+      const res = await fetch(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(walletKey)}`, {
+        credentials: "omit",
+        headers: authHeaders,
+      });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) return { verified: false };
       return (payload?.data ?? { verified: false }) as { verified: boolean };
@@ -70,9 +75,10 @@ export default function SettingsPage() {
           reader.onerror = () => reject(new Error("read failed"));
           reader.readAsDataURL(file);
         });
+        const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" });
         const res = await fetch(`${API_URL}/api/users/avatar`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify({ wallet: walletKey, imageBase64: dataUrl }),
         });
         const payload = await res.json().catch(() => ({}));

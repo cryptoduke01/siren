@@ -20,6 +20,7 @@ import {
   canSendEmail,
 } from "./services/email.js";
 import { getInMemorySignalFeedSnapshot, getSignalFeedSnapshot } from "./services/signalState.js";
+import { requireAdminPasscode, requireSupabaseAuthUser, requireWalletSignature } from "./services/requestAuth.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -978,6 +979,13 @@ function getDailyPlatformVolumeStats(days: number): { day: string; volumeSol: nu
 }
 
 export function registerRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", async (req, reply) => {
+    const rawUrl = req.raw.url || "";
+    if (!rawUrl.startsWith("/api/admin")) return;
+    const ok = await requireAdminPasscode(req, reply);
+    if (!ok) return reply;
+  });
+
   app.get("/health", async () => ({ ok: true, ts: Date.now() }));
 
   /** Waitlist signup. Store in DB/CRM when ready. Reject if email already exists. */
@@ -1627,6 +1635,12 @@ export function registerRoutes(app: FastifyInstance) {
     "/api/trade-errors/log",
     async (req, reply) => {
       const body = req.body ?? {};
+      const normalizedWallet = typeof body.wallet === "string" ? body.wallet.trim().toLowerCase() : null;
+      if (!normalizedWallet) {
+        return reply.status(400).send({ success: false, error: "wallet required" });
+      }
+      const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
+      if (!walletOk) return;
       const message = typeof body.message === "string" ? body.message : "";
       const lower = message.toLowerCase();
       const payload = {
@@ -1636,7 +1650,7 @@ export function registerRoutes(app: FastifyInstance) {
         side: body.side ?? null,
         inputAsset: body.inputAsset ?? null,
         amount: body.amount ?? null,
-        wallet: typeof body.wallet === "string" ? `${body.wallet.slice(0, 6)}...${body.wallet.slice(-4)}` : null,
+        wallet: `${normalizedWallet.slice(0, 6)}...${normalizedWallet.slice(-4)}`,
         message,
       };
 
@@ -1667,8 +1681,14 @@ export function registerRoutes(app: FastifyInstance) {
     };
   }>("/api/trade-attempts/log", async (req, reply) => {
     const body = req.body ?? {};
+    const normalizedWallet = typeof body.wallet === "string" ? body.wallet.trim().toLowerCase() : null;
+    if (!normalizedWallet) {
+      return reply.status(400).send({ success: false, error: "wallet required" });
+    }
+    const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
+    if (!walletOk) return;
     const payload = {
-      wallet: typeof body.wallet === "string" ? body.wallet.trim().toLowerCase() : null,
+      wallet: normalizedWallet,
       venue: typeof body.venue === "string" && body.venue.trim() ? body.venue.trim() : "unknown",
       mode: typeof body.mode === "string" && body.mode.trim() ? body.mode.trim() : "unknown",
       market: typeof body.market === "string" && body.market.trim() ? body.market.trim() : null,
@@ -1778,6 +1798,8 @@ export function registerRoutes(app: FastifyInstance) {
     if (!wallet) {
       return reply.status(400).send({ success: false, error: "wallet required" });
     }
+    const walletOk = await requireWalletSignature(req, reply, wallet.toLowerCase(), "read");
+    if (!walletOk) return;
 
     try {
       const data = await getGoldRushWalletIntelligence(wallet);
@@ -1801,6 +1823,8 @@ export function registerRoutes(app: FastifyInstance) {
     if (!wallet) {
       return reply.status(400).send({ success: false, error: "wallet required" });
     }
+    const walletOk = await requireWalletSignature(req, reply, wallet, "read");
+    if (!walletOk) return;
 
     try {
       const supabase = getSupabaseAdminClient();
@@ -1866,6 +1890,8 @@ export function registerRoutes(app: FastifyInstance) {
     if (!address) {
       return reply.status(400).send({ success: false, error: "address required" });
     }
+    const walletOk = await requireWalletSignature(req, reply, address.toLowerCase(), "read");
+    if (!walletOk) return;
 
     try {
       const response = await withTimeout(
@@ -2344,6 +2370,15 @@ export function registerRoutes(app: FastifyInstance) {
       const normalizedEmail = normalizeEmailAddress(email);
       const normalizedName = typeof name === "string" && name.trim().length > 0 ? name.trim().slice(0, 80) : null;
 
+      if (normalizedWallet) {
+        const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
+        if (!walletOk) return;
+      }
+      if (authUserId) {
+        const authOk = await requireSupabaseAuthUser(req, reply, authUserId);
+        if (!authOk) return;
+      }
+
       // Auto-detect country from IP geo headers (no user permission needed)
       const country =
         (req.headers["cf-ipcountry"] as string) ||
@@ -2454,6 +2489,8 @@ export function registerRoutes(app: FastifyInstance) {
       if (clean.length < 2) {
         return reply.status(400).send({ success: false, error: "Username must be 2–20 chars (letters, numbers, _ . -)." });
       }
+      const walletOk = await requireWalletSignature(req, reply, wallet.trim().toLowerCase(), "write");
+      if (!walletOk) return;
       try {
         const supabase = getSupabaseAdminClient();
         const { data: dup } = await supabase
@@ -2543,6 +2580,8 @@ export function registerRoutes(app: FastifyInstance) {
         return reply.status(400).send({ success: false, error: "Invalid image size" });
       }
       const w = wallet.trim().toLowerCase();
+      const walletOk = await requireWalletSignature(req, reply, w, "write");
+      if (!walletOk) return;
       const ext = mime.includes("png") ? "png" : "jpg";
       const contentType = ext === "png" ? "image/png" : "image/jpeg";
       const objectPath = `${w.slice(0, 8)}-${w.slice(-6)}.${ext}`;
@@ -2649,8 +2688,10 @@ export function registerRoutes(app: FastifyInstance) {
     if (!wallet || typeof wallet !== "string" || typeof volumeSol !== "number" || !Number.isFinite(volumeSol) || volumeSol <= 0) {
       return reply.status(400).send({ success: false, error: "wallet and volumeSol (positive number) required" });
     }
-    const w = wallet.trim();
+    const w = wallet.trim().toLowerCase();
     if (w.length < 32) return reply.status(400).send({ success: false, error: "Invalid wallet" });
+    const walletOk = await requireWalletSignature(req, reply, w, "write");
+    if (!walletOk) return;
     const entries = volumeStore.get(w) ?? [];
     entries.push({ ts: Date.now(), volumeSol });
     if (entries.length > MAX_VOLUME_ENTRIES_PER_WALLET) entries.splice(0, entries.length - MAX_VOLUME_ENTRIES_PER_WALLET);
@@ -2856,12 +2897,15 @@ export function registerRoutes(app: FastifyInstance) {
     if (side !== "buy" && side !== "sell") {
       return reply.status(400).send({ success: false, error: "side must be buy or sell" });
     }
+    const normalizedWallet = wallet.trim().toLowerCase();
+    const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
+    if (!walletOk) return;
 
     try {
       const supabase = getSupabaseAdminClient();
       const executedAt = typeof timestamp === "number" && Number.isFinite(timestamp) ? new Date(timestamp) : new Date();
       const { error } = await supabase.from("siren_trades").insert({
-        wallet: wallet.trim(),
+        wallet: normalizedWallet,
         mint: mint.trim(),
         side,
         token_amount: tokenAmount,
@@ -3067,6 +3111,8 @@ export function registerRoutes(app: FastifyInstance) {
     if (!address?.trim()) {
       return reply.status(400).send({ success: false, error: "address required" });
     }
+    const walletOk = await requireWalletSignature(req, reply, address.trim().toLowerCase(), "read");
+    if (!walletOk) return;
     try {
       const params = new URLSearchParams({ "api-key": key, limit });
       if (cursor) params.set("before", cursor);
@@ -3193,6 +3239,8 @@ export function registerRoutes(app: FastifyInstance) {
     if (!addr) {
       return reply.status(400).send({ success: false, error: "address query param required" });
     }
+    const walletOk = await requireWalletSignature(req, reply, addr.toLowerCase(), "read");
+    if (!walletOk) return;
     try {
       const positions = await getAugmentedDflowPositions(addr);
       if (positions.error) {
@@ -3219,6 +3267,8 @@ export function registerRoutes(app: FastifyInstance) {
     if (!addr) {
       return reply.status(400).send({ success: false, error: "address query param required" });
     }
+    const walletOk = await requireWalletSignature(req, reply, addr.toLowerCase(), "read");
+    if (!walletOk) return;
 
     const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
     const isProd = process.env.NODE_ENV === "production";

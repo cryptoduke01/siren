@@ -36,6 +36,7 @@ import { PasscodeDigits } from "@/components/PasscodeDigits";
 import { AdminNav } from "@/components/AdminNav";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 import { API_URL } from "@/lib/apiUrl";
+import { getAdminPasscodeHeaders } from "@/lib/requestAuth";
 
 type WaitlistRow = {
   id: string;
@@ -63,8 +64,7 @@ type AudienceRow = {
   access_code_used_at: string | null;
 };
 
-const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
-const STORAGE_KEY = "siren-admin-pass-ok";
+const STORAGE_KEY = "siren-admin-passcode";
 const APP_PUBLIC_URL = "https://onsiren.xyz";
 const DOCS_PUBLIC_URL = "https://docs.onsiren.xyz";
 const TABLE_PAGE_SIZE = 25;
@@ -337,6 +337,7 @@ function CopyableCell({ value, mono = false, className = "" }: { value: string |
 export default function AdminPage() {
   const [hasAccess, setHasAccess] = useState(false);
   const [input, setInput] = useState("");
+  const [adminPasscode, setAdminPasscode] = useState("");
   const [tab, setTab] = useState<Tab>("waitlist");
   const [waitlistRows, setWaitlistRows] = useState<WaitlistRow[]>([]);
   const [audienceRows, setAudienceRows] = useState<AudienceRow[]>([]);
@@ -367,6 +368,19 @@ export default function AdminPage() {
   const [dailyVolumeSeries, setDailyVolumeSeries] = useState<Array<{ day: string; volumeSol: number }>>([]);
   const [dashboardExporting, setDashboardExporting] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
+  const adminHeaders = useMemo(
+    () => getAdminPasscodeHeaders(adminPasscode),
+    [adminPasscode],
+  );
+
+  const handleAdminAuthFailure = useCallback((message = "Admin authentication required.") => {
+    setHasAccess(false);
+    setAdminPasscode("");
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+    }
+    setError(message);
+  }, []);
 
   const filteredWaitlist = searchQuery.trim()
     ? waitlistRows.filter(
@@ -483,27 +497,41 @@ export default function AdminPage() {
     };
   }, [userStats, volumeData, waitlistInsights.last14d, waitlistRows.length]);
 
-  const handlePassSubmit = () => {
-    if (!ADMIN_PASSCODE) {
-      setError("Admin passcode not configured. Set NEXT_PUBLIC_ADMIN_PASSCODE in env.");
+  const handlePassSubmit = async () => {
+    const passcode = input.trim();
+    if (!passcode) {
+      setError("Enter the admin passcode to continue.");
       return;
     }
-    if (input.trim() === ADMIN_PASSCODE) {
+
+    try {
+      const headers = getAdminPasscodeHeaders(passcode);
+      const res = await fetch(`${API_URL}/api/admin/users/stats`, {
+        credentials: "omit",
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Incorrect passcode.");
+      }
+      setAdminPasscode(passcode);
       setHasAccess(true);
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, "true");
+        window.sessionStorage.setItem(STORAGE_KEY, passcode);
       }
       setInput("");
       setError(null);
-    } else {
-      setError("Incorrect passcode.");
+      setUserStats(data.data ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Incorrect passcode.");
     }
   };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "true") {
+    const stored = window.sessionStorage.getItem(STORAGE_KEY)?.trim();
+    if (stored) {
+      setAdminPasscode(stored);
       setHasAccess(true);
     }
   }, []);
@@ -536,11 +564,18 @@ export default function AdminPage() {
   }, []);
 
   const loadWaitlist = useCallback(async () => {
+    if (!adminPasscode.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist?limit=500`);
+      const res = await fetch(`${API_URL}/api/admin/waitlist?limit=500`, {
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to load waitlist.");
       setWaitlistRows(data.data ?? []);
     } catch (err) {
@@ -548,14 +583,19 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
 
   const loadVolume = useCallback(async () => {
+    if (!adminPasscode.trim()) return;
     setVolumeLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/volume`);
+      const res = await fetch(`${API_URL}/api/admin/volume`, { headers: adminHeaders });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to load volume");
       setVolumeData(data.data ?? { platform7d: 0, byWallet: [] });
     } catch (err) {
@@ -563,47 +603,78 @@ export default function AdminPage() {
     } finally {
       setVolumeLoading(false);
     }
-  }, []);
+  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
 
   const loadExecutionSummary = useCallback(async () => {
+    if (!adminPasscode.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/execution/summary?days=7`, { credentials: "omit" });
+      const res = await fetch(`${API_URL}/api/admin/execution/summary?days=7`, {
+        credentials: "omit",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to load execution summary");
       setExecutionSummary(data.data ?? null);
     } catch {
       setExecutionSummary(null);
     }
-  }, []);
+  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
 
   const loadUserStats = useCallback(async () => {
+    if (!adminPasscode.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/users/stats`, { credentials: "omit" });
+      const res = await fetch(`${API_URL}/api/admin/users/stats`, {
+        credentials: "omit",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to load user stats");
       setUserStats(data.data ?? null);
     } catch {
       setUserStats(null);
     }
-  }, []);
+  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
 
   const loadDailyVolume = useCallback(async () => {
+    if (!adminPasscode.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/volume/daily?days=14`, { credentials: "omit" });
+      const res = await fetch(`${API_URL}/api/admin/volume/daily?days=14`, {
+        credentials: "omit",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to load daily volume");
       setDailyVolumeSeries(data.data?.series ?? []);
     } catch {
       setDailyVolumeSeries([]);
     }
-  }, []);
+  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
 
   const loadAudience = useCallback(async () => {
+    if (!adminPasscode.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/audience?limit=500`);
+      const res = await fetch(`${API_URL}/api/admin/audience?limit=500`, {
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to load audience.");
       setAudienceRows(data.data ?? []);
     } catch (err) {
@@ -611,7 +682,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
 
   useEffect(() => {
     if (!hasAccess) return;
@@ -676,8 +747,15 @@ export default function AdminPage() {
   const handleDelete = async (id: string) => {
     hapticLight();
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}`, {
+        method: "DELETE",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Delete failed");
       await loadWaitlist();
     } catch (err) {
@@ -690,8 +768,15 @@ export default function AdminPage() {
     setCodeEmailResult(null);
     setSendAllLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-all-codes`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-all-codes`, {
+        method: "POST",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed");
       setCodeEmailResult({
         sent: data.sent,
@@ -714,8 +799,15 @@ export default function AdminPage() {
     setAudienceEmailResult(null);
     setAudienceEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/audience/send-execution-update-email`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/admin/audience/send-execution-update-email`, {
+        method: "POST",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to send audience update emails");
       setAudienceEmailResult({
         sent: data.sent,
@@ -747,10 +839,14 @@ export default function AdminPage() {
     try {
       const res = await fetch(`${API_URL}/api/admin/audience/send-execution-update-email-by-email`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminHeaders },
         body: JSON.stringify({ emails: raw }),
       });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to send audience update emails");
       setAudienceEmailResult({
         sent: data.sent,
@@ -770,8 +866,15 @@ export default function AdminPage() {
   const handleGenerateCode = async (id: string) => {
     hapticLight();
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/generate-code`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/generate-code`, {
+        method: "POST",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to generate code");
       await loadWaitlist();
     } catch (err) {
@@ -784,8 +887,15 @@ export default function AdminPage() {
     hapticLight();
     setResendingId(id);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/resend-email`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/resend-email`, {
+        method: "POST",
+        headers: adminHeaders,
+      });
       const data = await res.json();
+      if (res.status === 401) {
+        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to resend email");
       await loadWaitlist();
     } catch (err) {

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { API_URL } from "@/lib/apiUrl";
+import { getWalletAuthHeaders } from "@/lib/requestAuth";
 
 export type GoldRushWalletIntelligence = {
   wallet: string;
@@ -54,19 +55,27 @@ export type GoldRushWalletIntelligence = {
   };
 };
 
-async function fetchGoldRushWalletIntelligence(wallet: string): Promise<GoldRushWalletIntelligence> {
+async function fetchGoldRushWalletIntelligence(
+  wallet: string,
+  signMessage?: (message: Uint8Array) => Promise<Uint8Array>,
+): Promise<GoldRushWalletIntelligence> {
+  const authHeaders = await getWalletAuthHeaders({ wallet, signMessage, scope: "read" });
   const res = await fetch(`${API_URL}/api/integrations/goldrush/wallet-intelligence?wallet=${encodeURIComponent(wallet)}`, {
     credentials: "omit",
+    headers: authHeaders,
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `GoldRush wallet intelligence API error: ${res.status}`);
   return body.data as GoldRushWalletIntelligence;
 }
 
-export function useGoldRushWalletIntelligence(wallet?: string | null) {
+export function useGoldRushWalletIntelligence(
+  wallet?: string | null,
+  signMessage?: (message: Uint8Array) => Promise<Uint8Array>,
+) {
   return useQuery({
     queryKey: ["goldrush-wallet-intelligence", wallet],
-    queryFn: () => fetchGoldRushWalletIntelligence(wallet!),
+    queryFn: () => fetchGoldRushWalletIntelligence(wallet!, signMessage),
     enabled: !!wallet,
     retry: 1,
     staleTime: 120_000,

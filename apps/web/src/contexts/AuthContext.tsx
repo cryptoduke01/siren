@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Session, Provider } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { API_URL } from "@/lib/apiUrl";
+import { getSupabaseAuthHeaders } from "@/lib/requestAuth";
 
 type AuthContextType = {
   session: Session | null;
@@ -53,7 +54,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const provider = (session.user.app_metadata?.provider as Provider) || "oauth";
         fetch(`${API_URL}/api/users/track`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...getSupabaseAuthHeaders(session.access_token),
+          },
           body: JSON.stringify({
             authUserId: session.user.id,
             signupSource: signupSourceFromProvider(provider),

@@ -8,11 +8,12 @@ import { ArrowRight, Loader2 } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
+import { getWalletAuthHeaders } from "@/lib/requestAuth";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
 export default function OnboardingPage() {
-  const { connected, walletSessionStatus, publicKey } = useSirenWallet();
+  const { connected, walletSessionStatus, publicKey, signMessage } = useSirenWallet();
   const { login, ready } = usePrivy();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -37,9 +38,10 @@ export default function OnboardingPage() {
     if (clean.length >= 2 && walletKey) {
       setUsernameSaving(true);
       try {
+        const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" });
         const res = await fetch(`${API_URL}/api/users/username`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify({ wallet: walletKey, username: clean }),
         });
         const payload = await res.json().catch(() => ({}));
@@ -56,7 +58,7 @@ export default function OnboardingPage() {
       setUsernameSaving(false);
     }
     finishAndGo();
-  }, [usernameDraft, walletKey, finishAndGo]);
+  }, [usernameDraft, walletKey, finishAndGo, signMessage]);
 
   useEffect(() => {
     if (!showProfileStep) return;

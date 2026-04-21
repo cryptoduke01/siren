@@ -24,6 +24,7 @@ import {
   buildProofRedirectUri, encodeProofSignature,
 } from "@/lib/dflowProof";
 import { API_URL } from "@/lib/apiUrl";
+import { appendWalletAuthQuery, getWalletAuthHeaders } from "@/lib/requestAuth";
 import { useGoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
 import { useTorqueRelayReadiness } from "@/hooks/useTorqueRelayReadiness";
 import { TradePnLCard } from "@/components/TradePnLCard";
@@ -535,7 +536,7 @@ function formatActivityTime(ts: number): string {
 }
 
 function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
-  const { publicKey, signTransaction } = useSirenWallet();
+  const { publicKey, signTransaction, signMessage } = useSirenWallet();
   const queryClient = useQueryClient();
   const showResultModal = useResultModalStore((s) => s.show);
 
@@ -614,11 +615,18 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
       const result = await execRes.json();
       if (result.status !== "Success") throw new Error(result.error || "Swap failed on-chain");
 
-      fetch(`${API_URL}/api/volume/log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: parseFloat(amount) }),
-      }).catch(() => {});
+      void (async () => {
+        try {
+          const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
+          await fetch(`${API_URL}/api/volume/log`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders },
+            body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: parseFloat(amount) }),
+          });
+        } catch {
+          /* ignore */
+        }
+      })();
 
       const outUi =
         quoteData && quoteData.outAmount
@@ -636,21 +644,28 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
         tokenSymbol: toToken.symbol,
         activityKind: "swap",
       });
-      fetch(`${API_URL}/api/trades/log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallet: publicKey.toBase58(),
-          mint: toToken.mint,
-          side: "buy",
-          tokenAmount: outUi || null,
-          priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : null,
-          tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
-          tokenSymbol: toToken.symbol,
-          txSignature: typeof result.signature === "string" ? result.signature : `swap-${Date.now()}`,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      void (async () => {
+        try {
+          const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
+          await fetch(`${API_URL}/api/trades/log`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders },
+            body: JSON.stringify({
+              wallet: publicKey.toBase58(),
+              mint: toToken.mint,
+              side: "buy",
+              tokenAmount: outUi || null,
+              priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : null,
+              tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
+              tokenSymbol: toToken.symbol,
+              txSignature: typeof result.signature === "string" ? result.signature : `swap-${Date.now()}`,
+              timestamp: Date.now(),
+            }),
+          });
+        } catch {
+          /* ignore */
+        }
+      })();
       onActivityLogged?.();
 
       const sig = typeof result.signature === "string" ? result.signature : undefined;
@@ -1173,9 +1188,10 @@ export default function PortfolioPage() {
     if (!walletKey || !usernameInput.trim()) return;
     setUsernameSaving(true);
     try {
+      const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" });
       const res = await fetch(`${API_URL}/api/users/username`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ wallet: walletKey, username: usernameInput.trim() }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -1195,7 +1211,7 @@ export default function PortfolioPage() {
     } finally {
       setUsernameSaving(false);
     }
-  }, [walletKey, usernameInput, showResultModal, queryClient]);
+  }, [walletKey, usernameInput, showResultModal, queryClient, signMessage]);
 
   // ── Balances ──────────────────────────────────────────────────
 
@@ -1248,9 +1264,10 @@ export default function PortfolioPage() {
     queryKey: ["dflow-positions", walletKey],
     queryFn: async (): Promise<Position[]> => {
       if (!publicKey) return [];
+      const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "read" });
       const res = await fetch(
         `${API_URL}/api/dflow/positions?address=${encodeURIComponent(publicKey.toBase58())}`,
-        { credentials: "omit" },
+        { credentials: "omit", headers: authHeaders },
       );
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
@@ -1269,13 +1286,8 @@ export default function PortfolioPage() {
   useEffect(() => {
     if (!publicKey || !walletKey) return;
     if (typeof window === "undefined" || typeof EventSource === "undefined") return;
-    const url = `${API_URL}/api/dflow/positions/stream?address=${encodeURIComponent(walletKey)}`;
-    let source: EventSource;
-    try {
-      source = new EventSource(url);
-    } catch {
-      return;
-    }
+    let source: EventSource | null = null;
+    let cancelled = false;
     const onMessage = (event: MessageEvent<string>) => {
       try {
         const parsed = JSON.parse(event.data) as {
@@ -1290,12 +1302,28 @@ export default function PortfolioPage() {
         /* ignore malformed SSE payloads */
       }
     };
-    source.addEventListener("message", onMessage);
+
+    void (async () => {
+      try {
+        const url = await appendWalletAuthQuery(
+          new URL(`${API_URL}/api/dflow/positions/stream?address=${encodeURIComponent(walletKey)}`),
+          { wallet: walletKey, signMessage, scope: "read" },
+        );
+        if (cancelled) return;
+        source = new EventSource(url.toString());
+        source.addEventListener("message", onMessage);
+      } catch {
+        /* ignore */
+      }
+    })();
     return () => {
-      source.removeEventListener("message", onMessage);
-      source.close();
+      cancelled = true;
+      if (source) {
+        source.removeEventListener("message", onMessage);
+        source.close();
+      }
     };
-  }, [publicKey, walletKey, queryClient]);
+  }, [publicKey, walletKey, queryClient, signMessage]);
 
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");
@@ -1338,7 +1366,11 @@ export default function PortfolioPage() {
     queryKey: ["trade-attempts-feed", walletKey],
     queryFn: async () => {
       if (!walletKey) return { rows: [], summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 } } as TradeAttemptFeedData;
-      const res = await fetch(`${API_URL}/api/trade-attempts?wallet=${encodeURIComponent(walletKey)}&limit=12`, { credentials: "omit" });
+      const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "read" });
+      const res = await fetch(`${API_URL}/api/trade-attempts?wallet=${encodeURIComponent(walletKey)}&limit=12`, {
+        credentials: "omit",
+        headers: authHeaders,
+      });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || "Unable to load trade attempts.");
       return (payload?.data ?? { rows: [], summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 } }) as TradeAttemptFeedData;
@@ -1347,7 +1379,7 @@ export default function PortfolioPage() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
-  const { data: goldRushIntelligence, isLoading: goldRushLoading, isError: goldRushError } = useGoldRushWalletIntelligence(walletKey);
+  const { data: goldRushIntelligence, isLoading: goldRushLoading, isError: goldRushError } = useGoldRushWalletIntelligence(walletKey, signMessage);
   const { data: torqueReadiness } = useTorqueRelayReadiness();
 
   // ── Identity ──────────────────────────────────────────────────
@@ -1356,9 +1388,10 @@ export default function PortfolioPage() {
     queryKey: ["dflow-proof-status", walletKey],
     queryFn: async () => {
       if (!publicKey) return { verified: false };
+      const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "read" });
       const res = await fetch(
         `${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`,
-        { credentials: "omit" },
+        { credentials: "omit", headers: authHeaders },
       );
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || "Unable to check identity.");
