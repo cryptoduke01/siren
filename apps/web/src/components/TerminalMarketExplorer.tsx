@@ -387,15 +387,24 @@ export function TerminalMarketExplorer() {
             Retry
           </button>
         </div>
+      ) : filtered.length === 0 && !(deferredQuery || source !== "all" || category !== "all") ? (
+        <CenteredLoaderState
+          title="Loading Current Markets"
+          detail="Siren is still warming the live feed. Stay here and the grid will fill in as soon as current books are ready."
+          phrases={[
+            "Checking live Kalshi books",
+            "Pulling fresh Polymarket listings",
+            "Sorting current opportunities",
+            "Preparing execution context",
+          ]}
+        />
       ) : filtered.length === 0 ? (
         <div className="rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>
-            {deferredQuery || source !== "all" || category !== "all" ? "No markets match this view yet." : "Warming the live market feed."}
+            No markets match this view yet.
           </p>
           <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            {deferredQuery || source !== "all" || category !== "all"
-              ? "Clear the search or switch venue/category filters to widen the market set."
-              : "Siren is refreshing current Kalshi and Polymarket books. Hold for a moment and the grid will fill in."}
+            Clear the search or switch venue/category filters to widen the market set.
           </p>
         </div>
       ) : (

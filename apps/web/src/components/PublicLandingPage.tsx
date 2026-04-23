@@ -17,12 +17,12 @@ import { hapticLight } from "@/lib/haptics";
 function BrandLockup({ compact = false }: { compact?: boolean }) {
   return (
     <span className="inline-flex items-center gap-3">
-      <img src="/brand/mark.svg" alt="" className={compact ? "h-7 w-auto" : "h-8 w-auto"} />
+      <img src="/brand/mark.svg" alt="" className={compact ? "h-7 w-7 flex-none" : "h-8 w-8 flex-none"} />
       <span
-        className="font-heading font-semibold uppercase tracking-[-0.05em]"
+        className="font-heading font-semibold uppercase tracking-[-0.04em]"
         style={{
           color: "var(--text-1)",
-          fontSize: compact ? "1.65rem" : "1.95rem",
+          fontSize: compact ? "1.55rem" : "1.8rem",
           lineHeight: 1,
         }}
       >
@@ -114,7 +114,7 @@ function SectionEyebrow({ children }: { children: ReactNode }) {
   return (
     <p
       className="font-body text-[11px] font-semibold uppercase tracking-[0.3em]"
-      style={{ color: "color-mix(in srgb, var(--text-3) 82%, transparent)" }}
+      style={{ color: "color-mix(in srgb, var(--text-3) 90%, transparent)" }}
     >
       {children}
     </p>
@@ -124,16 +124,16 @@ function SectionEyebrow({ children }: { children: ReactNode }) {
 function ProofPanel() {
   return (
     <div
-      className="rounded-[32px] border p-4 md:p-5"
+      className="w-full max-w-[620px] rounded-[28px] border p-4"
       style={{
         borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
         background:
           "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 95%, transparent), color-mix(in srgb, var(--bg-base) 100%, transparent))",
-        boxShadow: "0 38px 110px -74px rgba(0,0,0,0.65)",
+        boxShadow: "0 32px 84px -64px rgba(0,0,0,0.55)",
       }}
     >
       <div
-        className="rounded-[26px] border p-5 md:p-6"
+        className="rounded-[24px] border p-5"
         style={{
           borderColor: "var(--border-subtle)",
           background:
@@ -144,8 +144,8 @@ function ProofPanel() {
           <div className="max-w-[28rem]">
             <SectionEyebrow>Execution Briefing</SectionEyebrow>
             <h3
-              className="mt-3 font-heading text-[1.45rem] font-bold tracking-[-0.04em] md:text-[1.62rem]"
-              style={{ color: "var(--text-1)", lineHeight: 1.08 }}
+              className="mt-3 max-w-[18ch] font-heading text-[1.32rem] font-bold tracking-[-0.035em] md:text-[1.48rem]"
+              style={{ color: "var(--text-1)", lineHeight: 1.12 }}
             >
               Will Gavin Newsom win the 2028 Democratic nomination?
             </h3>
@@ -161,7 +161,7 @@ function ProofPanel() {
           </span>
         </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
           {[
             ["Route Confidence", "Good", "A clean route exists, but size should stay disciplined."],
             ["Suggested Clip", "$25", "Start smaller and layer only if the route stays healthy."],
@@ -170,27 +170,27 @@ function ProofPanel() {
           ].map(([label, value, body]) => (
             <div
               key={label}
-              className="rounded-[20px] border p-5"
+              className="rounded-[18px] border p-4"
               style={{
                 borderColor: "var(--border-default)",
                 background: "color-mix(in srgb, var(--bg-surface) 88%, transparent)",
               }}
             >
               <p
-                className="font-body text-[11px] font-semibold uppercase tracking-[0.3em]"
-                style={{ color: "color-mix(in srgb, var(--text-3) 82%, transparent)" }}
+                className="font-body text-[11px] font-semibold uppercase tracking-[0.24em]"
+                style={{ color: "color-mix(in srgb, var(--text-3) 88%, transparent)" }}
               >
                 {label}
               </p>
               <p
-                className="mt-3 font-mono text-[1.75rem] font-semibold tabular-nums"
+                className="mt-2.5 font-mono text-[1.55rem] font-semibold tabular-nums"
                 style={{ color: "var(--text-1)" }}
               >
                 {value}
               </p>
               <p
-                className="mt-3 font-body text-base leading-[1.65]"
-                style={{ color: "color-mix(in srgb, var(--text-1) 82%, var(--text-2))" }}
+                className="mt-2.5 font-body text-[0.96rem] leading-[1.62]"
+                style={{ color: "color-mix(in srgb, var(--text-1) 88%, var(--text-2))" }}
               >
                 {body}
               </p>
@@ -231,7 +231,7 @@ function FeatureCard({
       </h3>
       <p
         className="mt-3 font-body text-[1rem] leading-[1.72]"
-        style={{ color: "color-mix(in srgb, var(--text-1) 82%, var(--text-2))" }}
+        style={{ color: "color-mix(in srgb, var(--text-1) 90%, var(--text-2))" }}
       >
         {body}
       </p>
@@ -251,15 +251,16 @@ export function PublicLandingPage() {
       <LandingHeader />
 
       <main className="flex-1">
-        <section className="mx-auto grid w-full max-w-[1240px] gap-10 px-4 pb-12 pt-12 md:px-6 md:pb-16 md:pt-20 lg:grid-cols-[minmax(0,0.88fr)_minmax(420px,0.98fr)] lg:items-center lg:gap-14">
-          <div className="max-w-[35rem]">
+        <section className="mx-auto grid w-full max-w-[1200px] gap-12 px-4 pb-12 pt-12 md:px-6 md:pb-16 md:pt-20 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,0.82fr)] lg:items-center lg:gap-16">
+          <div className="max-w-[31rem]">
             <SectionEyebrow>Execution And Risk Intelligence</SectionEyebrow>
             <h1
               className="mt-4 font-heading font-bold tracking-[-0.052em]"
               style={{
                 color: "var(--text-1)",
-                fontSize: "clamp(2.85rem, 7vw, 4.75rem)",
-                lineHeight: 0.96,
+                fontSize: "clamp(3rem, 6vw, 4.95rem)",
+                lineHeight: 1.01,
+                letterSpacing: "-0.045em",
               }}
             >
               Trade Prediction Markets
@@ -269,13 +270,13 @@ export function PublicLandingPage() {
               Clarity
             </h1>
             <p
-              className="mt-7 max-w-2xl font-body text-[1.02rem] leading-[1.72] md:text-[1.12rem]"
-              style={{ color: "color-mix(in srgb, var(--text-1) 86%, var(--text-2))" }}
+              className="mt-8 max-w-[29rem] font-body text-[1.08rem] leading-[1.82] md:text-[1.14rem]"
+              style={{ color: "color-mix(in srgb, var(--text-1) 92%, var(--text-2))" }}
             >
               Siren tells traders whether a market looks executable, how fragile the route is, and what to do next before size goes in.
             </p>
 
-            <div className="mt-8 flex flex-col gap-2 sm:flex-row">
+            <div className="mt-9 flex flex-col gap-2.5 sm:flex-row">
               <Link
                 href="/terminal"
                 onClick={() => hapticLight()}
@@ -302,20 +303,20 @@ export function PublicLandingPage() {
             </div>
           </div>
 
-          <div className="lg:justify-self-end">
+          <div className="lg:justify-self-end lg:self-center">
             <ProofPanel />
           </div>
         </section>
 
         <section id="why" className="mx-auto w-full max-w-[1240px] px-4 py-12 md:px-6 md:py-20">
-          <div className="max-w-[48rem]">
+          <div className="max-w-[44rem]">
             <SectionEyebrow>Why Siren Exists</SectionEyebrow>
             <h2
-              className="mt-4 max-w-[48rem] font-heading font-bold tracking-[-0.048em]"
+              className="mt-4 max-w-[42rem] font-heading font-bold tracking-[-0.038em]"
               style={{
                 color: "var(--text-1)",
-                fontSize: "clamp(2rem, 4.3vw, 3.2rem)",
-                lineHeight: 1.02,
+                fontSize: "clamp(2rem, 3.7vw, 2.9rem)",
+                lineHeight: 1.08,
               }}
             >
               Venues show the market.
@@ -328,90 +329,18 @@ export function PublicLandingPage() {
             <FeatureCard
               icon={Radar}
               title="Execution Feasibility"
-              body="See whether a route is live, thin, or likely to fail before you burn time, confidence, or gas trying to force it."
+              body="See whether a route is live, thin, or likely to fail before you commit."
             />
             <FeatureCard
               icon={ShieldAlert}
               title="Risk Guardrails"
-              body="Surface concentration, resolution-window risk, and route fragility in plain language traders can actually act on."
+              body="Surface concentration, timing risk, and route fragility in language traders can actually act on."
             />
             <FeatureCard
               icon={LineChart}
               title="Post-Trade Clarity"
-              body="When a trade fills, fails, or only partially clears, Siren explains what happened so you can size better the next time."
+              body="When a trade fills, fails, or only partially clears, Siren explains what happened next."
             />
-          </div>
-        </section>
-
-        <section id="product" className="mx-auto w-full max-w-[1240px] px-4 py-12 md:px-6 md:py-20">
-          <div
-            className="rounded-[34px] border p-7 md:p-9"
-            style={{
-              borderColor: "var(--border-subtle)",
-              background:
-                "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 98%, transparent), var(--bg-base))",
-            }}
-          >
-            <div className="grid gap-7 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:items-start">
-              <div className="max-w-[31rem]">
-                <SectionEyebrow>What Siren Adds</SectionEyebrow>
-                <h2
-                  className="mt-4 font-heading font-bold tracking-[-0.048em]"
-                  style={{
-                    color: "var(--text-1)",
-                    fontSize: "clamp(2rem, 4.1vw, 3rem)",
-                    lineHeight: 1.02,
-                  }}
-                >
-                  The layer between a market idea
-                  <br />
-                  and a real execution decision.
-                </h2>
-                <p
-                  className="mt-5 font-body text-base leading-[1.72]"
-                  style={{ color: "color-mix(in srgb, var(--text-1) 82%, var(--text-2))" }}
-                >
-                  Siren does not replace Kalshi or Polymarket. It sits above them and answers the questions traders actually ask before and after a trade.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                {[
-                  {
-                    label: "Before The Trade",
-                    title: "Feasibility Read",
-                    body: "Route confidence, thin-book risk, and a suggested starting size before you click.",
-                  },
-                  {
-                    label: "At The Click",
-                    title: "Route Explanation",
-                    body: "If a path fails, Siren turns the error into something specific and actionable.",
-                  },
-                  {
-                    label: "After The Attempt",
-                    title: "Execution Report",
-                    body: "Attempted, advised, filled, and failed are tied together so traders actually learn.",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.title}
-                    className="rounded-[22px] border p-7"
-                    style={{ borderColor: "var(--border-default)", background: "var(--bg-surface)" }}
-                  >
-                    <SectionEyebrow>{item.label}</SectionEyebrow>
-                    <h3 className="mt-4 font-body text-[1.15rem] font-semibold" style={{ color: "var(--text-1)" }}>
-                      {item.title}
-                    </h3>
-                    <p
-                      className="mt-3 font-body text-base leading-[1.72]"
-                      style={{ color: "color-mix(in srgb, var(--text-1) 82%, var(--text-2))" }}
-                    >
-                      {item.body}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </section>
 
@@ -423,11 +352,11 @@ export function PublicLandingPage() {
             >
               <SectionEyebrow>Built Above Venues</SectionEyebrow>
               <h2
-                className="mt-4 font-heading font-bold tracking-[-0.048em]"
+                className="mt-4 font-heading font-bold tracking-[-0.038em]"
                 style={{
                   color: "var(--text-1)",
-                  fontSize: "clamp(2rem, 4.1vw, 3rem)",
-                  lineHeight: 1.02,
+                  fontSize: "clamp(1.95rem, 3.6vw, 2.75rem)",
+                  lineHeight: 1.08,
                 }}
               >
                 Venues provide the book.
@@ -435,8 +364,8 @@ export function PublicLandingPage() {
                 Siren provides the judgment.
               </h2>
               <p
-                className="mt-5 font-body text-base leading-[1.72]"
-                style={{ color: "color-mix(in srgb, var(--text-1) 82%, var(--text-2))" }}
+                className="mt-5 max-w-[29rem] font-body text-base leading-[1.76]"
+                style={{ color: "color-mix(in srgb, var(--text-1) 90%, var(--text-2))" }}
               >
                 Keep the venue open if you want. Siren’s job is to tell you what looks executable, what looks dangerous, and what the route is likely to do under stress.
               </p>
@@ -468,7 +397,7 @@ export function PublicLandingPage() {
                     >
                       {title}
                     </p>
-                    <p className="mt-3 font-body text-sm leading-[1.65]" style={{ color: "#8888A8" }}>
+                    <p className="mt-3 font-body text-[0.96rem] leading-[1.68]" style={{ color: "color-mix(in srgb, var(--text-1) 78%, var(--text-2))" }}>
                       {body}
                     </p>
                   </div>
@@ -500,7 +429,7 @@ export function PublicLandingPage() {
             </h2>
             <p
               className="mx-auto mt-5 max-w-3xl font-body text-base leading-[1.72]"
-              style={{ color: "color-mix(in srgb, var(--text-1) 82%, var(--text-2))" }}
+              style={{ color: "color-mix(in srgb, var(--text-1) 90%, var(--text-2))" }}
             >
               Open the live terminal, inspect markets, and decide if the product earns your sign-up. When you are ready, Siren unlocks wallet-aware routing, portfolio sync, and execution tracking.
             </p>
