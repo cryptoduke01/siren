@@ -164,10 +164,28 @@ export function marketCloseTimeMs(m: MarketWithVelocity): number | null {
   return m.close_time < 1_000_000_000_000 ? m.close_time * 1000 : m.close_time;
 }
 
+/** Hours until `close_time`, or `null` if unknown. Negative or zero means already closed or closing now. */
 export function marketHoursUntilClose(m: MarketWithVelocity): number | null {
   const closeMs = marketCloseTimeMs(m);
   if (!closeMs) return null;
   return (closeMs - Date.now()) / (1000 * 60 * 60);
+}
+
+/**
+ * Secondary sort for the terminal explorer (after live-signal boost).
+ * Matches MarketFeed "hot" ordering: prefer larger |velocity| when the gap exceeds 0.5 pts; otherwise volume.
+ */
+export function compareMarketExplorerSecondaryPriority(
+  left: MarketWithVelocity,
+  right: MarketWithVelocity,
+): number {
+  const leftVel = Math.abs(left.velocity_1h ?? 0);
+  const rightVel = Math.abs(right.velocity_1h ?? 0);
+  const velDiff = rightVel - leftVel;
+  if (Math.abs(velDiff) > 0.5) return velDiff;
+  const leftVol = left.volume ?? 0;
+  const rightVol = right.volume ?? 0;
+  return rightVol - leftVol;
 }
 
 export function marketExplorerPriorityScore(m: MarketWithVelocity): number {
