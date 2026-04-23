@@ -26,8 +26,10 @@ Thumbs.db
 # IDE
 .idea
 .vscode
+.cursor
 *.swp
 *.swo
+*.tsbuildinfo
 
 # Vercel
 .vercel
@@ -42,3 +44,6 @@ siren-docs/
 
 # Media/design assets (store in Figma, Drive, etc.)
 sirenmedia/
+
+# Generated audit exports
+security-audit-*.pdf

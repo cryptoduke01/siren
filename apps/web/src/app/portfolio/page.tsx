@@ -11,7 +11,6 @@ import {
   ChevronDown, ArrowUp, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2, Settings,
 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
-import { Footer } from "@/components/Footer";
 import { useToastStore } from "@/store/useToastStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
 import { useSirenStore } from "@/store/useSirenStore";
@@ -25,9 +24,9 @@ import {
 } from "@/lib/dflowProof";
 import { API_URL } from "@/lib/apiUrl";
 import { appendWalletAuthQuery, getWalletAuthHeaders } from "@/lib/requestAuth";
+import { TradePnLCard } from "@/components/TradePnLCard";
 import { useGoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
 import { useTorqueRelayReadiness } from "@/hooks/useTorqueRelayReadiness";
-import { TradePnLCard } from "@/components/TradePnLCard";
 import {
   getPositionEntry,
   setPositionEntry,
@@ -49,7 +48,6 @@ interface Position {
   currentPrice?: number;
   quantity?: number;
   balance?: number;
-  decimals?: number;
   pnlUsd?: number;
   pnlPct?: number;
   status?: string;
@@ -61,37 +59,11 @@ interface Position {
   marketValueUsd?: number;
 }
 
-interface TradeAttemptFeedRow {
-  venue: string;
-  mode: string;
-  market: string | null;
-  side: string | null;
-  inputAsset: string | null;
-  outputAsset: string | null;
-  amount: string | null;
-  status: string;
-  txSignature: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  metadata: Record<string, unknown>;
-}
-
-interface TradeAttemptFeedData {
-  rows: TradeAttemptFeedRow[];
-  summary: {
-    attempts: number;
-    successCount: number;
-    failedCount: number;
-    partialCount: number;
-    successRate: number;
-  };
-}
-
-type RiskCluster = {
-  label: string;
+type PositionsQueryData = {
   positions: Position[];
-  exposureUsd: number;
-  pnlUsd: number;
+  stale?: boolean;
+  updatedAt?: string;
+  degradedReason?: string;
 };
 
 function computePositionPnl(p: Position): { usd: number; pct: number } {
@@ -107,136 +79,6 @@ function computePositionPnl(p: Position): { usd: number; pct: number } {
     return { usd: pnlUsd, pct: pnlPct };
   }
   return { usd: p.pnlUsd ?? 0, pct: p.pnlPct ?? 0 };
-}
-
-function positionMarketValueUsd(position: Position): number {
-  if (typeof position.marketValueUsd === "number" && Number.isFinite(position.marketValueUsd)) {
-    return position.marketValueUsd;
-  }
-  const shares = position.quantity ?? position.balance ?? 0;
-  const cents = position.currentPrice ?? position.probability ?? 0;
-  return shares * (cents / 100);
-}
-
-const RISK_THEME_PATTERNS: Array<{ label: string; match: RegExp }> = [
-  { label: "Bitcoin", match: /\bbtc\b|\bbitcoin\b/ },
-  { label: "Ethereum", match: /\beth\b|\bethereum\b/ },
-  { label: "Solana", match: /\bsol\b|\bsolana\b/ },
-  { label: "Trump", match: /\btrump\b/ },
-  { label: "Election", match: /\belection\b|\bvote\b|\bpresident\b/ },
-  { label: "Federal Reserve", match: /\bfed\b|\brate cut\b|\bpowell\b|\binterest rate\b/ },
-  { label: "Inflation", match: /\bcpi\b|\binflation\b/ },
-  { label: "NBA", match: /\bnba\b|\bplayoffs\b|\bfinals\b/ },
-  { label: "NFL", match: /\bnfl\b|\bsuper bowl\b/ },
-];
-
-function inferRiskTags(position: Position): string[] {
-  const haystack = `${position.title} ${position.ticker}`.toLowerCase();
-  const matches = RISK_THEME_PATTERNS
-    .filter((item) => item.match.test(haystack))
-    .map((item) => item.label);
-
-  if (matches.length > 0) return matches;
-
-  const fallback = position.title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((word) => word.length > 3 && !["will", "with", "that", "this", "from", "into", "over", "under"].includes(word))
-    .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1));
-
-  return fallback.length > 0 ? [fallback.join(" ")] : [];
-}
-
-function bucketFailureReason(message?: string | null): string {
-  const lower = message?.toLowerCase().trim() ?? "";
-  if (!lower) return "Unknown";
-  if (lower.includes("insufficient")) return "Insufficient balance";
-  if (lower.includes("verify") || lower.includes("proof") || lower.includes("jurisdiction")) return "Verification";
-  if (lower.includes("route")) return "No route";
-  if (lower.includes("thin") || lower.includes("depth") || lower.includes("partial")) return "Thin liquidity";
-  if (lower.includes("slippage") || lower.includes("price")) return "Price moved";
-  return "Other";
-}
-
-function readNumericMetadata(metadata: Record<string, unknown> | undefined, key: string): number | null {
-  const value = metadata?.[key];
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function formatAttemptAmount(row: TradeAttemptFeedRow): string {
-  const parsed = row.amount != null ? Number.parseFloat(row.amount) : NaN;
-  if (!Number.isFinite(parsed) || parsed <= 0) return "—";
-
-  if (row.mode === "buy-market") {
-    return `$${fmtUsd(parsed)} ${row.inputAsset ?? "USDC"}`;
-  }
-
-  if (row.mode === "sell" || row.side === "sell") {
-    return `${fmtToken(parsed, 2)} contracts`;
-  }
-
-  return `${parsed.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${row.inputAsset ?? ""}`.trim();
-}
-
-function buildTradeAttemptNarrative(row: TradeAttemptFeedRow): {
-  title: string;
-  advice: string;
-  result: string;
-  risk: string | null;
-} {
-  const metadata = row.metadata ?? {};
-  const suggestedClipUsd = readNumericMetadata(metadata, "suggestedClipUsd");
-  const suggestedChunkContracts = readNumericMetadata(metadata, "suggestedChunkContracts");
-  const selectedOutcome =
-    typeof metadata.selectedOutcome === "string" && metadata.selectedOutcome.trim()
-      ? metadata.selectedOutcome.trim()
-      : null;
-  const resolutionRisk =
-    typeof metadata.resolutionRisk === "string" && metadata.resolutionRisk.trim()
-      ? metadata.resolutionRisk.trim()
-      : null;
-  const fieldRisk =
-    typeof metadata.fieldRisk === "string" && metadata.fieldRisk.trim()
-      ? metadata.fieldRisk.trim()
-      : null;
-  const partialSellFilled = metadata.partialSellFilled === true;
-
-  const chunkPlan = metadata.chunkPlan;
-  const estimatedChunks =
-    chunkPlan && typeof chunkPlan === "object" && !Array.isArray(chunkPlan) && typeof (chunkPlan as { estimatedChunks?: unknown }).estimatedChunks === "number"
-      ? (chunkPlan as { estimatedChunks: number }).estimatedChunks
-      : null;
-
-  const title =
-    selectedOutcome
-      ? `${row.market || "Market"} · ${selectedOutcome}`
-      : row.market || row.outputAsset || row.inputAsset || "Execution attempt";
-
-  const advice =
-    suggestedClipUsd != null
-      ? `Siren advised starting around $${fmtUsd(suggestedClipUsd)}.`
-      : suggestedChunkContracts != null
-        ? `Siren advised chunks of about ${fmtToken(suggestedChunkContracts, 2)} contracts.`
-        : "No stored Siren sizing advice for this attempt.";
-
-  const result = row.errorMessage
-    ? bucketFailureReason(row.errorMessage)
-    : partialSellFilled
-      ? "Partial fill captured after adaptive chunking."
-      : estimatedChunks && estimatedChunks > 1
-        ? `Route was expected to work in about ${estimatedChunks} chunks.`
-        : "Route completed cleanly.";
-
-  const risk = [resolutionRisk, fieldRisk].filter(Boolean).join(" · ") || null;
-
-  return { title, advice, result, risk };
 }
 
 const fmtUsd = (n: number) =>
@@ -466,60 +308,17 @@ function symbolForMint(mint: string): string {
 }
 
 function formatActivitySummary(row: LocalTradeLedgerRow): string {
-  const sym = row.tokenSymbol ?? symbolForMint(row.mint);
-  const tokenName = row.tokenName?.trim();
-
-  if ((row.activityKind === "prediction" || (row.stakeUsd != null && row.stakeUsd > 0)) && row.side === "buy") {
-    return tokenName ? `Opened ${tokenName}` : "Opened a prediction trade";
-  }
-  if (row.activityKind === "prediction" && row.side === "sell") {
-    return tokenName ? `Closed ${tokenName}` : "Closed a prediction trade";
-  }
-  if (row.activityKind === "swap" || row.solAmount > 0) {
-    return `Swapped ${fmtToken(row.solAmount, 4)} SOL for about ${fmtToken(row.tokenAmount, 2)} ${sym}`;
-  }
+  const sym = symbolForMint(row.mint);
   if (row.side === "sell") {
-    return `Sold ${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${sym}`;
+    return `Sold · ${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${sym}`;
   }
-  return tokenName ? `Bought ${tokenName}` : `Bought about ${fmtToken(row.tokenAmount, 4)} ${sym}`;
-}
-
-function formatActivityDetail(row: LocalTradeLedgerRow): string | null {
-  const sym = row.tokenSymbol ?? symbolForMint(row.mint);
-  if ((row.activityKind === "prediction" || (row.stakeUsd != null && row.stakeUsd > 0)) && row.side === "buy") {
-    return row.stakeUsd != null && row.stakeUsd > 0
-      ? `Spent $${fmtUsd(row.stakeUsd)} to open this position.`
-      : `Received about ${fmtToken(row.tokenAmount, 2)} shares.`;
+  if (row.stakeUsd != null && row.stakeUsd > 0) {
+    return `Prediction · $${fmtUsd(row.stakeUsd)} → ~${fmtToken(row.tokenAmount, 2)} shares (${sym})`;
   }
-  if (row.activityKind === "prediction" && row.side === "sell") {
-    return `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} shares closed.`;
+  if (row.solAmount > 0) {
+    return `Swapped · ${fmtToken(row.solAmount, 4)} SOL → ~${fmtToken(row.tokenAmount, 2)} ${sym}`;
   }
-  if (row.activityKind === "swap" || row.solAmount > 0) {
-    return `Swap into ${sym}.`;
-  }
-  return null;
-}
-
-function activityBadge(row: LocalTradeLedgerRow): { label: string; bg: string; color: string } {
-  if (row.activityKind === "prediction" || (row.stakeUsd != null && row.stakeUsd > 0)) {
-    return {
-      label: "Prediction trade",
-      bg: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
-      color: "var(--accent)",
-    };
-  }
-  if (row.activityKind === "swap" || row.solAmount > 0) {
-    return {
-      label: "Swap",
-      bg: "color-mix(in srgb, var(--kalshi) 12%, var(--bg-surface))",
-      color: "var(--kalshi)",
-    };
-  }
-  return {
-    label: row.side === "sell" ? "Token sale" : "Token buy",
-    bg: "var(--bg-elevated)",
-    color: "var(--text-2)",
-  };
+  return `Bought · ~${fmtToken(row.tokenAmount, 4)} ${sym}`;
 }
 
 function formatActivityTime(ts: number): string {
@@ -624,7 +423,7 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
             body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: parseFloat(amount) }),
           });
         } catch {
-          /* ignore */
+          /* ignore telemetry auth failures */
         }
       })();
 
@@ -640,9 +439,6 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
         solAmount: fromToken.symbol === "SOL" ? amtNum : 0,
         tokenAmount: outUi,
         priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : 0,
-        tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
-        tokenSymbol: toToken.symbol,
-        activityKind: "swap",
       });
       void (async () => {
         try {
@@ -663,7 +459,7 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
             }),
           });
         } catch {
-          /* ignore */
+          /* ignore telemetry auth failures */
         }
       })();
       onActivityLogged?.();
@@ -857,10 +653,7 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
         mint: p.mint,
         name: p.title || p.ticker,
         symbol: p.ticker,
-        decimals: p.decimals,
-        balance: shares,
         price: typeof current === "number" ? current : prob > 1 ? prob / 100 : prob,
-        entryPrice: p.entryPrice,
         assetType: "prediction",
         marketTicker: p.ticker,
         marketTitle: p.title,
@@ -978,9 +771,8 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
 
         {!settled && (
           <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-            {savedEntry || p.entryPrice != null
-              ? "Siren is already tracking a cost basis for this line. Edit it here if you want to override the default on this device."
-              : "If Siren did not capture your original fill, enter what you paid per share in cents and Save to track profit automatically on this device."}
+            To estimate profit or loss, enter what you paid per share in cents (for example 20), then Save. We do not see
+            your Kalshi history automatically.
           </p>
         )}
 
@@ -1188,10 +980,12 @@ export default function PortfolioPage() {
     if (!walletKey || !usernameInput.trim()) return;
     setUsernameSaving(true);
     try {
-      const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" });
       const res = await fetch(`${API_URL}/api/users/username`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers: {
+          "Content-Type": "application/json",
+          ...(await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" })),
+        },
         body: JSON.stringify({ wallet: walletKey, username: usernameInput.trim() }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -1211,7 +1005,7 @@ export default function PortfolioPage() {
     } finally {
       setUsernameSaving(false);
     }
-  }, [walletKey, usernameInput, showResultModal, queryClient, signMessage]);
+  }, [walletKey, usernameInput, showResultModal, queryClient]);
 
   // ── Balances ──────────────────────────────────────────────────
 
@@ -1251,37 +1045,41 @@ export default function PortfolioPage() {
 
   const solUsd = sol * solPrice;
   const totalUsd = solUsd + usdc + usdt;
+  const { data: goldRushIntelligence, isLoading: goldRushLoading } = useGoldRushWalletIntelligence(walletKey, signMessage);
+  const { data: torqueReadiness } = useTorqueRelayReadiness();
 
   // ── Positions ─────────────────────────────────────────────────
 
-  const {
-    data: positions = [],
-    isLoading: positionsLoading,
-    isFetching: positionsFetching,
-    isError: positionsError,
-    refetch: refetchPositions,
-  } = useQuery({
+  const { data: positionsData, isLoading: positionsLoading } = useQuery({
     queryKey: ["dflow-positions", walletKey],
-    queryFn: async (): Promise<Position[]> => {
-      if (!publicKey) return [];
-      const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "read" });
-      const res = await fetch(
-        `${API_URL}/api/dflow/positions?address=${encodeURIComponent(publicKey.toBase58())}`,
-        { credentials: "omit", headers: authHeaders },
+    queryFn: async (): Promise<PositionsQueryData> => {
+      if (!publicKey) return { positions: [] };
+      const signedUrl = await appendWalletAuthQuery(
+        new URL(`${API_URL}/api/dflow/positions?address=${encodeURIComponent(publicKey.toBase58())}`),
+        { wallet: publicKey.toBase58(), signMessage, scope: "read" },
       );
+      const res = await fetch(signedUrl, { credentials: "omit" });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.error || "Unable to refresh positions right now.");
       }
       const payload = await res.json().catch(() => ({}));
-      return (payload?.data?.positions ?? []) as Position[];
+      return {
+        positions: (payload?.data?.positions ?? []) as Position[],
+        stale: payload?.data?.stale === true,
+        updatedAt: typeof payload?.data?.updatedAt === "string" ? payload.data.updatedAt : undefined,
+        degradedReason: typeof payload?.data?.degradedReason === "string" ? payload.data.degradedReason : undefined,
+      };
     },
     enabled: !!publicKey,
     staleTime: 12_000,
     refetchInterval: 90_000,
     refetchOnWindowFocus: true,
-    placeholderData: (previous) => previous,
   });
+  const positions = positionsData?.positions ?? [];
+  const positionsAreStale = positionsData?.stale === true;
+  const positionsUpdatedAt = positionsData?.updatedAt ?? null;
+  const positionsDegradedReason = positionsData?.degradedReason ?? null;
 
   useEffect(() => {
     if (!publicKey || !walletKey) return;
@@ -1292,11 +1090,16 @@ export default function PortfolioPage() {
       try {
         const parsed = JSON.parse(event.data) as {
           success?: boolean;
-          data?: { positions?: Position[] };
+          data?: { positions?: Position[]; stale?: boolean; updatedAt?: string; degradedReason?: string };
         };
         const list = parsed?.data?.positions;
         if (Array.isArray(list)) {
-          queryClient.setQueryData(["dflow-positions", walletKey], list);
+          queryClient.setQueryData(["dflow-positions", walletKey], {
+            positions: list,
+            stale: parsed.data?.stale === true,
+            updatedAt: parsed.data?.updatedAt,
+            degradedReason: parsed.data?.degradedReason,
+          } satisfies PositionsQueryData);
         }
       } catch {
         /* ignore malformed SSE payloads */
@@ -1305,17 +1108,18 @@ export default function PortfolioPage() {
 
     void (async () => {
       try {
-        const url = await appendWalletAuthQuery(
+        const signedUrl = await appendWalletAuthQuery(
           new URL(`${API_URL}/api/dflow/positions/stream?address=${encodeURIComponent(walletKey)}`),
-          { wallet: walletKey, signMessage, scope: "read" },
+          { wallet: walletKey, signMessage, scope: "read" }
         );
         if (cancelled) return;
-        source = new EventSource(url.toString());
+        source = new EventSource(signedUrl);
         source.addEventListener("message", onMessage);
       } catch {
-        /* ignore */
+        /* ignore stream auth/setup failures */
       }
     })();
+
     return () => {
       cancelled = true;
       if (source) {
@@ -1328,100 +1132,10 @@ export default function PortfolioPage() {
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");
   const activeTab = positionTab === "open" ? openPositions : settledPositions;
-  const showingLastKnownPositions = positionsError && positions.length > 0;
-  const openBookUsd = useMemo(
-    () => openPositions.reduce((sum, position) => sum + positionMarketValueUsd(position), 0),
-    [openPositions],
-  );
   const totalPnl = useMemo(
     () => positions.reduce((sum, p) => sum + computePositionPnl(p).usd, 0),
     [positions, entryEpoch],
   );
-  const largestOpenPosition = useMemo(
-    () =>
-      openPositions.reduce<Position | null>((largest, position) => {
-        if (!largest) return position;
-        return positionMarketValueUsd(position) > positionMarketValueUsd(largest) ? position : largest;
-      }, null),
-    [openPositions],
-  );
-  const correlatedRiskClusters = useMemo(() => {
-    const clusterMap = new Map<string, RiskCluster>();
-    for (const position of openPositions) {
-      for (const tag of inferRiskTags(position)) {
-        const existing = clusterMap.get(tag) || { label: tag, positions: [], exposureUsd: 0, pnlUsd: 0 };
-        existing.positions.push(position);
-        existing.exposureUsd += positionMarketValueUsd(position);
-        existing.pnlUsd += computePositionPnl(position).usd;
-        clusterMap.set(tag, existing);
-      }
-    }
-    return Array.from(clusterMap.values())
-      .filter((cluster) => cluster.positions.length > 1)
-      .sort((a, b) => b.exposureUsd - a.exposureUsd)
-      .slice(0, 4);
-  }, [openPositions, entryEpoch]);
-
-  const { data: tradeAttemptData } = useQuery({
-    queryKey: ["trade-attempts-feed", walletKey],
-    queryFn: async () => {
-      if (!walletKey) return { rows: [], summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 } } as TradeAttemptFeedData;
-      const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "read" });
-      const res = await fetch(`${API_URL}/api/trade-attempts?wallet=${encodeURIComponent(walletKey)}&limit=12`, {
-        credentials: "omit",
-        headers: authHeaders,
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload?.error || "Unable to load trade attempts.");
-      return (payload?.data ?? { rows: [], summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 } }) as TradeAttemptFeedData;
-    },
-    enabled: !!walletKey,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  });
-  const { data: goldRushIntelligence, isLoading: goldRushLoading, isError: goldRushError } = useGoldRushWalletIntelligence(walletKey, signMessage);
-  const { data: torqueReadiness } = useTorqueRelayReadiness();
-  const torqueCampaignProgress = useMemo(() => {
-    const attempts = tradeAttemptData?.summary.attempts ?? 0;
-    const successRate = tradeAttemptData?.summary.successRate ?? 0;
-    const failedAttempts = tradeAttemptData?.summary.failedCount ?? 0;
-    const successfulSells = tradeAttemptData?.rows.filter(
-      (row) => row.status === "success" && (row.side === "sell" || row.mode.toLowerCase().includes("sell")),
-    ).length ?? 0;
-    const highResolutionWatch = openPositions.filter((position) => {
-      const closesAt = position.title ? Date.parse(String((position as Position & { closesAt?: string }).closesAt ?? "")) : NaN;
-      return Number.isFinite(closesAt) && closesAt - Date.now() < 3 * 24 * 60 * 60 * 1000;
-    }).length;
-
-    return [
-      {
-        label: "First clean close",
-        status: successfulSells > 0 ? "Unlocked" : failedAttempts > 0 ? "In progress" : "Not started",
-        summary:
-          successfulSells > 0
-            ? "You already have a successful close that can count toward reward logic."
-            : failedAttempts > 0
-              ? "You’ve started trading. The next clean exit can unlock your first close reward."
-              : "Enter and close your first position without repeat route failures.",
-      },
-      {
-        label: "Resolve-before-expiry",
-        status: highResolutionWatch > 0 ? "Watch now" : "Ready",
-        summary:
-          highResolutionWatch > 0
-            ? `${highResolutionWatch} open position${highResolutionWatch > 1 ? "s are" : " is"} close enough to resolution for early-exit nudges.`
-            : "When resolution windows get thin, Siren can nudge you before liquidity disappears.",
-      },
-      {
-        label: "Execution leaderboard",
-        status: attempts >= 3 ? "Live" : "Building",
-        summary:
-          attempts >= 3
-            ? `You have ${attempts} tracked attempts with a ${Math.round(successRate)}% execution success rate feeding the ranks.`
-            : "Once you build enough real attempts, Siren can rank you on execution quality instead of raw size.",
-      },
-    ];
-  }, [openPositions, tradeAttemptData]);
 
   // ── Identity ──────────────────────────────────────────────────
 
@@ -1429,11 +1143,11 @@ export default function PortfolioPage() {
     queryKey: ["dflow-proof-status", walletKey],
     queryFn: async () => {
       if (!publicKey) return { verified: false };
-      const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "read" });
-      const res = await fetch(
-        `${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`,
-        { credentials: "omit", headers: authHeaders },
+      const signedUrl = await appendWalletAuthQuery(
+        new URL(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`),
+        { wallet: publicKey.toBase58(), signMessage, scope: "read" },
       );
+      const res = await fetch(signedUrl, { credentials: "omit" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || "Unable to check identity.");
       return (payload?.data ?? { verified: false }) as { verified: boolean };
@@ -1507,13 +1221,13 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-[1120px] flex-1 px-4 pb-10 pt-5 font-body md:px-5 md:pt-6 xl:px-6">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-12 pt-6 md:pt-8 font-body">
 
         {/* ── Top row: Balance + Username ─────────────────── */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)]">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
           {/* Balance Card */}
-          <div className="rounded-xl border p-4 md:p-5"
+          <div className="rounded-xl border p-5"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
             <div className="flex items-center justify-between">
               <p className="font-sub text-[10px] uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
@@ -1539,39 +1253,18 @@ export default function PortfolioPage() {
               </p>
             )}
 
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <button type="button" onClick={() => { hapticLight(); setDepositOpen(true); }} disabled={!connected}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 font-heading text-[11px] font-semibold disabled:opacity-40 sm:min-w-[132px]"
+                className="flex flex-col items-center gap-1 rounded-lg py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
                 <CreditCard className="h-3.5 w-3.5" /> Deposit
               </button>
               <button type="button" disabled={!connected}
                 onClick={() => { hapticLight(); setWithdrawOpen(true); }}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border px-3 font-heading text-[11px] font-semibold disabled:opacity-40 sm:min-w-[132px]"
+                className="flex flex-col items-center gap-1 rounded-lg border py-2.5 font-heading text-[11px] font-semibold disabled:opacity-40"
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}>
                 <ArrowUp className="h-3.5 w-3.5" /> Withdraw
               </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {[
-                { label: "Open book", value: `$${fmtUsd(openBookUsd)}` },
-                { label: "Dry powder", value: `$${fmtUsd(usdc + usdt)}` },
-                { label: "Status", value: verified ? "Ready" : "Needs ID" },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-lg border px-3 py-3"
-                  style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-                >
-                  <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                    {item.label}
-                  </p>
-                  <p className="mt-1 font-heading text-xs font-semibold" style={{ color: "var(--text-1)" }}>
-                    {item.value}
-                  </p>
-                </div>
-              ))}
             </div>
           </div>
 
@@ -1671,533 +1364,224 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        <div
-          className="mt-4 rounded-[22px] border p-4 md:p-5"
-          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-        >
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.72fr)] lg:items-start">
-            <div>
-              <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
-                Portfolio
-              </p>
-              <h2 className="mt-1 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-                Your open positions, resolved trades, and trade access in one place.
-              </h2>
-            </div>
-            <div
-              className="rounded-xl border px-3 py-2"
-              style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-            >
-              <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
-                Biggest open position
-              </p>
-              <p className="mt-1 max-w-[220px] truncate font-body text-sm font-medium" style={{ color: "var(--text-1)" }}>
-                {largestOpenPosition?.title ?? "No open positions"}
-              </p>
-              <p className="mt-1 font-money text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
-                {largestOpenPosition ? `$${fmtUsd(positionMarketValueUsd(largestOpenPosition))}` : "Waiting for your first fill"}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {[
-              { label: "Open positions", value: String(openPositions.length), detail: "still live", tone: "var(--text-1)" },
-              { label: "Resolved", value: String(settledPositions.length), detail: "already settled", tone: "var(--text-1)" },
-              { label: "Net P&L", value: `${totalPnl >= 0 ? "+" : "-"}$${fmtUsd(Math.abs(totalPnl))}`, detail: "across tracked positions", tone: pnlColor(totalPnl) },
-              { label: "Trade access", value: verified ? "Kalshi ready" : "Needs ID", detail: verified ? "verification complete" : "finish verification", tone: verified ? "var(--up)" : "var(--accent)" },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="rounded-xl border px-3 py-3"
-                style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-              >
-                <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                  {item.label}
-                </p>
-                <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
-                  {item.value}
-                </p>
-                <p className="mt-1 font-body text-[11px] leading-snug" style={{ color: "var(--text-3)" }}>
-                  {item.detail}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.16fr)_minmax(280px,0.84fr)]">
-          <div className="space-y-4">
-            <div className="rounded-[22px] border p-4 md:p-5"
-              style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <div className="flex items-center justify-between">
-                <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                  Positions
-                </h2>
-                {positions.length > 0 && (
-                  <span className="font-money tabular-nums text-xs font-semibold" style={{ color: pnlColor(totalPnl) }}>
-                    {totalPnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(totalPnl))}
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                Open positions refresh while this page is open so prices stay current.
-              </p>
-
-              {positionsError && (
-                <div
-                  className="mt-3 flex items-center justify-between gap-3 rounded-xl border px-3 py-3"
-                  style={{ borderColor: "color-mix(in srgb, var(--yellow) 26%, transparent)", background: "color-mix(in srgb, var(--yellow) 7%, var(--bg-base))" }}
-                >
-                  <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                    {showingLastKnownPositions
-                      ? "Live refresh slipped for a moment. Showing your last synced positions instead of clearing the list."
-                      : "Siren could not refresh your positions just now. Retry in a moment."}
+        {connected && (
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    Wallet readiness
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      hapticLight();
-                      void refetchPositions();
-                    }}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border px-3 py-1.5 font-heading text-[11px] font-semibold"
-                    style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-surface)" }}
-                  >
-                    <RefreshCw className={`h-3 w-3 ${positionsFetching ? "animate-spin" : ""}`} />
-                    Retry
-                  </button>
+                  <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    Live GoldRush context that affects how aggressively Siren should route your next trade.
+                  </p>
                 </div>
+                <span className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+                  Covalent
+                </span>
+              </div>
+              {goldRushLoading ? (
+                <div className="mt-4 flex items-center gap-2" style={{ color: "var(--text-3)" }}>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="font-body text-sm">Reading wallet balances…</span>
+                </div>
+              ) : goldRushIntelligence ? (
+                <>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Visible</p>
+                      <p className="mt-1 font-money text-lg font-semibold" style={{ color: "var(--text-1)" }}>
+                        ${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Risk</p>
+                      <p className="mt-1 font-heading text-lg font-semibold" style={{ color: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : "var(--accent)" }}>
+                        {goldRushIntelligence.summary.riskScore}/100
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {(goldRushIntelligence.alerts.slice(0, 2) || []).map((alert) => (
+                      <div key={alert.label} className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-body text-xs font-medium" style={{ color: "var(--text-1)" }}>{alert.label}</p>
+                          <span className="font-heading text-[10px] uppercase tracking-[0.14em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "#fbbf24" : "var(--accent)" }}>
+                            {alert.level}
+                          </span>
+                        </div>
+                        <p className="mt-1 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>{alert.summary}</p>
+                      </div>
+                    ))}
+                    <p className="font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                      {goldRushIntelligence.narrative.readiness}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <p className="mt-4 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                  GoldRush wallet intelligence is unavailable right now.
+                </p>
               )}
+            </div>
 
-              <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>
-                {(["open", "settled"] as const).map((tab) => (
-                  <button key={tab} type="button"
-                    onClick={() => { hapticLight(); setPositionTab(tab); }}
-                    className="flex-1 rounded-md py-1.5 font-heading text-xs font-semibold capitalize transition-colors"
-                    style={{
-                      background: positionTab === tab ? "var(--bg-surface)" : "transparent",
-                      color: positionTab === tab ? "var(--text-1)" : "var(--text-3)",
-                    }}>
-                    {tab}{" "}
-                    <span className="font-sub text-[10px] tabular-nums">
-                      ({tab === "open" ? openPositions.length : settledPositions.length})
-                    </span>
-                  </button>
+            <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    Reward layer
+                  </p>
+                  <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    Torque is now wired so Siren can turn real execution outcomes into nudges and rewards.
+                  </p>
+                </div>
+                <span className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]" style={{ borderColor: "var(--border-subtle)", color: torqueReadiness?.configured ? "var(--accent)" : "var(--text-3)" }}>
+                  {torqueReadiness?.configured ? "Relay live" : "Pending"}
+                </span>
+              </div>
+              <div className="mt-4 space-y-2">
+                {[
+                  "Clean-close rewards for traders who exit without repeated failed attempts.",
+                  "Resolve-before-expiry nudges when liquidity windows start to thin.",
+                  "An execution-quality leaderboard based on outcomes, not just size.",
+                ].map((line) => (
+                  <div key={line} className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>{line}</p>
+                  </div>
                 ))}
               </div>
-
-              <div className="mt-3 flex flex-col gap-3">
-                {positionsLoading && positions.length === 0 ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
-                  </div>
-                ) : activeTab.length === 0 ? (
-                  <p className="py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
-                    {positionTab === "open" ? "No open positions yet." : "No resolved positions yet."}
-                  </p>
-                ) : (
-                  activeTab.map((p, i) => (
-                    <PositionRow
-                      key={`${p.ticker}-${i}`}
-                      position={p}
-                      onEntrySaved={() => setEntryEpoch((n) => n + 1)}
-                    />
-                  ))
-                )}
-              </div>
             </div>
+          </div>
+        )}
 
-            <div className="rounded-[22px] border overflow-hidden"
-              style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <button type="button" className="flex w-full items-center justify-between px-4 py-3.5"
-                onClick={() => { hapticLight(); setSwapOpen(!swapOpen); }}>
-                <div className="flex items-center gap-2">
-                  <ArrowRightLeft className="h-4 w-4" style={{ color: "var(--accent)" }} />
-                  <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    Swap tokens
-                  </span>
-                </div>
-                <ChevronDown style={{ color: "var(--text-3)" }}
-                  className={`h-4 w-4 transition-transform duration-200 ${swapOpen ? "rotate-180" : ""}`} />
-              </button>
-              {swapOpen && (
-                <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
-                  <SwapPanel onActivityLogged={() => setActivityEpoch((n) => n + 1)} />
-                </div>
-              )}
+        {/* ── Swap ──────────────────────────────────────────── */}
+        <div className="mt-4 rounded-xl border overflow-hidden"
+          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+          <button type="button" className="flex w-full items-center justify-between px-4 py-3"
+            onClick={() => { hapticLight(); setSwapOpen(!swapOpen); }}>
+            <div className="flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4" style={{ color: "var(--accent)" }} />
+              <span className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Swap
+              </span>
             </div>
+            <ChevronDown style={{ color: "var(--text-3)" }}
+              className={`h-4 w-4 transition-transform duration-200 ${swapOpen ? "rotate-180" : ""}`} />
+          </button>
+          {swapOpen && (
+            <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
+              <SwapPanel onActivityLogged={() => setActivityEpoch((n) => n + 1)} />
+            </div>
+          )}
+        </div>
 
-            {connected && walletKey && (
-              <div
-                className="rounded-[22px] border p-5"
-                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-              >
-                <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                  Recent activity
-                </h2>
-                <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Your latest swaps and prediction trades. Saved on this device only.
-                </p>
-                {localActivity.length === 0 ? (
-                  <p className="mt-6 py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
-                    Nothing here yet. Make a trade to get started.
-                  </p>
-                ) : (
-                  <ul className="mt-5 space-y-3">
-                    {localActivity.map((row, idx) => (
-                      <li
-                        key={`${row.ts}-${row.mint}-${idx}`}
-                        className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
-                        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
-                      >
-                        <div className="min-w-0">
-                          <span
-                            className="inline-flex rounded-full px-2 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
-                            style={{ background: activityBadge(row).bg, color: activityBadge(row).color }}
-                          >
-                            {activityBadge(row).label}
-                          </span>
-                          <p className="mt-2 min-w-0 font-body text-sm leading-snug" style={{ color: "var(--text-1)" }}>
-                            {formatActivitySummary(row)}
-                          </p>
-                          {formatActivityDetail(row) && (
-                            <p className="mt-1 font-body text-[12px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                              {formatActivityDetail(row)}
-                            </p>
-                          )}
-                        </div>
-                        <time
-                          className="shrink-0 pt-0.5 font-sub text-[11px] tabular-nums"
-                          style={{ color: "var(--text-3)" }}
-                          dateTime={new Date(row.ts).toISOString()}
-                        >
-                          {formatActivityTime(row.ts)}
-                        </time>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+        {/* ── Recent activity (on-device) ───────────────────── */}
+        {connected && walletKey && (
+          <div
+            className="mt-4 rounded-xl border p-5"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+          >
+            <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+              Recent activity
+            </h2>
+            <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Your recent swaps and market trades. Saved on this device only.
+            </p>
+            {localActivity.length === 0 ? (
+              <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
+                Nothing here yet. Make a trade to get started.
+              </p>
+            ) : (
+              <ul className="mt-5 space-y-3">
+                {localActivity.map((row, idx) => (
+                  <li
+                    key={`${row.ts}-${row.mint}-${idx}`}
+                    className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
+                    style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                  >
+                    <p className="font-body text-sm leading-snug min-w-0" style={{ color: "var(--text-1)" }}>
+                      {formatActivitySummary(row)}
+                    </p>
+                    <time
+                      className="font-sub text-[11px] shrink-0 tabular-nums pt-0.5"
+                      style={{ color: "var(--text-3)" }}
+                      dateTime={new Date(row.ts).toISOString()}
+                    >
+                      {formatActivityTime(row.ts)}
+                    </time>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
+        )}
 
-          <aside className="space-y-4 xl:sticky xl:top-[94px] xl:self-start">
-            {connected && (
-              <>
-                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                  <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    Related positions
-                  </h2>
-                  <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Positions leaning on the same story, grouped so concentration risk is easier to spot.
-                  </p>
-                  {correlatedRiskClusters.length === 0 ? (
-                    <p className="mt-5 py-2 font-body text-sm" style={{ color: "var(--text-3)" }}>
-                      No strong overlap detected yet. As your open book grows, Siren will cluster related exposure here.
-                    </p>
-                  ) : (
-                    <div className="mt-4 space-y-3">
-                      {correlatedRiskClusters.map((cluster) => (
-                        <div
-                          key={cluster.label}
-                          className="rounded-xl border px-4 py-3"
-                          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{cluster.label}</p>
-                              <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                                {cluster.positions.length} positions · ${fmtUsd(cluster.exposureUsd)} exposed
-                              </p>
-                            </div>
-                            <p className="font-mono text-[11px] tabular-nums" style={{ color: pnlColor(cluster.pnlUsd) }}>
-                              {cluster.pnlUsd >= 0 ? "+" : "-"}${fmtUsd(Math.abs(cluster.pnlUsd))}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                  <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                    Trade results
-                  </h2>
-                  <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Recent trade outcomes Siren recorded.
-                  </p>
-
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {[
-                      { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
-                      { label: "Clean fills", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
-                      { label: "Partial fills", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                        <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
-                        <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>{item.value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {(tradeAttemptData?.rows?.length ?? 0) === 0 ? (
-                    <p className="mt-5 py-2 font-body text-sm" style={{ color: "var(--text-3)" }}>
-                      No persisted execution reports yet. Once trades are logged through Supabase, recent outcomes will show here.
-                    </p>
-                  ) : (
-                    <ul className="mt-4 space-y-3">
-                      {tradeAttemptData?.rows.slice(0, 4).map((row, idx) => {
-                        const narrative = buildTradeAttemptNarrative(row);
-                        return (
-                          <li
-                            key={`${row.createdAt}-${row.txSignature ?? row.market ?? idx}`}
-                            className="rounded-xl border px-4 py-3"
-                            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span
-                                    className="rounded-full px-2 py-0.5 font-sub text-[10px] uppercase tracking-[0.16em]"
-                                    style={{
-                                      background: row.status === "success" ? "color-mix(in srgb, var(--up) 16%, transparent)" : "color-mix(in srgb, var(--down) 14%, transparent)",
-                                      color: row.status === "success" ? "var(--up)" : "var(--down)",
-                                    }}
-                                  >
-                                    {row.status}
-                                  </span>
-                                  <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                                    {row.venue} · {row.mode}
-                                  </span>
-                                </div>
-                                <p className="mt-2 font-body text-sm" style={{ color: "var(--text-1)" }}>
-                                  {narrative.title}
-                                </p>
-                                <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Tried</p>
-                                    <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
-                                      {formatAttemptAmount(row)}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Siren said</p>
-                                    <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                                      {narrative.advice}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>What happened</p>
-                                    <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: row.status === "success" ? "var(--up)" : "var(--text-2)" }}>
-                                      {narrative.result}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                              <time className="font-sub text-[11px] text-right" style={{ color: "var(--text-3)" }} dateTime={row.createdAt}>
-                                {new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                              </time>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-
-                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                        GoldRush wallet intelligence
-                      </h2>
-                      <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                        Structured wallet context for reserves, concentration, and execution readiness.
-                      </p>
-                    </div>
-                    <span
-                      className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
-                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-base)" }}
-                    >
-                      Covalent
-                    </span>
-                  </div>
-
-                  {goldRushLoading ? (
-                    <div className="mt-5 flex items-center gap-3">
-                      <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
-                      <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-                        Reading wallet balances through GoldRush...
-                      </p>
-                    </div>
-                  ) : goldRushError || !goldRushIntelligence ? (
-                    <p className="mt-5 py-2 font-body text-sm" style={{ color: "var(--text-3)" }}>
-                      GoldRush wallet intelligence is unavailable right now. Siren could not complete the live wallet read in this environment.
-                    </p>
-                  ) : (
-                    <>
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        {[
-                          { label: "Idle stables", value: `$${fmtUsd(goldRushIntelligence.summary.stablecoinUsd)}`, tone: "var(--accent)" },
-                          { label: "Visible", value: `$${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}`, tone: "var(--text-1)" },
-                          { label: "Recent flow", value: `${goldRushIntelligence.summary.recentTxnCount}`, tone: "var(--text-1)" },
-                          { label: "Risk", value: `${goldRushIntelligence.summary.riskScore}/100`, tone: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : goldRushIntelligence.summary.riskLabel === "moderate" ? "var(--yellow)" : "var(--up)" },
-                        ].map((item) => (
-                          <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                            <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                              {item.label}
-                            </p>
-                            <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
-                              {item.value}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-                        <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                          <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                            Siren read
-                          </p>
-                          <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            {goldRushIntelligence.narrative.reserveRead}
-                          </p>
-                          <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            {goldRushIntelligence.narrative.readiness}
-                          </p>
-                        </div>
-
-                        <div className="rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                          <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                            Activity monitor
-                          </p>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            {[
-                              { label: "Inbound", value: `$${fmtUsd(goldRushIntelligence.summary.inboundUsd)}` },
-                              { label: "Outbound", value: `$${fmtUsd(goldRushIntelligence.summary.outboundUsd)}` },
-                              { label: "Open book", value: `$${fmtUsd(openBookUsd)}` },
-                              { label: "Last active", value: goldRushIntelligence.summary.lastActiveAt ? new Date(goldRushIntelligence.summary.lastActiveAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Quiet" },
-                            ].map((item) => (
-                              <div key={item.label} className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                                <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
-                                <p className="mt-1 font-heading text-xs font-semibold" style={{ color: "var(--text-1)" }}>{item.value}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {goldRushIntelligence.alerts.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          {goldRushIntelligence.alerts.slice(0, 4).map((alert) => (
-                            <div
-                              key={alert.label}
-                              className="rounded-xl border px-4 py-3"
-                              style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
-                                  {alert.label}
-                                </p>
-                                <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "var(--yellow)" : "var(--accent)" }}>
-                                  {alert.level}
-                                </span>
-                              </div>
-                              <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                                {alert.summary}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div className="rounded-[22px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                        Rewards and streaks
-                      </h2>
-                      <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                        Powered by Torque so Siren can turn real execution outcomes into rewards, nudges, and retention loops.
-                      </p>
-                    </div>
-                    <span
-                      className="rounded-full border px-3 py-1 font-sub text-[10px] uppercase tracking-[0.16em]"
-                      style={{ borderColor: "var(--border-subtle)", color: torqueReadiness?.configured ? "var(--up)" : "var(--text-3)", background: "var(--bg-base)" }}
-                    >
-                      {torqueReadiness?.configured ? "Relay live" : "Relay pending"}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    {[
-                      { label: "Attempts", value: String(tradeAttemptData?.summary.attempts ?? 0), tone: "var(--text-1)" },
-                      { label: "Success", value: `${Math.round(tradeAttemptData?.summary.successRate ?? 0)}%`, tone: "var(--accent)" },
-                      { label: "Partial", value: String(tradeAttemptData?.summary.partialCount ?? 0), tone: "var(--up)" },
-                      { label: "Campaigns", value: String(torqueCampaignProgress.length), tone: "var(--text-1)" },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-xl border px-3 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                        <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                          {item.label}
-                        </p>
-                        <p className="mt-1 font-heading text-sm font-semibold" style={{ color: item.tone }}>
-                          {item.value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      What this unlocks
-                    </p>
-                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                      {torqueReadiness?.configured
-                        ? "Siren can now log trade outcomes into Torque, which is the base layer for rebates, clean-close milestones, and execution-quality campaigns."
-                        : "Torque is not fully live yet. Once configured, Siren can turn trade outcomes into user-facing reward loops."}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 grid gap-2">
-                    {torqueCampaignProgress.map((item) => (
-                      <div
-                        key={item.label}
-                        className="rounded-xl border px-4 py-3"
-                        style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>
-                            {item.label}
-                          </p>
-                          <span className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: item.status === "Unlocked" || item.status === "Live" ? "var(--up)" : item.status === "Watch now" ? "var(--yellow)" : "var(--text-3)" }}>
-                            {item.status}
-                          </span>
-                        </div>
-                        <p className="mt-1 font-body text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                          {item.summary}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {!!torqueReadiness?.requiredSchemas?.length && (
-                    <div className="mt-4 rounded-xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                        Relay health
-                      </p>
-                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        {torqueReadiness.eventNames.length} event types are mapped and the reward layer can now react to real execution outcomes.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </>
+        {/* ── Positions ─────────────────────────────────────── */}
+        <div className="mt-4 rounded-xl border p-4"
+          style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+          <div className="flex items-center justify-between">
+            <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+              Positions
+            </h2>
+            {positions.length > 0 && (
+              <span className="font-money tabular-nums text-xs font-semibold" style={{ color: pnlColor(totalPnl) }}>
+                {totalPnl >= 0 ? "+" : ""}${fmtUsd(Math.abs(totalPnl))}
+              </span>
             )}
-          </aside>
+          </div>
+          <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+            Open positions refresh while this page is open so prices stay current.
+          </p>
+          {positionsAreStale && (
+            <div className="mt-3 rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "color-mix(in srgb, #fbbf24 26%, var(--border-subtle))" }}>
+              <p className="font-body text-xs" style={{ color: "var(--text-2)" }}>
+                Showing the last good positions snapshot while Solana RPC catches up.
+                {positionsUpdatedAt ? ` Last sync: ${new Date(positionsUpdatedAt).toLocaleTimeString()}.` : ""}
+              </p>
+              {positionsDegradedReason && (
+                <p className="mt-1 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                  {positionsDegradedReason}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="mt-3 flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-base)" }}>
+            {(["open", "settled"] as const).map((tab) => (
+              <button key={tab} type="button"
+                onClick={() => { hapticLight(); setPositionTab(tab); }}
+                className="flex-1 rounded-md py-1.5 font-heading text-xs font-semibold capitalize transition-colors"
+                style={{
+                  background: positionTab === tab ? "var(--bg-surface)" : "transparent",
+                  color: positionTab === tab ? "var(--text-1)" : "var(--text-3)",
+                }}>
+                {tab}{" "}
+                <span className="font-sub text-[10px] tabular-nums">
+                  ({tab === "open" ? openPositions.length : settledPositions.length})
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-3 flex flex-col gap-3">
+            {positionsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
+              </div>
+            ) : activeTab.length === 0 ? (
+              <p className="py-8 text-center font-body text-sm" style={{ color: "var(--text-3)" }}>
+                {positionTab === "open" ? "No open positions yet." : "No settled positions yet."}
+              </p>
+            ) : (
+              activeTab.map((p, i) => (
+                <PositionRow
+                  key={`${p.ticker}-${i}`}
+                  position={p}
+                  onEntrySaved={() => setEntryEpoch((n) => n + 1)}
+                />
+              ))
+            )}
+          </div>
         </div>
 
         <Link href="/" className="mt-6 inline-flex items-center gap-1.5 font-body text-xs"
@@ -2205,8 +1589,6 @@ export default function PortfolioPage() {
           <ArrowLeft className="h-3 w-3" /> Back
         </Link>
       </main>
-
-      <Footer />
 
       {depositOpen && walletKey && (
         <DepositModal

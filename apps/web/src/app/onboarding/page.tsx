@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, ShieldCheck, Radar, LineChart } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
@@ -38,10 +38,12 @@ export default function OnboardingPage() {
     if (clean.length >= 2 && walletKey) {
       setUsernameSaving(true);
       try {
-        const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" });
         const res = await fetch(`${API_URL}/api/users/username`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...authHeaders },
+          headers: {
+            "Content-Type": "application/json",
+            ...(await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" })),
+          },
           body: JSON.stringify({ wallet: walletKey, username: clean }),
         });
         const payload = await res.json().catch(() => ({}));
@@ -107,13 +109,75 @@ export default function OnboardingPage() {
           <>
             <h1
               className="font-heading font-bold tracking-tight mb-3"
-              style={{ color: "var(--text-1)", fontSize: "clamp(1.5rem, 4vw, 2rem)", lineHeight: 1.15 }}
+              style={{ color: "var(--text-1)", fontSize: "clamp(1.6rem, 4vw, 2.2rem)", lineHeight: 1.08 }}
             >
-              Trade the signal.
+              See Siren before you connect.
             </h1>
 
-            <p className="font-body text-sm mb-10" style={{ color: "var(--text-3)" }}>
-              Execution and risk intelligence for prediction markets. Kalshi, Polymarket, Solana.
+            <p className="font-body text-sm mb-6 leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Browse live prediction markets first. Siren shows execution quality, route risk, and wallet readiness before you decide whether it has earned your sign-in.
+            </p>
+
+            <div className="mb-8 grid w-full gap-3 text-left">
+              {[
+                {
+                  icon: Radar,
+                  title: "Live market browser",
+                  copy: "Open Kalshi and Polymarket books without handing over your info first.",
+                },
+                {
+                  icon: LineChart,
+                  title: "Execution context",
+                  copy: "See whether a trade looks thin, crowded, or risky before you size up.",
+                },
+                {
+                  icon: ShieldCheck,
+                  title: "Connect when it matters",
+                  copy: "Only sign in when you want wallet routing, positions, and execution history.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-[18px] border px-4 py-3.5"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background: "color-mix(in srgb, var(--bg-elevated) 88%, transparent)",
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl"
+                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        {item.title}
+                      </p>
+                      <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        {item.copy}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                hapticLight();
+                finishAndGo();
+              }}
+              className="w-full py-3.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98]"
+              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+            >
+              Open terminal
+            </button>
+
+            <p className="font-body text-[11px] mt-3 mb-5 leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Sign in is optional. It unlocks wallet routing, portfolio sync, and execution tracking when you are ready.
             </p>
 
             {PRIVY_APP_ID ? (
@@ -136,15 +200,15 @@ export default function OnboardingPage() {
                   type="button"
                   onClick={() => void handleLogin()}
                   disabled={!ready || isInitializing}
-                  className="w-full py-3.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                  className="w-full py-3.5 rounded-lg border font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:bg-[var(--bg-elevated)] active:scale-[0.98] disabled:opacity-50"
+                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
                 >
                   {!ready ? (
                     <span className="inline-flex items-center justify-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> Loading…
                     </span>
                   ) : (
-                    "Sign in"
+                    "Connect when ready"
                   )}
                 </button>
 
@@ -155,7 +219,7 @@ export default function OnboardingPage() {
                 )}
 
                 <p className="font-body text-[11px] mt-4 leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  Email, Google, or GitHub. Embedded Solana wallet, no extension needed.
+                  Email, Google, or GitHub. Siren can spin up an embedded Solana wallet when you want one, no extension required.
                 </p>
               </>
             ) : (

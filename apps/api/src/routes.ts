@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
 import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
 import { getDflowPositionsForWallet } from "./services/dflowPositions.js";
@@ -8,710 +8,53 @@ import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
-import { getJupiterPredictionTradingStatus, searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
-import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
-import { getWalletPositionStats } from "./services/positionStats.js";
+import { getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
 import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
   sendTradingLiveAnnouncementEmail,
-  sendExecutionRiskUpdateEmail,
   sendLeaderboardSpotlightEmail,
   canSendEmail,
 } from "./services/email.js";
 import { getInMemorySignalFeedSnapshot, getSignalFeedSnapshot } from "./services/signalState.js";
-import { requireAdminPasscode, requireSupabaseAuthUser, requireWalletSignature } from "./services/requestAuth.js";
+import { requireAdminPasscode, requireWalletSignature } from "./services/requestAuth.js";
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const STABLE_QUOTE_SYMBOLS = new Set(["USD", "USDC", "USDT", "USDS", "USDE"]);
 const MARKET_ROUTE_TIMEOUT_MS = 10_000;
-const EXECUTION_PREVIEW_ROUTE_TIMEOUT_MS = 6_500;
 const SIGNAL_ROUTE_TIMEOUT_MS = 1_500;
 const SIGNAL_ROUTE_CACHE_MS = 5_000;
 const SOL_PRICE_ROUTE_TIMEOUT_MS = 4_500;
 const SOL_PRICE_CACHE_MS = 60_000;
 const DFLOW_PROOF_ROUTE_TIMEOUT_MS = 5_000;
 const DFLOW_PROOF_VERIFY_URL = process.env.DFLOW_PROOF_VERIFY_URL?.trim() || "https://proof.dflow.net/verify";
-const EXECUTION_PROBE_AMOUNTS_USD = [10, 25, 100];
+const RATE_BUCKETS = new Map<string, { count: number; resetAt: number }>();
 
-type WaitlistAudienceRow = {
-  id: string;
-  email: string | null;
-  wallet: string | null;
-  name: string | null;
-  created_at: string;
-  access_code: string | null;
-  access_code_used_at: string | null;
-};
-
-type AppUserAudienceRow = {
-  id: string;
-  wallet: string | null;
-  auth_user_id: string | null;
-  created_at: string;
-  last_seen_at: string | null;
-  signup_source: string | null;
-  country: string | null;
-  metadata: Record<string, unknown> | null;
-};
-
-type UnifiedAudienceRow = {
-  email: string;
-  name: string | null;
-  source: "waitlist" | "app" | "both";
-  source_labels: string[];
-  waitlist_id: string | null;
-  app_user_id: string | null;
-  wallets: string[];
-  signup_source: string | null;
-  country: string | null;
-  created_at: string;
-  last_seen_at: string | null;
-  access_code: string | null;
-  access_code_used_at: string | null;
-};
-
-type SirenContactRow = {
-  email: string;
-  name: string | null;
-  source: "waitlist" | "app" | "both";
-  source_labels: string[] | null;
-  waitlist_id: string | null;
-  app_user_id: string | null;
-  wallets: string[] | null;
-  signup_source: string | null;
-  country: string | null;
-  created_at: string;
-  last_seen_at: string | null;
-  access_code: string | null;
-  access_code_used_at: string | null;
-};
-
-type TradeAttemptRow = {
-  wallet: string | null;
-  venue: string;
-  mode: string;
-  market: string | null;
-  side: string | null;
-  input_asset: string | null;
-  output_asset: string | null;
-  amount: string | null;
-  status: string;
-  tx_signature: string | null;
-  error_message: string | null;
-  created_at: string;
-  metadata: Record<string, unknown> | null;
-};
-
-function normalizeEmailAddress(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
-  if (!normalized || !normalized.includes("@")) return null;
-  return normalized;
+function getRequestClientIp(req: FastifyRequest): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) {
+    return forwarded.split(",")[0]?.trim() || req.ip;
+  }
+  return req.ip;
 }
 
-function normalizeMetadata(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
+function isRateLimited(req: FastifyRequest, key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const ip = getRequestClientIp(req);
+  const bucketKey = `${key}:${ip}`;
+  const current = RATE_BUCKETS.get(bucketKey);
+  if (!current || current.resetAt <= now) {
+    RATE_BUCKETS.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  current.count += 1;
+  RATE_BUCKETS.set(bucketKey, current);
+  return current.count > max;
 }
 
-function pickMetadataString(metadata: Record<string, unknown>, keys: string[]): string | null {
-  for (const key of keys) {
-    const value = metadata[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-function uniqueStrings(values: Array<string | null | undefined>): string[] {
-  return Array.from(
-    new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value)),
-  );
-}
-
-function bucketTradeFailureReason(message?: string | null): string {
-  const lower = message?.toLowerCase().trim() ?? "";
-  if (!lower) return "Unknown";
-  if (lower.includes("insufficient")) return "Insufficient balance";
-  if (
-    lower.includes("verify") ||
-    lower.includes("proof") ||
-    lower.includes("jurisdiction") ||
-    lower.includes("unverified")
-  ) {
-    return "Verification or compliance";
-  }
-  if (
-    lower.includes("thin") ||
-    lower.includes("depth") ||
-    lower.includes("no bid") ||
-    lower.includes("partial fill")
-  ) {
-    return "Thin liquidity";
-  }
-  if (lower.includes("route")) return "No route available";
-  if (lower.includes("slippage") || lower.includes("price moved")) return "Price moved or slippage";
-  if (lower.includes("expired") || lower.includes("pending") || lower.includes("settlement")) {
-    return "Settlement or expiry";
-  }
-  return "Other execution error";
-}
-
-function normalizeTicker(value?: string | null): string {
-  return value?.trim().toUpperCase() ?? "";
-}
-
-function formatUsdWhole(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function getExecutionMarketByTicker(markets: Awaited<ReturnType<typeof getMarketsWithVelocity>>, ticker: string) {
-  const normalized = normalizeTicker(ticker);
-  return markets.find(
-    (market) =>
-      normalizeTicker(market.ticker) === normalized ||
-      normalizeTicker(market.event_ticker) === normalized ||
-      normalizeTicker(market.platform_id) === normalized,
-  );
-}
-
-function getSelectedExecutionOutcome(
-  market: NonNullable<ReturnType<typeof getExecutionMarketByTicker>>,
-  outcomeTicker?: string | null,
-) {
-  if (!market.outcomes?.length) return null;
-  const normalizedOutcomeTicker = normalizeTicker(outcomeTicker);
-  if (normalizedOutcomeTicker) {
-    const exact = market.outcomes.find((outcome) => normalizeTicker(outcome.ticker) === normalizedOutcomeTicker);
-    if (exact) return exact;
-  }
-
-  const current = market.outcomes.find((outcome) => normalizeTicker(outcome.ticker) === normalizeTicker(market.ticker));
-  if (current) return current;
-
-  const byLabel = market.selected_outcome_label
-    ? market.outcomes.find((outcome) => outcome.label === market.selected_outcome_label)
-    : null;
-  if (byLabel) return byLabel;
-
-  return [...market.outcomes].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0))[0] ?? null;
-}
-
-function getResolutionRisk(closeTime?: number | null) {
-  if (!closeTime || !Number.isFinite(closeTime)) {
-    return {
-      level: "open",
-      label: "Open window",
-      hoursLeft: null,
-      summary: "No immediate resolution deadline is visible, so execution risk depends more on route quality than time decay.",
-    };
-  }
-
-  const closeMs = closeTime < 1_000_000_000_000 ? closeTime * 1000 : closeTime;
-  const hoursLeft = (closeMs - Date.now()) / (1000 * 60 * 60);
-
-  if (hoursLeft <= 0) {
-    return {
-      level: "resolving",
-      label: "Resolving now",
-      hoursLeft,
-      summary: "This market is at or through its close window. Expect unstable books and weak exit certainty.",
-    };
-  }
-  if (hoursLeft <= 24) {
-    return {
-      level: "high",
-      label: "Last 24h",
-      hoursLeft,
-      summary: "The event is close to resolution. Books can thin fast and partial fills become more likely.",
-    };
-  }
-  if (hoursLeft <= 72) {
-    return {
-      level: "elevated",
-      label: "This week",
-      hoursLeft,
-      summary: "The market is entering its closing window. Size discipline matters more than usual.",
-    };
-  }
-  return {
-    level: "normal",
-    label: "Room to trade",
-    hoursLeft,
-    summary: "There is still runway before resolution, so route quality matters more than deadline pressure.",
-  };
-}
-
-function getFieldRisk(market: NonNullable<ReturnType<typeof getExecutionMarketByTicker>>, selectedProbability: number) {
-  const ranked = [...(market.outcomes ?? [])].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0));
-  if (!ranked.length) {
-    return {
-      rank: 1,
-      leaderGapPct: 0,
-      topThreeSharePct: selectedProbability,
-      label: "Binary market",
-      summary: "This is a straight YES/NO market, so field concentration does not apply.",
-    };
-  }
-
-  const selectedIndex = ranked.findIndex((outcome) => normalizeTicker(outcome.ticker) === normalizeTicker(market.ticker));
-  const selectedRank = selectedIndex >= 0 ? selectedIndex + 1 : 1;
-  const leaderProbability = ranked[0]?.probability ?? selectedProbability;
-  const nextProbability =
-    selectedRank === 1
-      ? ranked[1]?.probability ?? 0
-      : leaderProbability;
-  const topThreeShare = ranked.slice(0, 3).reduce((sum, outcome) => sum + (outcome.probability ?? 0), 0);
-  const leaderGap = selectedRank === 1 ? selectedProbability - nextProbability : leaderProbability - selectedProbability;
-
-  let label = "Open field";
-  let summary = "Several outcomes still matter, so expect price movement to stay sensitive to new information.";
-
-  if (selectedRank === 1 && leaderGap >= 15) {
-    label = "Dominant leader";
-    summary = "This outcome leads the field by a clear margin. Entry is more about protecting price than discovering value.";
-  } else if (selectedRank === 1 && leaderGap <= 5) {
-    label = "Crowded top";
-    summary = "The leader does not have much daylight. Small changes can reshuffle the top of the book quickly.";
-  } else if (selectedRank > 1 && leaderGap <= 8) {
-    label = "Live challenger";
-    summary = "This outcome is still within reach of the leader. Timing matters if you want exposure before the field reprices.";
-  } else if (topThreeShare >= 80) {
-    label = "Concentrated field";
-    summary = "Most of the implied probability sits in a few names, so the tail outcomes are unlikely to stay liquid.";
-  }
-
-  return {
-    rank: selectedRank,
-    leaderGapPct: Number(leaderGap.toFixed(1)),
-    topThreeSharePct: Number(topThreeShare.toFixed(1)),
-    label,
-    summary,
-  };
-}
-
-async function getAugmentedDflowPositions(walletAddress: string) {
-  const positionsResult = await getDflowPositionsForWallet(walletAddress);
-  if (positionsResult.error) return positionsResult;
-
-  try {
-    const supabase = getSupabaseAdminClient();
-    const statsByMint = await getWalletPositionStats(supabase, walletAddress);
-    const positions = positionsResult.positions.map((position) => {
-      const stat = statsByMint.get(position.mint);
-      if (!stat || stat.avgEntryUsd == null || stat.avgEntryCents == null) {
-        return {
-          ...position,
-          currentPrice: typeof position.currentPriceUsd === "number" ? position.currentPriceUsd * 100 : undefined,
-        };
-      }
-
-      const qty = position.quantity ?? position.balance ?? stat.openQty;
-      const markUsd = position.currentPriceUsd ?? null;
-      const pnlUsd =
-        markUsd != null && Number.isFinite(markUsd) && qty > 0 ? qty * (markUsd - stat.avgEntryUsd) : undefined;
-      const costUsd = qty > 0 ? qty * stat.avgEntryUsd : 0;
-      const pnlPct = pnlUsd != null && costUsd > 0 ? (pnlUsd / costUsd) * 100 : undefined;
-
-      return {
-        ...position,
-        entryPrice: Number(stat.avgEntryCents.toFixed(4)),
-        currentPrice: typeof markUsd === "number" ? Number((markUsd * 100).toFixed(4)) : undefined,
-        pnlUsd: pnlUsd != null ? Number(pnlUsd.toFixed(4)) : undefined,
-        pnlPct: pnlPct != null ? Number(pnlPct.toFixed(4)) : undefined,
-      };
-    });
-
-    return {
-      positions,
-      stale: positionsResult.stale,
-      updatedAt: positionsResult.updatedAt,
-      degradedReason: positionsResult.degradedReason,
-    };
-  } catch (error) {
-    return positionsResult;
-  }
-}
-
-function parsePositiveFloat(value?: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function buildSellProbeContracts(balance?: number | null): number[] {
-  const safeBalance = balance && Number.isFinite(balance) && balance > 0 ? balance : null;
-  if (!safeBalance) return [5, 10, 25];
-
-  return Array.from(
-    new Set(
-      [
-        Math.min(safeBalance, 5),
-        Math.min(safeBalance, Math.max(1, Number((safeBalance * 0.25).toFixed(4)))),
-        Math.min(safeBalance, Math.max(1, Number((safeBalance * 0.5).toFixed(4)))),
-        safeBalance,
-      ]
-        .filter((value) => Number.isFinite(value) && value > 0)
-        .map((value) => Number(value.toFixed(4))),
-    ),
-  ).sort((left, right) => left - right);
-}
-
-async function probePredictionSellRoute({
-  mint,
-  wallet,
-  balance,
-}: {
-  mint: string;
-  wallet?: string | null;
-  balance?: number | null;
-}) {
-  if (!wallet) {
-    return {
-      walletConnected: false,
-      available: false,
-      reason: "Connect a Solana wallet to run close-route probes.",
-      probes: [],
-      suggestedChunkContracts: null,
-      suggestedChunkUsd: null,
-      chunkPlan: null,
-    };
-  }
-
-  const probeContracts = buildSellProbeContracts(balance);
-  const probes: Array<{
-    contracts: number;
-    status: "routable" | "failed" | "skipped";
-    reason: string | null;
-  }> = [];
-
-  let largestSuccessContracts: number | null = null;
-  let encounteredBlockingFailure = false;
-
-  for (const contracts of probeContracts) {
-    if (encounteredBlockingFailure) {
-      probes.push({
-        contracts,
-        status: "skipped",
-        reason: "Skipped after an earlier probe failed cleanly.",
-      });
-      continue;
-    }
-
-    try {
-      const amountAtomic = String(Math.round(contracts * 1_000_000));
-      const result = await withTimeout(
-        getSwapOrder({
-          inputMint: mint,
-          outputMint: SOLANA_USDC_MINT,
-          amount: amountAtomic,
-          userPublicKey: wallet,
-          slippageBps: 200,
-          tryDflowFirst: true,
-          forcePredictionMarket: true,
-        }),
-        EXECUTION_PREVIEW_ROUTE_TIMEOUT_MS,
-        `sell-probe-${contracts}`,
-      );
-
-      if (result.transaction) {
-        largestSuccessContracts = contracts;
-        probes.push({
-          contracts,
-          status: "routable",
-          reason: null,
-        });
-        continue;
-      }
-
-      const reason = result.error || "Route probe failed.";
-      probes.push({
-        contracts,
-        status: "failed",
-        reason,
-      });
-      const lower = reason.toLowerCase();
-      if (
-        lower.includes("route") ||
-        lower.includes("verify") ||
-        lower.includes("proof") ||
-        lower.includes("jurisdiction") ||
-        lower.includes("not configured")
-      ) {
-        encounteredBlockingFailure = true;
-      }
-    } catch (error) {
-      probes.push({
-        contracts,
-        status: "failed",
-        reason: error instanceof Error ? error.message : "Route probe failed.",
-      });
-      encounteredBlockingFailure = true;
-    }
-  }
-
-  const chunkPlan =
-    balance && largestSuccessContracts && balance > largestSuccessContracts
-      ? {
-          totalContracts: Number(balance.toFixed(4)),
-          chunkContracts: largestSuccessContracts,
-          estimatedChunks: Math.ceil(balance / largestSuccessContracts),
-        }
-      : null;
-
-  return {
-    walletConnected: true,
-    available: largestSuccessContracts != null,
-    reason:
-      largestSuccessContracts != null
-        ? `Close route built successfully up to ${largestSuccessContracts.toLocaleString(undefined, {
-            maximumFractionDigits: 4,
-          })} contracts in preview.`
-        : probes.find((probe) => probe.status === "failed")?.reason || "No close route was confirmed in preview.",
-    probes,
-    suggestedChunkContracts: largestSuccessContracts,
-    suggestedChunkUsd: null,
-    chunkPlan,
-  };
-}
-
-async function probeKalshiExecutionRoute({
-  outputMint,
-  wallet,
-}: {
-  outputMint: string;
-  wallet?: string | null;
-}) {
-  if (!wallet) {
-    return {
-      walletConnected: false,
-      available: false,
-      reason: "Connect a Solana wallet to run live route probes.",
-      probes: [],
-      suggestedClipUsd: null,
-    };
-  }
-
-  if (!process.env.DFLOW_API_KEY?.trim()) {
-    return {
-      walletConnected: true,
-      available: false,
-      reason: "DFlow API key is not configured, so live route probes are unavailable.",
-      probes: [],
-      suggestedClipUsd: null,
-    };
-  }
-
-  const probes: Array<{
-    amountUsd: number;
-    status: "routable" | "failed" | "skipped";
-    reason: string | null;
-  }> = [];
-  let encounteredBlockingFailure = false;
-  let largestSuccessUsd: number | null = null;
-
-  for (const amountUsd of EXECUTION_PROBE_AMOUNTS_USD) {
-    if (encounteredBlockingFailure) {
-      probes.push({
-        amountUsd,
-        status: "skipped",
-        reason: "Skipped after an earlier probe failed cleanly.",
-      });
-      continue;
-    }
-
-    try {
-      const result = await withTimeout(
-        getDflowOrder({
-          inputMint: SOLANA_USDC_MINT,
-          outputMint,
-          amount: String(Math.round(amountUsd * 1_000_000)),
-          userPublicKey: wallet,
-          slippageBps: 200,
-          predictionMarketSlippageBps: 500,
-        }),
-        EXECUTION_PREVIEW_ROUTE_TIMEOUT_MS,
-        `execution-probe-${amountUsd}`,
-      );
-
-      if (result.transaction) {
-        largestSuccessUsd = amountUsd;
-        probes.push({ amountUsd, status: "routable", reason: null });
-        continue;
-      }
-
-      const reason = result.error || "Route probe failed.";
-      probes.push({
-        amountUsd,
-        status: "failed",
-        reason,
-      });
-
-      const lower = reason.toLowerCase();
-      if (
-        lower.includes("route") ||
-        lower.includes("verify") ||
-        lower.includes("proof") ||
-        lower.includes("jurisdiction") ||
-        lower.includes("not configured")
-      ) {
-        encounteredBlockingFailure = true;
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "Route probe failed.";
-      probes.push({
-        amountUsd,
-        status: "failed",
-        reason,
-      });
-      encounteredBlockingFailure = true;
-    }
-  }
-
-  return {
-    walletConnected: true,
-    available: largestSuccessUsd != null,
-    reason:
-      largestSuccessUsd != null
-        ? `Route built successfully up to ${formatUsdWhole(largestSuccessUsd)} in this preview window.`
-        : probes.find((probe) => probe.status === "failed")?.reason || "No live route was confirmed in preview.",
-    probes,
-    suggestedClipUsd: largestSuccessUsd,
-  };
-}
-
-function buildUnifiedAudience(
-  waitlistRows: WaitlistAudienceRow[],
-  appUserRows: AppUserAudienceRow[],
-): UnifiedAudienceRow[] {
-  const byEmail = new Map<string, UnifiedAudienceRow>();
-
-  for (const row of waitlistRows) {
-    const email = normalizeEmailAddress(row.email);
-    if (!email) continue;
-    byEmail.set(email, {
-      email,
-      name: row.name?.trim() || null,
-      source: "waitlist",
-      source_labels: ["waitlist"],
-      waitlist_id: row.id,
-      app_user_id: null,
-      wallets: uniqueStrings([row.wallet]),
-      signup_source: null,
-      country: null,
-      created_at: row.created_at,
-      last_seen_at: null,
-      access_code: row.access_code,
-      access_code_used_at: row.access_code_used_at,
-    });
-  }
-
-  for (const row of appUserRows) {
-    const metadata = normalizeMetadata(row.metadata);
-    const email = normalizeEmailAddress(
-      pickMetadataString(metadata, ["email", "contact_email", "primary_email"]),
-    );
-    if (!email) continue;
-
-    const existing = byEmail.get(email);
-    const name =
-      pickMetadataString(metadata, ["display_name", "full_name", "name", "username"]) ||
-      existing?.name ||
-      null;
-
-    if (!existing) {
-      byEmail.set(email, {
-        email,
-        name,
-        source: "app",
-        source_labels: ["app"],
-        waitlist_id: null,
-        app_user_id: row.id,
-        wallets: uniqueStrings([row.wallet]),
-        signup_source: row.signup_source,
-        country: row.country,
-        created_at: row.created_at,
-        last_seen_at: row.last_seen_at,
-        access_code: null,
-        access_code_used_at: null,
-      });
-      continue;
-    }
-
-    existing.name = existing.name || name;
-    existing.source = "both";
-    existing.source_labels = uniqueStrings([...existing.source_labels, "waitlist", "app"]);
-    existing.app_user_id = existing.app_user_id || row.id;
-    existing.wallets = uniqueStrings([...existing.wallets, row.wallet]);
-    existing.signup_source = existing.signup_source || row.signup_source;
-    existing.country = existing.country || row.country;
-    existing.last_seen_at = existing.last_seen_at || row.last_seen_at;
-  }
-
-  return Array.from(byEmail.values()).sort((a, b) => {
-    const left = new Date(a.last_seen_at || a.created_at).getTime();
-    const right = new Date(b.last_seen_at || b.created_at).getTime();
-    return right - left;
-  });
-}
-
-async function fetchUnifiedAudience(
-  supabase: ReturnType<typeof getSupabaseAdminClient>,
-  limit = 500,
-): Promise<UnifiedAudienceRow[]> {
-  const { data, error } = await supabase
-    .from("siren_contacts")
-    .select("email,name,source,source_labels,waitlist_id,app_user_id,wallets,signup_source,country,created_at,last_seen_at,access_code,access_code_used_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (!error && Array.isArray(data)) {
-    return (data as SirenContactRow[]).map((row) => ({
-      email: row.email,
-      name: row.name,
-      source: row.source,
-      source_labels: row.source_labels ?? [row.source],
-      waitlist_id: row.waitlist_id,
-      app_user_id: row.app_user_id,
-      wallets: row.wallets ?? [],
-      signup_source: row.signup_source,
-      country: row.country,
-      created_at: row.created_at,
-      last_seen_at: row.last_seen_at,
-      access_code: row.access_code,
-      access_code_used_at: row.access_code_used_at,
-    }));
-  }
-
-  const [{ data: waitlistRows, error: waitlistError }, { data: appUserRows, error: appUserError }] =
-    await Promise.all([
-      supabase
-        .from("waitlist_signups")
-        .select("id,email,wallet,name,created_at,access_code,access_code_used_at")
-        .order("created_at", { ascending: false })
-        .range(0, limit - 1),
-      supabase
-        .from("users")
-        .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,metadata")
-        .order("created_at", { ascending: false })
-        .range(0, limit - 1),
-    ]);
-
-  if (waitlistError || appUserError) {
-    const fallbackError = waitlistError || appUserError || error;
-    throw new Error(fallbackError?.message || "Failed to build audience");
-  }
-
-  return buildUnifiedAudience(
-    (waitlistRows ?? []) as WaitlistAudienceRow[],
-    (appUserRows ?? []) as AppUserAudienceRow[],
-  );
+async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
+  return requireAdminPasscode(req, reply);
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -746,9 +89,6 @@ function getTradeErrorStatus(error?: string | null): number {
     lower.includes("insufficient") ||
     lower.includes("slippage") ||
     lower.includes("400") ||
-    lower.includes("no executable route found") ||
-    lower.includes("no route to sell this position") ||
-    lower.includes("buyers are live") ||
     lower.includes("route_not_found") ||
     lower.includes("route not found")
   ) {
@@ -979,13 +319,6 @@ function getDailyPlatformVolumeStats(days: number): { day: string; volumeSol: nu
 }
 
 export function registerRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", async (req, reply) => {
-    const rawUrl = req.raw.url || "";
-    if (!rawUrl.startsWith("/api/admin")) return;
-    const ok = await requireAdminPasscode(req, reply);
-    if (!ok) return reply;
-  });
-
   app.get("/health", async () => ({ ok: true, ts: Date.now() }));
 
   /** Waitlist signup. Store in DB/CRM when ready. Reject if email already exists. */
@@ -1035,6 +368,9 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Access code validation — master code (env) or per-waitlist codes (one-time use). */
   app.post<{ Body: { code?: string } }>("/api/access/validate", async (req, reply) => {
+    if (isRateLimited(req, "access-validate", 20, 60_000)) {
+      return reply.status(429).send({ ok: false, error: "Too many attempts. Please wait and try again." });
+    }
     const { code } = req.body || {};
     const trimmed = typeof code === "string" ? code.trim() : "";
     if (!trimmed) return reply.status(403).send({ ok: false, error: "Invalid code" });
@@ -1059,6 +395,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: generate access code for a waitlist signup and send welcome email. */
   app.post<{ Params: { id: string } }>("/api/admin/waitlist/:id/generate-code", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     const id = req.params.id?.trim();
     if (!id) return reply.status(400).send({ success: false, error: "id required" });
     const code = Array.from({ length: 6 }, () => Math.floor(Math.random() * 10)).join("");
@@ -1096,6 +433,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: resend access-code email to a single waitlist signup (uses existing code). */
   app.post<{ Params: { id: string } }>("/api/admin/waitlist/:id/resend-email", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     const id = req.params.id?.trim();
     if (!id) return reply.status(400).send({ success: false, error: "id required" });
     try {
@@ -1123,6 +461,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send access-code emails to all waitlist entries (generate codes for those without). */
   app.post("/api/admin/waitlist/send-all-codes", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     try {
       const supabase = getSupabaseAdminClient();
       const { data: rows, error: listError } = await supabase
@@ -1180,6 +519,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send launch-thread email to all waitlist signups with email. */
   app.post("/api/admin/waitlist/send-launch-thread-email", async (_req, reply) => {
+    if (!(await requireAdmin(_req, reply))) return;
     try {
       const supabase = getSupabaseAdminClient();
       const { data: rows, error: listError } = await supabase
@@ -1223,6 +563,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send launch-thread email to a specific list of emails (pasted manually). */
   app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-launch-thread-email-by-email", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     try {
       const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
       const normalized = Array.from(
@@ -1286,6 +627,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send trading-live product announcement to all waitlist emails. */
   app.post("/api/admin/waitlist/send-trading-live-email", async (_req, reply) => {
+    if (!(await requireAdmin(_req, reply))) return;
     try {
       const supabase = getSupabaseAdminClient();
       const { data: rows, error: listError } = await supabase
@@ -1329,6 +671,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send trading-live announcement to pasted emails (must exist in waitlist). */
   app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-trading-live-email-by-email", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     try {
       const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
       const normalized = Array.from(
@@ -1389,6 +732,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send leaderboard spotlight announcement to all waitlist emails. */
   app.post("/api/admin/waitlist/send-leaderboard-spotlight-email", async (_req, reply) => {
+    if (!(await requireAdmin(_req, reply))) return;
     try {
       const supabase = getSupabaseAdminClient();
       const { data: rows, error: listError } = await supabase
@@ -1432,6 +776,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send leaderboard spotlight to pasted emails (must exist on waitlist). */
   app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-leaderboard-spotlight-email-by-email", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     try {
       const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
       const normalized = Array.from(
@@ -1492,6 +837,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: send access-code emails to a specific list of emails (pasted manually). */
   app.post<{ Body: { emails?: string[] } }>("/api/admin/waitlist/send-codes-by-email", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     try {
       const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
       const normalized = Array.from(
@@ -1581,6 +927,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: list waitlist signups (passcode gate happens on web). */
   app.get<{ Querystring: { limit?: string; offset?: string } }>("/api/admin/waitlist", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     const limit = Math.min(Math.max(parseInt(req.query.limit || "50", 10) || 50, 1), 500);
     const offset = Math.max(parseInt(req.query.offset || "0", 10) || 0, 0);
     try {
@@ -1600,6 +947,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: delete a waitlist signup by id. */
   app.delete<{ Params: { id: string } }>("/api/admin/waitlist/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     const { id } = req.params;
     if (!id?.trim()) return reply.status(400).send({ success: false, error: "id required" });
     try {
@@ -1635,12 +983,6 @@ export function registerRoutes(app: FastifyInstance) {
     "/api/trade-errors/log",
     async (req, reply) => {
       const body = req.body ?? {};
-      const normalizedWallet = typeof body.wallet === "string" ? body.wallet.trim().toLowerCase() : null;
-      if (!normalizedWallet) {
-        return reply.status(400).send({ success: false, error: "wallet required" });
-      }
-      const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
-      if (!walletOk) return;
       const message = typeof body.message === "string" ? body.message : "";
       const lower = message.toLowerCase();
       const payload = {
@@ -1650,7 +992,7 @@ export function registerRoutes(app: FastifyInstance) {
         side: body.side ?? null,
         inputAsset: body.inputAsset ?? null,
         amount: body.amount ?? null,
-        wallet: `${normalizedWallet.slice(0, 6)}...${normalizedWallet.slice(-4)}`,
+        wallet: typeof body.wallet === "string" ? `${body.wallet.slice(0, 6)}...${body.wallet.slice(-4)}` : null,
         message,
       };
 
@@ -1664,234 +1006,12 @@ export function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.post<{
-    Body: {
-      wallet?: string;
-      venue?: string;
-      mode?: string;
-      market?: string;
-      side?: string;
-      inputAsset?: string;
-      outputAsset?: string;
-      amount?: string;
-      status?: string;
-      txSignature?: string;
-      errorMessage?: string;
-      metadata?: Record<string, unknown>;
-    };
-  }>("/api/trade-attempts/log", async (req, reply) => {
-    const body = req.body ?? {};
-    const normalizedWallet = typeof body.wallet === "string" ? body.wallet.trim().toLowerCase() : null;
-    if (!normalizedWallet) {
-      return reply.status(400).send({ success: false, error: "wallet required" });
-    }
-    const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
-    if (!walletOk) return;
-    const payload = {
-      wallet: normalizedWallet,
-      venue: typeof body.venue === "string" && body.venue.trim() ? body.venue.trim() : "unknown",
-      mode: typeof body.mode === "string" && body.mode.trim() ? body.mode.trim() : "unknown",
-      market: typeof body.market === "string" && body.market.trim() ? body.market.trim() : null,
-      side: typeof body.side === "string" && body.side.trim() ? body.side.trim() : null,
-      input_asset: typeof body.inputAsset === "string" && body.inputAsset.trim() ? body.inputAsset.trim() : null,
-      output_asset: typeof body.outputAsset === "string" && body.outputAsset.trim() ? body.outputAsset.trim() : null,
-      amount: typeof body.amount === "string" && body.amount.trim() ? body.amount.trim() : null,
-      status: typeof body.status === "string" && body.status.trim() ? body.status.trim() : "unknown",
-      tx_signature: typeof body.txSignature === "string" && body.txSignature.trim() ? body.txSignature.trim() : null,
-      error_message: typeof body.errorMessage === "string" && body.errorMessage.trim() ? body.errorMessage.trim() : null,
-      metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata) ? body.metadata : {},
-    };
-
-    try {
-      const supabase = getSupabaseAdminClient();
-      const { error } = await supabase.from("siren_trade_attempts").insert(payload);
-      if (error) {
-        app.log.warn({ err: error, payload }, "siren_trade_attempts insert skipped");
-        void emitTorqueTradeAttemptEvent(payload).catch((relayError) => {
-          app.log.warn({ err: relayError, payload }, "torque relay skipped after trade attempt warning");
-        });
-        return reply.status(202).send({ success: true, persisted: false, warning: error.message || "Trade attempt log skipped" });
-      }
-      void emitTorqueTradeAttemptEvent(payload).catch((relayError) => {
-        app.log.warn({ err: relayError, payload }, "torque relay skipped after trade attempt success");
-      });
-      return reply.send({ success: true, persisted: true });
-    } catch (e) {
-      app.log.warn({ err: e, payload }, "siren_trade_attempts insert skipped with exception");
-      void emitTorqueTradeAttemptEvent(payload).catch((relayError) => {
-        app.log.warn({ err: relayError, payload }, "torque relay skipped after trade attempt exception");
-      });
-      return reply.status(202).send({
-        success: true,
-        persisted: false,
-        warning: (e as Error).message || "Trade attempt log skipped",
-      });
-    }
-  });
-
-  app.get<{
-    Querystring: { title?: string; outcomeLabel?: string; probability?: string; limit?: string };
-  }>("/api/integrations/jupiter/prediction-map", async (req, reply) => {
-    const title = req.query.title?.trim();
-    if (!title) {
-      return reply.status(400).send({ success: false, error: "title required" });
-    }
-
-    const outcomeLabel = req.query.outcomeLabel?.trim() || null;
-    const probability = Number.parseFloat(req.query.probability || "");
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "2", 10) || 2, 1), 4);
-
-    try {
-      const normalizedProbability = Number.isFinite(probability) ? probability : null;
-      const [tradingActiveResult, kalshiResult, polymarketResult] = await Promise.allSettled([
-        getJupiterPredictionTradingStatus(),
-        searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "kalshi", limit }),
-        searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "polymarket", limit }),
-      ]);
-      const warnings: string[] = [];
-      const tradingActive = tradingActiveResult.status === "fulfilled" ? tradingActiveResult.value : false;
-      if (tradingActiveResult.status === "rejected") warnings.push("Jupiter trading status unavailable.");
-
-      const kalshi =
-        kalshiResult.status === "fulfilled"
-          ? kalshiResult.value
-          : { query: "", events: [] };
-      if (kalshiResult.status === "rejected") warnings.push("Kalshi comparison is temporarily rate-limited on Jupiter.");
-
-      const polymarket =
-        polymarketResult.status === "fulfilled"
-          ? polymarketResult.value
-          : { query: "", events: [] };
-      if (polymarketResult.status === "rejected") warnings.push("Polymarket comparison is temporarily rate-limited on Jupiter.");
-
-      if (warnings.length === 3) {
-        return reply.status(503).send({
-          success: false,
-          error: "Jupiter prediction map temporarily unavailable",
-        });
-      }
-
-      return reply.send({
-        success: true,
-        data: {
-          query: kalshi.query || polymarket.query,
-          tradingActive,
-          degraded: warnings.length > 0,
-          warnings,
-          providers: [
-            { provider: "kalshi", events: kalshi.events },
-            { provider: "polymarket", events: polymarket.events },
-          ],
-        },
-      });
-    } catch (error) {
-      req.log.warn(error, "Failed to build Jupiter prediction map");
-      return reply.status(503).send({
-        success: false,
-        error: error instanceof Error ? error.message : "Jupiter prediction map unavailable",
-      });
-    }
-  });
-
-  app.get<{ Querystring: { wallet?: string } }>("/api/integrations/goldrush/wallet-intelligence", async (req, reply) => {
-    const wallet = req.query.wallet?.trim();
-    if (!wallet) {
-      return reply.status(400).send({ success: false, error: "wallet required" });
-    }
-    const walletOk = await requireWalletSignature(req, reply, wallet.toLowerCase(), "read");
-    if (!walletOk) return;
-
-    try {
-      const data = await getGoldRushWalletIntelligence(wallet);
-      return reply.send({ success: true, data });
-    } catch (error) {
-      req.log.warn(error, "Failed to load GoldRush wallet intelligence");
-      return reply.status(503).send({
-        success: false,
-        error: error instanceof Error ? error.message : "GoldRush wallet intelligence unavailable",
-      });
-    }
-  });
-
-  app.get("/api/integrations/torque/readiness", async (_req, reply) => {
-    return reply.send({ success: true, data: getTorqueRelayReadiness() });
-  });
-
-  app.get<{ Querystring: { wallet?: string; limit?: string } }>("/api/trade-attempts", async (req, reply) => {
-    const wallet = req.query.wallet?.trim().toLowerCase();
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "25", 10) || 25, 1), 100);
-    if (!wallet) {
-      return reply.status(400).send({ success: false, error: "wallet required" });
-    }
-    const walletOk = await requireWalletSignature(req, reply, wallet, "read");
-    if (!walletOk) return;
-
-    try {
-      const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase
-        .from("siren_trade_attempts")
-        .select("wallet,venue,mode,market,side,input_asset,output_asset,amount,status,tx_signature,error_message,created_at,metadata")
-        .eq("wallet", wallet)
-        .order("created_at", { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        if (error.message?.toLowerCase().includes("siren_trade_attempts")) {
-          return reply.send({
-            success: true,
-            data: {
-              rows: [],
-              summary: { attempts: 0, successCount: 0, failedCount: 0, partialCount: 0, successRate: 0 },
-            },
-          });
-        }
-        return reply.status(503).send({ success: false, error: error.message || "Failed to fetch trade attempts" });
-      }
-
-      const rows = ((data ?? []) as TradeAttemptRow[]).map((row) => {
-        const metadata = normalizeMetadata(row.metadata);
-        return {
-          wallet: row.wallet,
-          venue: row.venue,
-          mode: row.mode,
-          market: row.market,
-          side: row.side,
-          inputAsset: row.input_asset,
-          outputAsset: row.output_asset,
-          amount: row.amount,
-          status: row.status,
-          txSignature: row.tx_signature,
-          errorMessage: row.error_message,
-          createdAt: row.created_at,
-          metadata,
-        };
-      });
-
-      const successCount = rows.filter((row) => row.status === "success").length;
-      const failedCount = rows.filter((row) => row.status !== "success").length;
-      const partialCount = rows.filter((row) => row.metadata?.partialSellFilled === true).length;
-      const successRate = rows.length > 0 ? (successCount / rows.length) * 100 : 0;
-
-      return reply.send({
-        success: true,
-        data: {
-          rows,
-          summary: { attempts: rows.length, successCount, failedCount, partialCount, successRate },
-        },
-      });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch trade attempts" });
-    }
-  });
-
   app.get<{ Querystring: { address?: string } }>("/api/dflow/proof-status", async (req, reply) => {
     const address = req.query.address?.trim();
     if (!address) {
       return reply.status(400).send({ success: false, error: "address required" });
     }
-    const walletOk = await requireWalletSignature(req, reply, address.toLowerCase(), "read");
-    if (!walletOk) return;
+    if (!(await requireWalletSignature(req, reply, address, "read"))) return;
 
     try {
       const response = await withTimeout(
@@ -1995,7 +1115,6 @@ export function registerRoutes(app: FastifyInstance) {
 
       return reply.send({
         success: true,
-        provider: "dflow",
         transaction: result.transaction,
         executionMode: result.executionMode,
         lastValidBlockHeight: result.lastValidBlockHeight,
@@ -2038,32 +1157,7 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.send({ success: true, data: markets });
     } catch (e) {
       app.log.warn(e);
-      return reply.status(503).send({
-        success: false,
-        error: e instanceof Error ? e.message : "Market feed unavailable",
-      });
-    }
-  });
-
-  app.get<{ Params: { ticker: string } }>("/api/markets/:ticker", async (req, reply) => {
-    const ticker = req.params.ticker?.trim();
-    if (!ticker) {
-      return reply.status(400).send({ success: false, error: "ticker required" });
-    }
-
-    try {
-      const markets = await withTimeout(getMarketsWithVelocity(), MARKET_ROUTE_TIMEOUT_MS, "market-by-ticker");
-      const market = getExecutionMarketByTicker(markets, ticker);
-      if (!market) {
-        return reply.status(404).send({ success: false, error: "Market not found" });
-      }
-      return reply.send({ success: true, data: market });
-    } catch (error) {
-      req.log.warn(error, "Failed to load market by ticker");
-      return reply.status(503).send({
-        success: false,
-        error: error instanceof Error ? error.message : "Market unavailable",
-      });
+      return reply.send({ success: true, data: [] });
     }
   });
 
@@ -2076,12 +1170,7 @@ export function registerRoutes(app: FastifyInstance) {
         (m) =>
           m.title?.toLowerCase().includes(q) ||
           m.ticker?.toLowerCase().includes(q) ||
-          m.subtitle?.toLowerCase().includes(q) ||
-          m.outcomes?.some(
-            (outcome) =>
-              outcome.label?.toLowerCase().includes(q) ||
-              outcome.ticker?.toLowerCase().includes(q),
-          )
+          m.subtitle?.toLowerCase().includes(q)
       );
       if (matches.length > 0) {
         return reply.send({ success: true, data: matches });
@@ -2157,160 +1246,6 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get<{
-    Params: { ticker: string };
-    Querystring: { outcomeTicker?: string; wallet?: string; countryCode?: string };
-  }>("/api/markets/:ticker/execution-preview", async (req, reply) => {
-    const ticker = req.params.ticker?.trim();
-    if (!ticker) {
-      return reply.status(400).send({ success: false, error: "ticker required" });
-    }
-
-    const country =
-      (req.query.countryCode as string | undefined) ||
-      (req.headers["cf-ipcountry"] as string | undefined) ||
-      (req.headers["x-country-code"] as string | undefined);
-    const wallet = req.query.wallet?.trim() || null;
-
-    try {
-      const markets = await withTimeout(getMarketsWithVelocity(), MARKET_ROUTE_TIMEOUT_MS, "markets-execution-preview");
-      const market = getExecutionMarketByTicker(markets, ticker);
-      if (!market) {
-        return reply.status(404).send({ success: false, error: "Market not found" });
-      }
-
-      const selectedOutcome = getSelectedExecutionOutcome(market, req.query.outcomeTicker);
-      const selectedProbability = selectedOutcome?.probability ?? market.probability ?? 50;
-      const routeTargetMint = selectedOutcome?.yes_mint ?? market.yes_mint ?? null;
-      const routeAvailable = market.source === "kalshi" ? !!routeTargetMint : !!(selectedOutcome?.yes_token_id ?? market.yes_token_id);
-      const countryBlocked = shouldBlockByCountry(country);
-      const resolutionRisk = getResolutionRisk(market.close_time);
-      const fieldRisk = getFieldRisk(
-        selectedOutcome
-          ? {
-              ...market,
-              ticker: selectedOutcome.ticker ?? market.ticker,
-            }
-          : market,
-        selectedProbability,
-      );
-
-      const executionProbe =
-        market.source === "kalshi" && routeAvailable && routeTargetMint && !countryBlocked
-          ? await probeKalshiExecutionRoute({
-              outputMint: routeTargetMint,
-              wallet,
-            })
-          : {
-              walletConnected: Boolean(wallet),
-              available: routeAvailable && !countryBlocked,
-              reason: countryBlocked
-                ? "Prediction market trading is not available in this jurisdiction."
-                : !routeAvailable
-                  ? "This outcome is visible in Siren, but no native route target is mapped yet."
-                  : market.source !== "kalshi"
-                    ? "Live route probes are Kalshi-first for now."
-                    : "Connect a wallet to run live route probes.",
-              probes: [] as Array<{ amountUsd: number; status: "routable" | "failed" | "skipped"; reason: string | null }>,
-              suggestedClipUsd: null as number | null,
-            };
-
-      const actionable =
-        executionProbe.available && executionProbe.suggestedClipUsd
-          ? `Start around ${formatUsdWhole(executionProbe.suggestedClipUsd)} or smaller if you want cleaner execution.`
-          : routeAvailable
-            ? "Use smaller clips first and expect to adjust if the route goes stale."
-            : "Open the venue book for now while Siren fills in the missing route."
-
-      return reply.send({
-        success: true,
-        data: {
-          market: {
-            ticker: market.ticker,
-            eventTicker: market.event_ticker,
-            title: market.title,
-            source: market.source,
-            groupedEvent: Boolean(market.grouped_event),
-            outcomeCount: market.outcome_count ?? market.outcomes?.length ?? 0,
-            selectedOutcome: {
-              ticker: selectedOutcome?.ticker ?? market.ticker,
-              label: selectedOutcome?.label ?? market.selected_outcome_label ?? market.title,
-              probability: Number(selectedProbability.toFixed(1)),
-              priceUsd: Number((selectedProbability / 100).toFixed(4)),
-            },
-            stats: {
-              liquidity: market.liquidity ?? null,
-              volume24h: market.volume_24h ?? market.volume ?? null,
-              openInterest: market.open_interest ?? null,
-            },
-          },
-          route: {
-            available: routeAvailable && !countryBlocked,
-            mode: routeAvailable ? "siren" : "venue_only",
-            summary: executionProbe.reason,
-            suggestedClipUsd: executionProbe.suggestedClipUsd,
-            walletConnected: executionProbe.walletConnected,
-            probes: executionProbe.probes,
-            actionable,
-          },
-          risk: {
-            resolution: resolutionRisk,
-            field: fieldRisk,
-          },
-        },
-      });
-    } catch (error) {
-      req.log.warn(error, "Failed to build execution preview");
-      return reply.status(503).send({
-        success: false,
-        error: error instanceof Error ? error.message : "Execution preview unavailable",
-      });
-    }
-  });
-
-  app.get<{
-    Querystring: { mint?: string; wallet?: string; balance?: string; marketTicker?: string };
-  }>("/api/positions/execution-preview", async (req, reply) => {
-    const mint = req.query.mint?.trim();
-    if (!mint) {
-      return reply.status(400).send({ success: false, error: "mint required" });
-    }
-
-    const wallet = req.query.wallet?.trim() || null;
-    const balance = parsePositiveFloat(req.query.balance);
-    const marketTicker = req.query.marketTicker?.trim() || null;
-
-    try {
-      const sellPreview = await probePredictionSellRoute({
-        mint,
-        wallet,
-        balance,
-      });
-
-      return reply.send({
-        success: true,
-        data: {
-          mint,
-          marketTicker,
-          route: {
-            available: sellPreview.available,
-            summary: sellPreview.reason,
-            walletConnected: sellPreview.walletConnected,
-            suggestedChunkContracts: sellPreview.suggestedChunkContracts,
-            chunkPlan: sellPreview.chunkPlan,
-            probes: sellPreview.probes,
-          },
-        },
-      });
-    } catch (error) {
-      req.log.warn(error, "Failed to build position execution preview");
-      return reply.status(503).send({
-        success: false,
-        error: error instanceof Error ? error.message : "Position execution preview unavailable",
-      });
-    }
-  });
-
   app.get("/api/sol-price", async (_req, reply) => {
     reply.header("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
     try {
@@ -2357,27 +1292,16 @@ export function registerRoutes(app: FastifyInstance) {
   });
 
   // Track or upsert a user by wallet / auth id
-  app.post<{ Body: { wallet?: string; authUserId?: string; signupSource?: string; email?: string; name?: string } }>(
+  app.post<{ Body: { wallet?: string; authUserId?: string; signupSource?: string } }>(
     "/api/users/track",
     async (req, reply) => {
-      const { wallet, authUserId, signupSource, email, name } = req.body || {};
+      const { wallet, authUserId, signupSource } = req.body || {};
       if (!wallet && !authUserId) {
         return reply.status(400).send({ success: false, error: "wallet or authUserId required" });
       }
 
       const normalizedWallet =
         typeof wallet === "string" && wallet.trim().length > 0 ? wallet.trim().toLowerCase() : null;
-      const normalizedEmail = normalizeEmailAddress(email);
-      const normalizedName = typeof name === "string" && name.trim().length > 0 ? name.trim().slice(0, 80) : null;
-
-      if (normalizedWallet) {
-        const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
-        if (!walletOk) return;
-      }
-      if (authUserId) {
-        const authOk = await requireSupabaseAuthUser(req, reply, authUserId);
-        if (!authOk) return;
-      }
 
       // Auto-detect country from IP geo headers (no user permission needed)
       const country =
@@ -2396,7 +1320,7 @@ export function registerRoutes(app: FastifyInstance) {
 
         const { data: existing, error: selectError } = await supabase
           .from("users")
-          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name,metadata")
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
           .or(filters.join(","))
           .limit(1)
           .maybeSingle();
@@ -2417,17 +1341,11 @@ export function registerRoutes(app: FastifyInstance) {
           if (normalizedWallet) insertPayload.wallet = normalizedWallet;
           if (authUserId) insertPayload.auth_user_id = authUserId;
           if (countryCode) insertPayload.country = countryCode;
-          if (normalizedEmail || normalizedName) {
-            insertPayload.metadata = {
-              ...(normalizedEmail ? { email: normalizedEmail } : {}),
-              ...(normalizedName ? { name: normalizedName } : {}),
-            };
-          }
 
           const { data: inserted, error: insertError } = await supabase
             .from("users")
             .insert(insertPayload)
-            .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name,metadata")
+            .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
             .single();
 
           if (insertError) {
@@ -2445,20 +1363,12 @@ export function registerRoutes(app: FastifyInstance) {
         if (!existing.auth_user_id && authUserId) updatePayload.auth_user_id = authUserId;
         if (!existing.signup_source && signupSource) updatePayload.signup_source = signupSource;
         if (countryCode) updatePayload.country = countryCode;
-        if (normalizedEmail || normalizedName) {
-          const existingMetadata = normalizeMetadata(existing.metadata);
-          updatePayload.metadata = {
-            ...existingMetadata,
-            ...(normalizedEmail ? { email: normalizedEmail } : {}),
-            ...(normalizedName ? { name: normalizedName } : {}),
-          };
-        }
 
         const { data: updated, error: updateError } = await supabase
           .from("users")
           .update(updatePayload)
           .eq("id", existing.id)
-          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name,metadata")
+          .select("id,wallet,auth_user_id,created_at,last_seen_at,signup_source,country,username,display_name")
           .single();
 
         if (updateError) {
@@ -2482,6 +1392,7 @@ export function registerRoutes(app: FastifyInstance) {
       if (!wallet || typeof wallet !== "string" || wallet.trim().length < 20) {
         return reply.status(400).send({ success: false, error: "Valid wallet address required" });
       }
+      if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
       if (!username || typeof username !== "string") {
         return reply.status(400).send({ success: false, error: "Username required" });
       }
@@ -2489,8 +1400,6 @@ export function registerRoutes(app: FastifyInstance) {
       if (clean.length < 2) {
         return reply.status(400).send({ success: false, error: "Username must be 2–20 chars (letters, numbers, _ . -)." });
       }
-      const walletOk = await requireWalletSignature(req, reply, wallet.trim().toLowerCase(), "write");
-      if (!walletOk) return;
       try {
         const supabase = getSupabaseAdminClient();
         const { data: dup } = await supabase
@@ -2557,6 +1466,7 @@ export function registerRoutes(app: FastifyInstance) {
       if (!wallet || typeof wallet !== "string" || wallet.trim().length < 20) {
         return reply.status(400).send({ success: false, error: "Valid wallet address required" });
       }
+      if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
       if (!imageBase64 || typeof imageBase64 !== "string") {
         return reply.status(400).send({ success: false, error: "imageBase64 required" });
       }
@@ -2580,8 +1490,6 @@ export function registerRoutes(app: FastifyInstance) {
         return reply.status(400).send({ success: false, error: "Invalid image size" });
       }
       const w = wallet.trim().toLowerCase();
-      const walletOk = await requireWalletSignature(req, reply, w, "write");
-      if (!walletOk) return;
       const ext = mime.includes("png") ? "png" : "jpg";
       const contentType = ext === "png" ? "image/png" : "image/jpeg";
       const objectPath = `${w.slice(0, 8)}-${w.slice(-6)}.${ext}`;
@@ -2688,10 +1596,9 @@ export function registerRoutes(app: FastifyInstance) {
     if (!wallet || typeof wallet !== "string" || typeof volumeSol !== "number" || !Number.isFinite(volumeSol) || volumeSol <= 0) {
       return reply.status(400).send({ success: false, error: "wallet and volumeSol (positive number) required" });
     }
-    const w = wallet.trim().toLowerCase();
+    if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
+    const w = wallet.trim();
     if (w.length < 32) return reply.status(400).send({ success: false, error: "Invalid wallet" });
-    const walletOk = await requireWalletSignature(req, reply, w, "write");
-    if (!walletOk) return;
     const entries = volumeStore.get(w) ?? [];
     entries.push({ ts: Date.now(), volumeSol });
     if (entries.length > MAX_VOLUME_ENTRIES_PER_WALLET) entries.splice(0, entries.length - MAX_VOLUME_ENTRIES_PER_WALLET);
@@ -2705,12 +1612,14 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: volume stats (platform + per wallet, 7d / 30d / all-time). */
   app.get("/api/admin/volume", async (_req, reply) => {
+    if (!(await requireAdmin(_req, reply))) return;
     const stats = getVolumeStats();
     return reply.send({ success: true, data: stats });
   });
 
   /** Admin: daily platform volume series (for dashboard charts). */
   app.get<{ Querystring: { days?: string } }>("/api/admin/volume/daily", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     const days = Number.parseInt(req.query.days || "14", 10);
     const series = getDailyPlatformVolumeStats(Number.isFinite(days) ? days : 14);
     return reply.send({ success: true, data: { series } });
@@ -2718,6 +1627,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /** Admin: aggregate user stats for dashboard. */
   app.get("/api/admin/users/stats", async (_req, reply) => {
+    if (!(await requireAdmin(_req, reply))) return;
     try {
       const supabase = getSupabaseAdminClient();
       const now = Date.now();
@@ -2754,206 +1664,6 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  /** Admin: execution summary from persisted trade attempts. */
-  app.get<{ Querystring: { days?: string } }>("/api/admin/execution/summary", async (req, reply) => {
-    const days = Math.min(Math.max(parseInt(req.query.days || "7", 10) || 7, 1), 30);
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-
-    try {
-      const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase
-        .from("siren_trade_attempts")
-        .select("wallet,venue,mode,market,side,status,error_message,created_at,metadata")
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
-        .limit(2000);
-
-      if (error) {
-        if (error.message?.toLowerCase().includes("siren_trade_attempts")) {
-          return reply.send({
-            success: true,
-            data: {
-              attempts: 0,
-              successes: 0,
-              failures: 0,
-              successRate: 0,
-              sellAttempts: 0,
-              successfulSells: 0,
-              sellSuccessRate: 0,
-              partialFills: 0,
-              uniqueWallets: 0,
-              byVenue: [],
-              topFailureReasons: [],
-              topMarkets: [],
-            },
-          });
-        }
-        return reply.status(503).send({ success: false, error: error.message || "Failed to fetch execution summary" });
-      }
-
-      const rows = (data ?? []) as TradeAttemptRow[];
-      const wallets = new Set<string>();
-      const venueMap = new Map<string, { venue: string; attempts: number; successes: number; failures: number }>();
-      const failureMap = new Map<string, number>();
-      const marketMap = new Map<string, number>();
-      let attempts = 0;
-      let successes = 0;
-      let failures = 0;
-      let sellAttempts = 0;
-      let successfulSells = 0;
-      let partialFills = 0;
-
-      for (const row of rows) {
-        attempts += 1;
-        if (row.wallet) wallets.add(row.wallet);
-        const metadata = normalizeMetadata(row.metadata);
-        const isSuccess = row.status === "success";
-        const isSell = row.side === "sell" || row.mode.toLowerCase().includes("sell");
-
-        if (isSuccess) successes += 1;
-        else failures += 1;
-        if (isSell) {
-          sellAttempts += 1;
-          if (isSuccess) successfulSells += 1;
-        }
-        if (metadata.partialSellFilled === true) partialFills += 1;
-
-        const venueEntry = venueMap.get(row.venue) || { venue: row.venue, attempts: 0, successes: 0, failures: 0 };
-        venueEntry.attempts += 1;
-        if (isSuccess) venueEntry.successes += 1;
-        else venueEntry.failures += 1;
-        venueMap.set(row.venue, venueEntry);
-
-        if (row.market?.trim()) {
-          marketMap.set(row.market, (marketMap.get(row.market) || 0) + 1);
-        }
-        if (!isSuccess) {
-          const bucket = bucketTradeFailureReason(row.error_message);
-          failureMap.set(bucket, (failureMap.get(bucket) || 0) + 1);
-        }
-      }
-
-      return reply.send({
-        success: true,
-        data: {
-          attempts,
-          successes,
-          failures,
-          successRate: attempts > 0 ? (successes / attempts) * 100 : 0,
-          sellAttempts,
-          successfulSells,
-          sellSuccessRate: sellAttempts > 0 ? (successfulSells / sellAttempts) * 100 : 0,
-          partialFills,
-          uniqueWallets: wallets.size,
-          byVenue: Array.from(venueMap.values()).sort((a, b) => b.attempts - a.attempts),
-          topFailureReasons: Array.from(failureMap.entries())
-            .map(([reason, count]) => ({ reason, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5),
-          topMarkets: Array.from(marketMap.entries())
-            .map(([market, count]) => ({ market, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5),
-        },
-      });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch execution summary" });
-    }
-  });
-
-  /** Admin: recent relay-eligible Torque emissions derived from persisted attempt logs. */
-  app.get<{ Querystring: { limit?: string } }>("/api/admin/torque/emissions", async (req, reply) => {
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10) || 20, 1), 100);
-    try {
-      const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase
-        .from("siren_trade_attempts")
-        .select("wallet,venue,mode,market,side,input_asset,output_asset,amount,status,tx_signature,error_message,created_at,metadata")
-        .order("created_at", { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        if (error.message?.toLowerCase().includes("siren_trade_attempts")) {
-          return reply.send({
-            success: true,
-            data: {
-              rows: [],
-              summary: {
-                relayEnabled: Boolean(process.env.TORQUE_API_KEY?.trim()),
-                emittedRows: 0,
-                leaderboardCandidates: 0,
-                cleanCloseCandidates: 0,
-                expiryNudges: 0,
-              },
-            },
-          });
-        }
-        return reply.status(503).send({ success: false, error: error.message || "Failed to fetch Torque emissions" });
-      }
-
-      const rows = ((data ?? []) as TradeAttemptRow[]).map((row) => {
-        const metadata = normalizeMetadata(row.metadata);
-        const preview = previewTorqueTradeAttemptEvent({
-          wallet: row.wallet,
-          venue: row.venue,
-          mode: row.mode,
-          market: row.market,
-          side: row.side,
-          input_asset: row.input_asset,
-          output_asset: row.output_asset,
-          amount: row.amount,
-          status: row.status,
-          tx_signature: row.tx_signature,
-          error_message: row.error_message,
-          metadata,
-        });
-
-        return {
-          wallet: row.wallet,
-          createdAt: row.created_at,
-          venue: row.venue,
-          mode: row.mode,
-          market: row.market,
-          preview,
-          relayEligible: Boolean(process.env.TORQUE_API_KEY?.trim()) && Boolean(row.wallet),
-          campaignHints: [
-            row.status === "success" && (row.side === "sell" || row.mode.toLowerCase().includes("sell")) ? "first_clean_close" : null,
-            typeof metadata.resolutionRisk === "string" && metadata.resolutionRisk.toLowerCase() === "high" ? "resolve_before_expiry" : null,
-            row.status === "success" ? "execution_leaderboard" : null,
-          ].filter((value): value is string => Boolean(value)),
-        };
-      });
-
-      const successfulSellCandidates = rows.filter(
-        (row) =>
-          row.preview.eventName === "trade_attempt_success" &&
-          (row.preview.side === "sell" || row.mode.toLowerCase().includes("sell")),
-      ).length;
-      const expiryNudges = rows.filter((row) => row.campaignHints.includes("resolve_before_expiry")).length;
-      const leaderboardCandidates = new Set(
-        rows.filter((row) => row.campaignHints.includes("execution_leaderboard")).map((row) => row.wallet).filter(Boolean),
-      ).size;
-
-      return reply.send({
-        success: true,
-        data: {
-          rows,
-          summary: {
-            relayEnabled: Boolean(process.env.TORQUE_API_KEY?.trim()),
-            emittedRows: rows.length,
-            leaderboardCandidates,
-            cleanCloseCandidates: successfulSellCandidates,
-            expiryNudges,
-          },
-        },
-      });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch Torque emissions" });
-    }
-  });
-
   /** Trades: log buys/sells permanently for open-position tracking + PnL. */
   app.post<{
     Body: {
@@ -2983,21 +1693,19 @@ export function registerRoutes(app: FastifyInstance) {
     if (!wallet || typeof wallet !== "string" || wallet.length < 32) {
       return reply.status(400).send({ success: false, error: "Valid wallet required" });
     }
+    if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
     if (!mint || typeof mint !== "string" || mint.length < 32) {
       return reply.status(400).send({ success: false, error: "Valid mint required" });
     }
     if (side !== "buy" && side !== "sell") {
       return reply.status(400).send({ success: false, error: "side must be buy or sell" });
     }
-    const normalizedWallet = wallet.trim().toLowerCase();
-    const walletOk = await requireWalletSignature(req, reply, normalizedWallet, "write");
-    if (!walletOk) return;
 
     try {
       const supabase = getSupabaseAdminClient();
       const executedAt = typeof timestamp === "number" && Number.isFinite(timestamp) ? new Date(timestamp) : new Date();
       const { error } = await supabase.from("siren_trades").insert({
-        wallet: normalizedWallet,
+        wallet: wallet.trim(),
         mint: mint.trim(),
         side,
         token_amount: tokenAmount,
@@ -3030,7 +1738,7 @@ export function registerRoutes(app: FastifyInstance) {
 
   /**
    * Public leaderboard: **prediction-market traders only** (Kalshi / Polymarket-style logged trades).
-   * Query: window=7d|30d|all|alltime, metric=execution|volume|winRate.
+   * Query: window=7d|30d|all|alltime, metric=volume|winRate.
    * All-time uses the most recent 25k rows (FIFO win rate) so the route stays bounded.
    */
   app.get<{ Querystring: { window?: string; metric?: string } }>(
@@ -3039,8 +1747,8 @@ export function registerRoutes(app: FastifyInstance) {
       const win = (req.query.window || "7d").toLowerCase();
       const window =
         win === "30d" ? "30d" : win === "all" || win === "alltime" ? "all" : "7d";
-      const metricRaw = (req.query.metric || "execution").toLowerCase().replace(/_/g, "");
-      const metric = metricRaw === "winrate" ? "winRate" : metricRaw === "execution" ? "execution" : "volume";
+      const metricRaw = (req.query.metric || "volume").toLowerCase().replace(/_/g, "");
+      const metric = metricRaw === "winrate" ? "winRate" : "volume";
       try {
         const client = getSupabaseAdminClient();
         const built = await buildLeaderboard({
@@ -3066,8 +1774,108 @@ export function registerRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Querystring: { wallet?: string } }>("/api/integrations/goldrush/wallet-intelligence", async (req, reply) => {
+    const wallet = req.query.wallet?.trim();
+    if (!wallet) {
+      return reply.status(400).send({ success: false, error: "wallet required" });
+    }
+    if (!(await requireWalletSignature(req, reply, wallet, "read"))) return;
+    try {
+      const data = await getGoldRushWalletIntelligence(wallet);
+      return reply.send({ success: true, data });
+    } catch (error) {
+      app.log.warn(error, "Failed to load GoldRush wallet intelligence");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "GoldRush wallet intelligence unavailable",
+      });
+    }
+  });
+
+  app.get("/api/integrations/torque/readiness", async (_req, reply) => {
+    return reply.send({ success: true, data: getTorqueRelayReadiness() });
+  });
+
+  app.get<{ Querystring: { limit?: string } }>("/api/admin/torque/emissions", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit || "12", 10) || 12, 1), 50);
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from("siren_trade_attempts")
+        .select("wallet,venue,mode,market,side,amount,status,tx_signature,error_message,metadata,created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        return reply.status(503).send({ success: false, error: error.message || "Failed to fetch Torque emissions" });
+      }
+
+      const rows = (data ?? []).map((row) => {
+        const metadata = (row.metadata as Record<string, unknown> | null) ?? {};
+        const preview = previewTorqueTradeAttemptEvent({
+          wallet: row.wallet ?? null,
+          venue: row.venue ?? "unknown",
+          mode: row.mode ?? "unknown",
+          market: row.market ?? null,
+          side: row.side ?? null,
+          input_asset: null,
+          output_asset: null,
+          amount: row.amount != null ? String(row.amount) : null,
+          status: row.status ?? "unknown",
+          tx_signature: row.tx_signature ?? null,
+          error_message: row.error_message ?? null,
+          metadata,
+        });
+
+        const campaignHints = [
+          row.status === "success" && row.side === "sell" ? "first_clean_close" : null,
+          metadata.resolutionRisk === "high" ? "resolve_before_expiry" : null,
+          row.status === "success" ? "execution_leaderboard" : null,
+        ].filter((value): value is string => Boolean(value));
+
+        return {
+          wallet: row.wallet ?? null,
+          createdAt: row.created_at ?? null,
+          venue: row.venue ?? "unknown",
+          mode: row.mode ?? "unknown",
+          market: row.market ?? "unknown",
+          relayEligible: Boolean(row.wallet),
+          campaignHints,
+          preview,
+        };
+      });
+
+      const leaderboardCandidates = new Set(
+        rows
+          .filter((row) => row.campaignHints.includes("execution_leaderboard"))
+          .map((row) => row.wallet)
+          .filter(Boolean),
+      ).size;
+
+      return reply.send({
+        success: true,
+        data: {
+          relayEnabled: getTorqueRelayReadiness().configured,
+          rows,
+          summary: {
+            emittedRows: rows.length,
+            leaderboardCandidates,
+            cleanCloseCandidates: rows.filter((row) => row.campaignHints.includes("first_clean_close")).length,
+            expiryNudges: rows.filter((row) => row.campaignHints.includes("resolve_before_expiry")).length,
+          },
+        },
+      });
+    } catch (error) {
+      app.log.error(error, "Failed to fetch Torque emissions");
+      return reply.status(500).send({ success: false, error: "Failed to fetch Torque emissions" });
+    }
+  });
+
   /** Admin: list app users (wallet-connected users from users table). */
   app.get<{ Querystring: { limit?: string; offset?: string } }>("/api/admin/users", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
     const limit = Math.min(Math.max(parseInt(req.query.limit || "100", 10) || 100, 1), 500);
     const offset = Math.max(parseInt(req.query.offset || "0", 10) || 0, 0);
     try {
@@ -3085,116 +1893,11 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  /** Admin: unified email audience across waitlist + app users with email-bearing auth metadata. */
-  app.get<{ Querystring: { limit?: string } }>("/api/admin/audience", async (req, reply) => {
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "500", 10) || 500, 1), 2000);
-    try {
-      const supabase = getSupabaseAdminClient();
-      const audience = await fetchUnifiedAudience(supabase, limit);
-      return reply.send({ success: true, data: audience });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to fetch audience" });
-    }
-  });
-
-  /** Admin: current email campaign to all deduped contacts. */
-  app.post("/api/admin/audience/send-execution-update-email", async (_req, reply) => {
-    try {
-      const supabase = getSupabaseAdminClient();
-      const audience = await fetchUnifiedAudience(supabase, 2000);
-
-      const failedEmails: string[] = [];
-      const skippedEmails: string[] = [];
-      let sent = 0;
-      let failed = 0;
-      let skipped = 0;
-
-      for (const row of audience) {
-        if (!row.email?.trim()) {
-          skipped += 1;
-          skippedEmails.push(row.email || "");
-          continue;
-        }
-        if (!canSendEmail()) {
-          skipped += 1;
-          skippedEmails.push(row.email);
-          continue;
-        }
-        const result = await sendExecutionRiskUpdateEmail({ to: row.email, name: row.name });
-        if (result.ok) {
-          sent += 1;
-        } else {
-          failed += 1;
-          failedEmails.push(row.email);
-          app.log.warn({ email: row.email, err: result.error }, "Failed to send execution update email");
-        }
-      }
-
-      return reply.send({ success: true, sent, failed, skipped, total: audience.length, failedEmails, skippedEmails });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to send execution update emails" });
-    }
-  });
-
-  /** Admin: current email campaign to pasted contacts that exist in the unified audience. */
-  app.post<{ Body: { emails?: string[] } }>("/api/admin/audience/send-execution-update-email-by-email", async (req, reply) => {
-    try {
-      const requested = Array.isArray(req.body?.emails) ? req.body.emails : [];
-      const normalized = Array.from(
-        new Set(
-          requested
-            .map((email) => normalizeEmailAddress(email))
-            .filter((email): email is string => !!email),
-        ),
-      );
-      if (normalized.length === 0) {
-        return reply.status(400).send({ success: false, error: "No valid emails provided" });
-      }
-
-      const supabase = getSupabaseAdminClient();
-      const audienceByEmail = new Map(
-        (await fetchUnifiedAudience(supabase, 2000)).map((row) => [row.email, row] as const),
-      );
-
-      const failedEmails: string[] = [];
-      const skippedEmails: string[] = [];
-      let sent = 0;
-      let failed = 0;
-      let skipped = 0;
-
-      for (const email of normalized) {
-        const row = audienceByEmail.get(email);
-        if (!row) {
-          skipped += 1;
-          skippedEmails.push(email);
-          continue;
-        }
-        if (!canSendEmail()) {
-          skipped += 1;
-          skippedEmails.push(email);
-          continue;
-        }
-        const result = await sendExecutionRiskUpdateEmail({ to: row.email, name: row.name });
-        if (result.ok) {
-          sent += 1;
-        } else {
-          failed += 1;
-          failedEmails.push(row.email);
-          app.log.warn({ email: row.email, err: result.error }, "Failed to send execution update email (manual)");
-        }
-      }
-
-      return reply.send({ success: true, sent, failed, skipped, total: normalized.length, failedEmails, skippedEmails });
-    } catch (e) {
-      app.log.error(e);
-      return reply.status(500).send({ success: false, error: "Failed to send execution update emails" });
-    }
-  });
-
   /** Wallet transaction history via Helius Enhanced Transactions API. */
   app.get<{ Querystring: { address: string; limit?: string; cursor?: string } }>("/api/transactions", async (req, reply) => {
+    if (isRateLimited(req, "transactions", 60, 60_000)) {
+      return reply.status(429).send({ success: false, error: "Rate limit exceeded. Try again shortly." });
+    }
     const key = process.env.HELIUS_API_KEY;
     if (!key) {
       return reply.status(503).send({ success: false, error: "Helius API key not configured. Add HELIUS_API_KEY to apps/api/.env" });
@@ -3203,8 +1906,6 @@ export function registerRoutes(app: FastifyInstance) {
     if (!address?.trim()) {
       return reply.status(400).send({ success: false, error: "address required" });
     }
-    const walletOk = await requireWalletSignature(req, reply, address.trim().toLowerCase(), "read");
-    if (!walletOk) return;
     try {
       const params = new URLSearchParams({ "api-key": key, limit });
       if (cursor) params.set("before", cursor);
@@ -3226,6 +1927,9 @@ export function registerRoutes(app: FastifyInstance) {
     Body: { inputMint: string; outputMint: string; amount: string; userPublicKey: string; slippageBps?: number; tryDflowFirst?: boolean; forcePredictionMarket?: boolean };
     Querystring: { countryCode?: string };
   }>("/api/swap/order", async (req, reply) => {
+    if (isRateLimited(req, "swap-order", 40, 60_000)) {
+      return reply.status(429).send({ success: false, error: "Rate limit exceeded. Try again shortly." });
+    }
     const { inputMint, outputMint, amount, userPublicKey, slippageBps = 200, tryDflowFirst = true, forcePredictionMarket = false } = req.body || {};
     const countryCode = (req.body as { countryCode?: string })?.countryCode ?? req.query.countryCode ?? req.headers["cf-ipcountry"] ?? req.headers["x-country-code"];
     if (!inputMint || !outputMint || !amount || !userPublicKey) {
@@ -3331,19 +2035,12 @@ export function registerRoutes(app: FastifyInstance) {
     if (!addr) {
       return reply.status(400).send({ success: false, error: "address query param required" });
     }
-    const walletOk = await requireWalletSignature(req, reply, addr.toLowerCase(), "read");
-    if (!walletOk) return;
+    if (!(await requireWalletSignature(req, reply, addr, "read"))) return;
     try {
-      const positions = await getAugmentedDflowPositions(addr);
+      const positions = await getDflowPositionsForWallet(addr);
       if (positions.error) {
         app.log.warn({ wallet: `${addr.slice(0, 6)}...${addr.slice(-4)}`, err: positions.error }, "DFlow positions lookup degraded");
         return reply.status(503).send({ success: false, error: positions.error });
-      }
-      if (positions.stale) {
-        app.log.warn(
-          { wallet: `${addr.slice(0, 6)}...${addr.slice(-4)}`, err: positions.degradedReason },
-          "DFlow positions served from stale cache",
-        );
       }
       return reply.send({ success: true, data: positions });
     } catch (e) {
@@ -3359,8 +2056,7 @@ export function registerRoutes(app: FastifyInstance) {
     if (!addr) {
       return reply.status(400).send({ success: false, error: "address query param required" });
     }
-    const walletOk = await requireWalletSignature(req, reply, addr.toLowerCase(), "read");
-    if (!walletOk) return;
+    if (!(await requireWalletSignature(req, reply, addr, "read"))) return;
 
     const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
     const isProd = process.env.NODE_ENV === "production";
@@ -3397,7 +2093,7 @@ export function registerRoutes(app: FastifyInstance) {
     const writeSnapshot = async () => {
       if (closed) return;
       try {
-        const data = await getAugmentedDflowPositions(addr);
+        const data = await getDflowPositionsForWallet(addr);
         if (data.error) {
           reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: data.error })}\n\n`);
           return;

@@ -118,11 +118,9 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
   }
 
   if (tokens.length === 0) {
-    walletPositionCache.set(walletAddress, {
-      positions: [],
-      updatedAt: new Date().toISOString(),
-    });
-    return { positions: [], updatedAt: new Date().toISOString() };
+    const updatedAt = new Date().toISOString();
+    walletPositionCache.set(walletAddress, { positions: [], updatedAt });
+    return { positions: [], updatedAt };
   }
 
   const addresses = tokens.map((t) => t.mint);

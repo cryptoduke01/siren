@@ -11,8 +11,7 @@ import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
-import { useMarketExecutionPreview } from "@/hooks/useMarketExecutionPreview";
-import { usePositionExecutionPreview } from "@/hooks/usePositionExecutionPreview";
+import { useGoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
 import { hapticLight } from "@/lib/haptics";
 import {
   buildProofDeepLink,
@@ -23,14 +22,13 @@ import {
 } from "@/lib/dflowProof";
 import { buildPolymarketFundingConfig } from "@/lib/privyFunding";
 import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
-import { getPositionEntry, setPositionEntry } from "@/lib/positionEntryStorage";
+import { getPositionEntry } from "@/lib/positionEntryStorage";
 import { fetchSolPriceUsd } from "@/lib/pricing";
-import { getWalletAuthHeaders } from "@/lib/requestAuth";
 import { API_URL } from "@/lib/apiUrl";
+import { appendWalletAuthQuery, getWalletAuthHeaders } from "@/lib/requestAuth";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
-const MIN_SOL_ROUTE_HEADROOM_SOL = 0.003;
 const POLYMARKET_HOST = "https://clob.polymarket.com";
 const POLYGON_CHAIN_ID = 137;
 
@@ -62,15 +60,6 @@ function formatUsd(value?: number | null, digits = 2): string {
     currency: "USD",
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(value);
-}
-
-function formatUsdWhole(value?: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
   }).format(value);
 }
 
@@ -111,7 +100,7 @@ function getFriendlyTradeError(message: string, fallback: string): string {
     lower.includes("lamports") ||
     lower.includes("attempt to debit an account")
   ) {
-    return "This transaction likely needs a little more SOL headroom for fees or rent-exempt token-account setup. Keep a few thousandths of a SOL free, then try again.";
+    return "Not enough SOL to pay network fees. Add a small SOL balance, then try again.";
   }
   if (lower.includes("user rejected") || lower.includes("rejected the request") || lower.includes("4001")) {
     return "Wallet signature was canceled.";
@@ -121,15 +110,6 @@ function getFriendlyTradeError(message: string, fallback: string): string {
   }
   if (lower.includes("route not found")) {
     return "No executable route found for this size right now. Try a smaller sell amount.";
-  }
-  if (lower.includes("no yes buyers are live") || lower.includes("no no buyers are live")) {
-    return "There are no live buyers on your side of this market right now, so Siren cannot close the position yet.";
-  }
-  if (lower.includes("no route to sell this position")) {
-    return "This position has no sell route right now. Liquidity or settlement is not available yet.";
-  }
-  if (lower.includes("no executable route found")) {
-    return "Siren could not find a live close route for this size. Try again later or reduce the amount.";
   }
   if (lower.includes("validation error") || lower.includes("400")) {
     return "We could not get a live quote for this order right now. Please try again.";
@@ -167,12 +147,11 @@ function extractErrorMessage(error: unknown): string {
   return "Trade failed";
 }
 
-function logTradeFailure(context: Record<string, unknown>, authHeaders?: Record<string, string> | null) {
+function logTradeFailure(context: Record<string, unknown>) {
   console.warn("[siren-trade-failure]", context);
-  if (!authHeaders) return;
   void fetch(`${API_URL}/api/trade-errors/log`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
+    headers: { "Content-Type": "application/json" },
     credentials: "omit",
     keepalive: true,
     body: JSON.stringify({
@@ -181,19 +160,6 @@ function logTradeFailure(context: Record<string, unknown>, authHeaders?: Record<
     }),
   }).catch(() => {
     // Ignore logging transport failures to avoid masking the user-facing trade error.
-  });
-}
-
-function logTradeAttempt(context: Record<string, unknown>, authHeaders?: Record<string, string> | null) {
-  if (!authHeaders) return;
-  void fetch(`${API_URL}/api/trade-attempts/log`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
-    credentials: "omit",
-    keepalive: true,
-    body: JSON.stringify(context),
-  }).catch(() => {
-    // Best-effort analytics only.
   });
 }
 
@@ -273,12 +239,7 @@ export function UnifiedBuyPanel() {
   const selectedMarketSource = selectedMarket?.source;
   const isKalshiMarketTrade = buyPanelMode === "market" && selectedMarketSource === "kalshi";
   const isPolymarketTrade = buyPanelMode === "market" && selectedMarketSource === "polymarket";
-  const selectedOutcomeLabel = selectedMarket?.selected_outcome_label?.trim() || null;
-  const walletKey = publicKey?.toBase58();
-  const getWriteAuthHeaders = async () =>
-    walletKey && signMessage ? getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" }) : null;
-  const getReadAuthHeaders = async () =>
-    walletKey && signMessage ? getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "read" }) : null;
+  const walletKey = publicKey?.toBase58() ?? null;
   const deferredSolAmount = useDeferredValue(solAmount);
   const deferredSellAmount = useDeferredValue(sellAmount);
 
@@ -311,11 +272,11 @@ export function UnifiedBuyPanel() {
       if (!publicKey) {
         return { verified: false };
       }
-      const authHeaders = await getReadAuthHeaders();
-      const res = await fetch(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`, {
-        credentials: "omit",
-        headers: authHeaders ?? undefined,
-      });
+      const signedUrl = await appendWalletAuthQuery(
+        new URL(`${API_URL}/api/dflow/proof-status?address=${encodeURIComponent(publicKey.toBase58())}`),
+        { wallet: publicKey.toBase58(), signMessage, scope: "read" }
+      );
+      const res = await fetch(signedUrl, { credentials: "omit" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(json?.error || "Unable to check wallet verification.");
@@ -327,11 +288,7 @@ export function UnifiedBuyPanel() {
     retry: 1,
   });
   const { data: marketActivity } = useMarketActivity(selectedMarket?.source === "kalshi" ? selectedMarket.ticker : undefined);
-  const { data: executionPreview, isLoading: executionPreviewLoading } = useMarketExecutionPreview({
-    ticker: buyPanelMode === "market" ? selectedMarket?.event_ticker || selectedMarket?.ticker : undefined,
-    outcomeTicker: buyPanelMode === "market" ? selectedMarket?.ticker : undefined,
-    wallet: buyPanelMode === "market" && selectedMarket?.source === "kalshi" ? walletKey : null,
-  });
+  const { data: goldRushIntelligence } = useGoldRushWalletIntelligence(walletKey, signMessage);
   const { data: solanaUsdcBalance = 0 } = useQuery({
     queryKey: ["solana-usdc-balance", publicKey?.toBase58()],
     queryFn: async () => {
@@ -346,17 +303,6 @@ export function UnifiedBuyPanel() {
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
-  const { data: nativeSolBalance = 0 } = useQuery({
-    queryKey: ["solana-native-balance", publicKey?.toBase58()],
-    queryFn: async () => {
-      if (!publicKey) return 0;
-      const lamports = await connection.getBalance(publicKey);
-      return lamports / LAMPORTS_PER_SOL;
-    },
-    enabled: !!publicKey,
-    staleTime: 15_000,
-    refetchInterval: 30_000,
-  });
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
@@ -365,20 +311,12 @@ export function UnifiedBuyPanel() {
       const accounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
         mint: new PublicKey(selectedToken.mint),
       });
-      const matching = accounts.value[0];
-      const info = (matching?.account?.data as { parsed?: { info?: { tokenAmount?: { uiAmount?: number } } } })?.parsed?.info;
-      return info?.tokenAmount?.uiAmount ?? selectedToken.balance ?? 0;
+      const acc = accounts.value[0];
+      const info = (acc?.account?.data as { parsed?: { info?: { tokenAmount?: { uiAmount: number } } } })?.parsed?.info;
+      return info?.tokenAmount?.uiAmount ?? 0;
     },
     enabled: !!publicKey && !!selectedToken && sellMode,
     staleTime: 10_000,
-  });
-  const effectiveTokenBalance =
-    tokenBalance > 0 ? tokenBalance : selectedToken?.balance != null && selectedToken.balance > 0 ? selectedToken.balance : 0;
-  const { data: positionExecutionPreview, isLoading: positionExecutionPreviewLoading } = usePositionExecutionPreview({
-    mint: buyPanelMode === "position" ? selectedToken?.mint : undefined,
-    wallet: buyPanelMode === "position" ? walletKey : null,
-    balance: buyPanelMode === "position" && sellMode ? effectiveTokenBalance : null,
-    marketTicker: buyPanelMode === "position" ? selectedToken?.marketTicker ?? null : null,
   });
 
   useEffect(() => {
@@ -442,52 +380,7 @@ export function UnifiedBuyPanel() {
   const tokenRouteLabel = "DFlow";
   const verificationRequired = isWalletVerificationError(error);
   const proofVerified = !!dflowProofStatus?.verified;
-  const marketYesLabel = selectedOutcomeLabel || "YES";
-  const marketNoLabel = selectedOutcomeLabel ? `Fade ${selectedOutcomeLabel}` : "NO";
-  const previewSuggestedClipUsd = executionPreview?.route.suggestedClipUsd ?? null;
-  const isSizingAbovePreview =
-    buyPanelMode === "market" &&
-    parsedBuySolAmount != null &&
-    previewSuggestedClipUsd != null &&
-    parsedBuySolAmount > previewSuggestedClipUsd;
-  const routeLooksBlocked =
-    buyPanelMode === "market" &&
-    selectedMarket?.source === "kalshi" &&
-    executionPreview &&
-    !executionPreview.route.available &&
-    executionPreview.route.walletConnected;
-  const executionPreviewMetadata = executionPreview
-    ? {
-        selectedOutcome: executionPreview.market.selectedOutcome.label,
-        selectedOutcomeTicker: executionPreview.market.selectedOutcome.ticker,
-        suggestedClipUsd: executionPreview.route.suggestedClipUsd,
-        routeSummary: executionPreview.route.summary,
-        routeAvailable: executionPreview.route.available,
-        fieldRisk: executionPreview.risk.field.label,
-        resolutionRisk: executionPreview.risk.resolution.label,
-      }
-    : undefined;
-  const positionExecutionPreviewMetadata = positionExecutionPreview
-    ? {
-        closeRouteSummary: positionExecutionPreview.route.summary,
-        suggestedChunkContracts: positionExecutionPreview.route.suggestedChunkContracts,
-        chunkPlan: positionExecutionPreview.route.chunkPlan,
-      }
-    : undefined;
-  const suggestedSellChunkContracts = positionExecutionPreview?.route.suggestedChunkContracts ?? null;
-  const sellChunkPlan = positionExecutionPreview?.route.chunkPlan ?? null;
-  const sellRouteLooksBlocked =
-    buyPanelMode === "position" &&
-    sellMode &&
-    positionExecutionPreview != null &&
-    !positionExecutionPreview.route.available &&
-    positionExecutionPreview.route.walletConnected;
-  const sellAmountExceedsSuggestedChunk =
-    sellMode &&
-    parsedSellTokenAmount != null &&
-    suggestedSellChunkContracts != null &&
-    parsedSellTokenAmount > suggestedSellChunkContracts;
-  const solHeadroomTooLow = nativeSolBalance > 0 && nativeSolBalance < MIN_SOL_ROUTE_HEADROOM_SOL;
+  const walletExecutionAlerts = (goldRushIntelligence?.alerts ?? []).filter((alert) => alert.level !== "info").slice(0, 2);
 
   useEffect(() => {
     const identity = publicKey?.toBase58() ?? evmAddress ?? null;
@@ -543,7 +436,7 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
   };
 
-  const recordLocalTrade = async ({
+  const recordLocalTrade = ({
     mint,
     side,
     volumeSol,
@@ -566,7 +459,6 @@ export function UnifiedBuyPanel() {
     txSignature: string;
   }) => {
     if (typeof window === "undefined" || !publicKey) return;
-    const authHeaders = await getWriteAuthHeaders();
 
     if (volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0) {
       const key = `siren-volume-${publicKey.toBase58()}`;
@@ -591,13 +483,18 @@ export function UnifiedBuyPanel() {
       }
       window.localStorage.setItem(key, JSON.stringify(entries));
 
-      if (authHeaders) {
-        fetch(`${API_URL}/api/volume/log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol }),
-        }).catch(() => {});
-      }
+      void (async () => {
+        try {
+          const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
+          await fetch(`${API_URL}/api/volume/log`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders },
+            body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol }),
+          });
+        } catch {
+          /* ignore telemetry auth failures */
+        }
+      })();
     }
 
     const stake = stakeUsd != null && Number.isFinite(stakeUsd) && stakeUsd > 0 ? stakeUsd : null;
@@ -613,9 +510,6 @@ export function UnifiedBuyPanel() {
         tokenAmount: number;
         priceUsd: number;
         stakeUsd?: number;
-        tokenName?: string;
-        tokenSymbol?: string;
-        activityKind?: "prediction" | "swap" | "token";
       }> = [];
       if (rawTrades) {
         try {
@@ -633,9 +527,6 @@ export function UnifiedBuyPanel() {
         tokenAmount,
         priceUsd,
         ...(stake != null ? { stakeUsd: stake } : {}),
-        tokenName,
-        tokenSymbol,
-        activityKind: stake != null ? "prediction" : "token",
       });
       if (trades.length > 1000) {
         trades = trades.slice(trades.length - 1000);
@@ -644,23 +535,28 @@ export function UnifiedBuyPanel() {
       window.dispatchEvent(new CustomEvent("siren-activity-logged"));
     }
 
-    if (authHeaders) {
-      fetch(`${API_URL}/api/trades/log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({
-          wallet: publicKey.toBase58(),
-          mint,
-          side,
-          tokenAmount,
-          priceUsd,
-          tokenName,
-          tokenSymbol,
-          txSignature,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
+    void (async () => {
+      try {
+        const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
+        await fetch(`${API_URL}/api/trades/log`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify({
+            wallet: publicKey.toBase58(),
+            mint,
+            side,
+            tokenAmount,
+            priceUsd,
+            tokenName,
+            tokenSymbol,
+            txSignature,
+            timestamp: Date.now(),
+          }),
+        });
+      } catch {
+        /* ignore telemetry auth failures */
+      }
+    })();
   };
 
   const executeSwap = async () => {
@@ -684,18 +580,11 @@ export function UnifiedBuyPanel() {
         setLoading(false);
         return;
       }
-      if (solHeadroomTooLow) {
-        setError(
-          `Keep about ${MIN_SOL_ROUTE_HEADROOM_SOL.toFixed(3)} SOL free for close routing. You currently have ${nativeSolBalance.toFixed(4)} SOL.`,
-        );
-        setLoading(false);
-        return;
-      }
 
       let inputMint: string;
       let outputMint: string;
       let amount: string;
-      const sellDecimals = selectedToken.decimals ?? 6;
+      const sellDecimals = 6;
       let partialSellFilled = false;
 
       let amountNum: number;
@@ -749,17 +638,7 @@ export function UnifiedBuyPanel() {
             orderMsg.toLowerCase().includes("no executable route"));
         if (!isRouteMiss) throw orderError;
 
-        const previewFraction =
-          suggestedSellChunkContracts != null && amountNum > 0
-            ? Math.min(0.95, Math.max(0.05, suggestedSellChunkContracts / amountNum))
-            : null;
-        const fallbackFractions = Array.from(
-          new Set(
-            [previewFraction, 0.75, 0.5, 0.25, 0.1]
-              .filter((value): value is number => value != null && value > 0 && value < 1)
-              .map((value) => Number(value.toFixed(4))),
-          ),
-        ).sort((left, right) => right - left);
+        const fallbackFractions = [0.75, 0.5, 0.25, 0.1];
         let recovered: Record<string, unknown> | null = null;
         for (const fraction of fallbackFractions) {
           const candidateAmount = Number((amountNum * fraction).toFixed(6));
@@ -804,7 +683,7 @@ export function UnifiedBuyPanel() {
           volumeSol = amountNum * approxSolPerToken;
         }
 
-        await recordLocalTrade({
+        recordLocalTrade({
           mint: selectedToken.mint,
           side: "sell",
           volumeSol,
@@ -822,34 +701,13 @@ export function UnifiedBuyPanel() {
       if (isSell) setSellAmount("");
       queryClient.invalidateQueries({ queryKey: ["transactions", publicKey.toBase58()] });
       queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
-      queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
-      queryClient.invalidateQueries({ queryKey: ["portfolio-balances", publicKey.toBase58()] });
       setBuyPanelOpen(false);
-      const telemetryHeaders = await getWriteAuthHeaders();
-      logTradeAttempt({
-        wallet: publicKey?.toBase58(),
-        venue: tokenRouteLabel,
-        mode: isSell ? "sell" : "buy",
-        market: selectedToken?.marketTicker ?? null,
-        side: isSell ? "sell" : "buy",
-        inputAsset: isSell ? tokenDisplaySymbol : "USDC",
-        outputAsset: isSell ? "USDC" : tokenDisplaySymbol,
-        amount: isSell ? sellAmount : solAmount,
-        status: "success",
-        txSignature: sig,
-        metadata: {
-          assetType: selectedToken?.assetType ?? null,
-          partialSellFilled,
-          ...positionExecutionPreviewMetadata,
-        },
-      }, telemetryHeaders);
       const realizedSummary = (() => {
         if (!isPredictionToken || !selectedToken.mint) return null;
         const entry = getPositionEntry(selectedToken.mint);
-        const avgEntryCents = entry?.avgCents ?? selectedToken.entryPrice ?? null;
-        if (avgEntryCents == null || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
+        if (!entry || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
         const soldValueUsd = amountNum * tokenPriceUsd;
-        const costUsd = amountNum * (avgEntryCents / 100);
+        const costUsd = amountNum * (entry.avgCents / 100);
         if (costUsd <= 0) return null;
         const pnlUsd = soldValueUsd - costUsd;
         const pnlPct = (pnlUsd / costUsd) * 100;
@@ -869,7 +727,6 @@ export function UnifiedBuyPanel() {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const friendly = getFriendlyTradeError(msg, "Swap failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
-      const telemetryHeaders = await getWriteAuthHeaders();
       logTradeFailure({
         venue: tokenRouteLabel,
         mode: isSell ? "sell" : "buy",
@@ -879,23 +736,7 @@ export function UnifiedBuyPanel() {
         amount: isSell ? sellAmount : solAmount,
         wallet: publicKey?.toBase58(),
         message: msg,
-      }, telemetryHeaders);
-      logTradeAttempt({
-        wallet: publicKey?.toBase58(),
-        venue: tokenRouteLabel,
-        mode: isSell ? "sell" : "buy",
-        market: selectedToken?.marketTicker ?? null,
-        side: isSell ? "sell" : "buy",
-        inputAsset: isSell ? tokenDisplaySymbol : "USDC",
-        outputAsset: isSell ? "USDC" : tokenDisplaySymbol,
-        amount: isSell ? sellAmount : solAmount,
-        status: "failed",
-        errorMessage: msg,
-        metadata: {
-          assetType: selectedToken?.assetType ?? null,
-          ...positionExecutionPreviewMetadata,
-        },
-      }, telemetryHeaders);
+      });
       setError(friendly);
       showResultModal({
         type: "error",
@@ -1091,7 +932,7 @@ export function UnifiedBuyPanel() {
           : undefined;
 
       const tokenAmountApprox = selectedMarketPriceUsd && selectedMarketPriceUsd > 0 ? amountNum / selectedMarketPriceUsd : null;
-      await recordLocalTrade({
+      recordLocalTrade({
         mint: selectedPolymarketTokenId,
         side: "buy",
         volumeSol: null,
@@ -1106,18 +947,6 @@ export function UnifiedBuyPanel() {
       queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
 
       setBuyPanelOpen(false);
-      logTradeAttempt({
-        wallet: evmAddress,
-        venue: "polymarket",
-        mode: "buy-market",
-        market: selectedMarket.ticker,
-        side: marketSide,
-        inputAsset: "Polygon USDC",
-        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
-        amount: solAmount,
-        status: "success",
-        txSignature,
-      }, null);
       showResultModal({
         type: "success",
         title: "Polymarket order sent",
@@ -1154,19 +983,7 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         wallet: evmAddress,
         message: msg,
-      }, null);
-      logTradeAttempt({
-        wallet: evmAddress,
-        venue: "polymarket",
-        mode: "buy-market",
-        market: selectedMarket.ticker,
-        side: marketSide,
-        inputAsset: "Polygon USDC",
-        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
-        amount: solAmount,
-        status: "failed",
-        errorMessage: msg,
-      }, null);
+      });
       setError(friendly);
       showResultModal({
         type: "error",
@@ -1203,12 +1020,6 @@ export function UnifiedBuyPanel() {
       setError(`Not enough Solana USDC. You have ${formatTokenAmount(solanaUsdcBalance, 2)} USDC ready to trade.`);
       return;
     }
-    if (solHeadroomTooLow) {
-      setError(
-        `Siren wants about ${MIN_SOL_ROUTE_HEADROOM_SOL.toFixed(3)} SOL free for network fees and token-account rent. You currently have ${nativeSolBalance.toFixed(4)} SOL.`,
-      );
-      return;
-    }
 
     const marketPriceUsd = selectedMarketPriceUsd;
     if (marketPriceUsd == null || marketPriceUsd <= 0) {
@@ -1233,12 +1044,7 @@ export function UnifiedBuyPanel() {
     setLoading(true);
     try {
       const amount = parseUnitsToBigInt(solAmount.trim(), 6).toString();
-      const outcomeLabel =
-        marketSide === "yes"
-          ? selectedOutcomeLabel || "YES"
-          : selectedOutcomeLabel
-            ? `NO ${selectedOutcomeLabel}`
-            : "NO";
+      const outcomeLabel = marketSide.toUpperCase();
       const outcomeSymbol = `${outcomeLabel} ${selectedMarket.ticker}`;
       const outcomeName = `${selectedMarket.title} · ${outcomeLabel}`;
 
@@ -1271,10 +1077,7 @@ export function UnifiedBuyPanel() {
       }
 
       const tokenAmountApprox = amountNum / marketPriceUsd;
-      if (selectedMarketMint && marketPriceUsd > 0) {
-        setPositionEntry(selectedMarketMint, marketPriceUsd * 100);
-      }
-      await recordLocalTrade({
+      recordLocalTrade({
         mint: selectedMarketMint,
         side: "buy",
         volumeSol: solPriceUsd > 0 ? amountNum / solPriceUsd : null,
@@ -1308,25 +1111,6 @@ export function UnifiedBuyPanel() {
 
       setBuyPanelOpen(false);
       setSuccess(null);
-      const telemetryHeaders = await getWriteAuthHeaders();
-      logTradeAttempt({
-        wallet: publicKey?.toBase58(),
-        venue: selectedMarket.source,
-        mode: "buy-market",
-        market: selectedMarket.ticker,
-        side: marketSide,
-        inputAsset: "USDC",
-        outputAsset: `${outcomeLabel} ${selectedMarket.ticker}`,
-        amount: solAmount,
-        status: "success",
-        txSignature: sig,
-        metadata: {
-          executionMode: data.executionMode ?? null,
-          provider: data.provider ?? null,
-          settlementStatus: asyncStatus?.status ?? null,
-          ...executionPreviewMetadata,
-        },
-      }, telemetryHeaders);
       showResultModal({
         type: "success",
         title: data.executionMode === "async" ? "Trade submitted" : "Trade complete",
@@ -1344,7 +1128,6 @@ export function UnifiedBuyPanel() {
       const msg = e instanceof Error ? e.message : "Prediction trade failed";
       const friendly = getFriendlyTradeError(msg, "Prediction market trade failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
-      const telemetryHeaders = await getWriteAuthHeaders();
       logTradeFailure({
         venue: selectedMarket.source,
         mode: "buy-market",
@@ -1354,26 +1137,13 @@ export function UnifiedBuyPanel() {
         amount: solAmount,
         wallet: publicKey?.toBase58(),
         message: msg,
-      }, telemetryHeaders);
-      logTradeAttempt({
-        wallet: publicKey?.toBase58(),
-        venue: selectedMarket.source,
-        mode: "buy-market",
-        market: selectedMarket.ticker,
-        side: marketSide,
-        inputAsset: "USDC",
-        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
-        amount: solAmount,
-        status: "failed",
-        errorMessage: msg,
-        metadata: executionPreviewMetadata,
-      }, telemetryHeaders);
+      });
       setError(friendly);
       showResultModal({
         type: "error",
         title: requiresVerification ? "Verify wallet" : "Trade failed",
         message: requiresVerification
-          ? "Verify this wallet once on DFlow, then come back and route the outcome again."
+          ? "Verify this wallet once on DFlow, then come back and buy YES or NO again."
           : friendly,
         actionLabel: requiresVerification ? "Open DFlow Proof" : undefined,
         actionHref: requiresVerification ? DFLOW_PROOF_PORTAL_URL : undefined,
@@ -1392,11 +1162,11 @@ export function UnifiedBuyPanel() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 md:hidden"
+            className="fixed inset-0 z-50"
             aria-hidden="true"
           >
             <div
-              className="absolute inset-0 bg-black/55 md:hidden"
+              className="absolute inset-0 bg-black/50 md:bg-black/30"
               onClick={onClose}
             />
           </motion.div>
@@ -1406,10 +1176,10 @@ export function UnifiedBuyPanel() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 top-[8%] z-[51] flex w-full flex-col overflow-hidden rounded-t-[28px] border-t md:inset-x-auto md:bottom-4 md:right-4 md:top-[90px] md:w-[430px] md:max-w-[430px] md:rounded-[24px] md:border"
+            className="fixed inset-x-0 bottom-0 top-[8%] z-[51] flex w-full flex-col overflow-hidden rounded-t-[28px] border-t md:top-0 md:right-0 md:left-auto md:w-[520px] md:max-w-[520px] md:rounded-none md:border-t-0 md:border-l"
             style={{
               background: "var(--bg-surface)",
-              boxShadow: "0 24px 64px rgba(0,0,0,0.38)",
+              boxShadow: "-8px 0 32px rgba(0,0,0,0.35)",
               borderColor: "var(--border-subtle)",
             }}
           >
@@ -1430,18 +1200,6 @@ export function UnifiedBuyPanel() {
                         ? "Pick YES or NO and enter USDC from your Polygon wallet."
                         : "Pick YES or NO and enter USDC from your Solana wallet."}
                     </p>
-                    {selectedOutcomeLabel && (
-                      <div
-                        className="mt-3 inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px] font-medium"
-                        style={{
-                          borderColor: "color-mix(in srgb, var(--accent) 34%, transparent)",
-                          background: "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))",
-                          color: "var(--text-1)",
-                        }}
-                      >
-                        Selected outcome: {selectedOutcomeLabel}
-                      </div>
-                    )}
 
                     <div className="mt-5 grid grid-cols-2 gap-3">
                       <button
@@ -1458,7 +1216,7 @@ export function UnifiedBuyPanel() {
                         }}
                       >
                         <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--text-2)" }}>
-                          {marketYesLabel}
+                          YES
                         </p>
                         <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketYesPriceUsd != null ? `${(marketYesPriceUsd * 100).toFixed(1)}c` : "—"}
@@ -1478,7 +1236,7 @@ export function UnifiedBuyPanel() {
                         }}
                       >
                         <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "no" ? "var(--down)" : "var(--text-2)" }}>
-                          {marketNoLabel}
+                          NO
                         </p>
                         <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketNoPriceUsd != null ? `${(marketNoPriceUsd * 100).toFixed(1)}c` : "—"}
@@ -1506,9 +1264,7 @@ export function UnifiedBuyPanel() {
                         <p className="mt-2 font-mono text-base font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
                           {selectedMarket.source === "polymarket"
                             ? formatCompactNumber(selectedMarket.liquidity, 1)
-                            : marketActivity?.tradeCount24h && marketActivity.tradeCount24h > 0
-                              ? formatCompactNumber(marketActivity.tradeCount24h, 0)
-                              : "—"}
+                            : formatCompactNumber(marketActivity?.recentTrades?.length, 0)}
                         </p>
                       </div>
                       <div className="rounded-[18px] border px-3.5 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
@@ -1536,109 +1292,25 @@ export function UnifiedBuyPanel() {
                         style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                       />
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {Array.from(
-                          new Set(
-                            [
-                              5,
-                              10,
-                              25,
-                              50,
-                              100,
-                              previewSuggestedClipUsd != null ? Math.max(1, Math.round(previewSuggestedClipUsd)) : null,
-                            ].filter((value): value is number => value != null),
-                          ),
-                        )
-                          .sort((left, right) => left - right)
-                          .map((amt) => (
+                        {(["5", "10", "25", "50", "100"] as const).map((amt) => (
                           <button
                             key={amt}
                             type="button"
                             onClick={() => {
                               hapticLight();
-                              setSolAmount(String(amt));
+                              setSolAmount(amt);
                             }}
                             className="rounded-full px-3.5 py-2 font-mono text-[11px] font-semibold border transition-colors"
                             style={{
-                              background: solAmount === String(amt) ? "color-mix(in srgb, var(--accent) 14%, var(--bg-elevated))" : "var(--bg-surface)",
-                              borderColor: solAmount === String(amt) ? "var(--accent)" : "var(--border-subtle)",
+                              background: solAmount === amt ? "color-mix(in srgb, var(--accent) 14%, var(--bg-elevated))" : "var(--bg-surface)",
+                              borderColor: solAmount === amt ? "var(--accent)" : "var(--border-subtle)",
                               color: "var(--text-2)",
                             }}
                           >
-                            {previewSuggestedClipUsd != null && Math.round(previewSuggestedClipUsd) === amt ? `Safe ${formatUsdWhole(amt)}` : `$${amt}`}
+                            ${amt}
                           </button>
                         ))}
                       </div>
-                    </div>
-
-                    <div
-                      className="mt-4 rounded-[20px] border p-4"
-                      style={{
-                        background: "var(--bg-surface)",
-                        borderColor: routeLooksBlocked
-                          ? "color-mix(in srgb, var(--down) 30%, var(--border-subtle))"
-                          : isSizingAbovePreview
-                            ? "color-mix(in srgb, var(--yellow) 30%, var(--border-subtle))"
-                            : "var(--border-subtle)",
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                          Siren route read
-                        </p>
-                        {executionPreviewLoading && (
-                          <span className="inline-flex items-center gap-2 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            probing
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        {executionPreview
-                          ? executionPreview.route.summary
-                          : "Siren is building a route preview for this outcome."}
-                      </p>
-                      {executionPreview && (
-                        <>
-                          <div className="mt-3 grid grid-cols-2 gap-3">
-                            <div className="rounded-[16px] border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                              <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Suggested clip</p>
-                              <p className="mt-2 font-mono text-base font-semibold" style={{ color: "var(--text-1)" }}>
-                                {previewSuggestedClipUsd != null ? formatUsdWhole(previewSuggestedClipUsd) : "Start small"}
-                              </p>
-                            </div>
-                            <div className="rounded-[16px] border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}>
-                              <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Field risk</p>
-                              <p className="mt-2 font-body text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                                {executionPreview.risk.field.label}
-                              </p>
-                            </div>
-                          </div>
-                          <p
-                            className="mt-3 text-[11px] leading-relaxed"
-                            style={{
-                              color: routeLooksBlocked
-                                ? "var(--down)"
-                                : isSizingAbovePreview
-                                  ? "var(--yellow)"
-                                  : "var(--text-3)",
-                            }}
-                          >
-                            {routeLooksBlocked
-                              ? "Live route probes did not confirm a clean Siren path right now. Open the venue or try a different size later."
-                              : isSizingAbovePreview
-                                ? `This size is above the latest clean preview clip of ${formatUsdWhole(previewSuggestedClipUsd)}. Expect a higher chance of route failure or worse fills.`
-                                : executionPreview.route.actionable}
-                          </p>
-                        </>
-                      )}
-                      {buyPanelMode === "market" && (
-                        <p className="mt-3 text-[11px] leading-relaxed" style={{ color: solHeadroomTooLow ? "var(--yellow)" : "var(--text-3)" }}>
-                          SOL headroom: {nativeSolBalance.toFixed(4)} SOL free.
-                          {solHeadroomTooLow
-                            ? ` Siren keeps about ${MIN_SOL_ROUTE_HEADROOM_SOL.toFixed(3)} SOL clear for fees and rent-exempt token-account setup.`
-                            : " Fee and rent headroom looks okay."}
-                        </p>
-                      )}
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1672,6 +1344,67 @@ export function UnifiedBuyPanel() {
                       Prices can move before your order lands. You can lose the amount you put in.
                     </p>
 
+                    {!!goldRushIntelligence && isPredictionToken && (
+                      <div
+                        className="mt-4 rounded-[18px] border px-4 py-3.5"
+                        style={{
+                          background: "color-mix(in srgb, var(--bg-elevated) 82%, transparent)",
+                          borderColor: "var(--border-subtle)",
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--accent)" }}>
+                              Wallet readiness
+                            </p>
+                            <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              {goldRushIntelligence.narrative.readiness}
+                            </p>
+                          </div>
+                          <div
+                            className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]"
+                            style={{
+                              borderColor: goldRushIntelligence.summary.riskScore >= 70 ? "color-mix(in srgb, var(--down) 35%, transparent)" : "var(--border-subtle)",
+                              color: goldRushIntelligence.summary.riskScore >= 70 ? "var(--down)" : "var(--text-3)",
+                            }}
+                          >
+                            Risk {goldRushIntelligence.summary.riskScore}/100
+                          </div>
+                        </div>
+
+                        {walletExecutionAlerts.length > 0 && (
+                          <div className="mt-3 grid gap-2">
+                            {walletExecutionAlerts.map((alert) => (
+                              <div
+                                key={`${alert.level}-${alert.label}`}
+                                className="rounded-2xl border px-3 py-2.5"
+                                style={{
+                                  borderColor:
+                                    alert.level === "high"
+                                      ? "color-mix(in srgb, var(--down) 30%, transparent)"
+                                      : "color-mix(in srgb, #f2c94c 28%, transparent)",
+                                  background:
+                                    alert.level === "high"
+                                      ? "color-mix(in srgb, var(--down) 8%, var(--bg-surface))"
+                                      : "color-mix(in srgb, #f2c94c 8%, var(--bg-surface))",
+                                }}
+                              >
+                                <p
+                                  className="text-[10px] uppercase tracking-[0.14em]"
+                                  style={{ color: alert.level === "high" ? "var(--down)" : "#f2c94c" }}
+                                >
+                                  {alert.label}
+                                </p>
+                                <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                                  {alert.summary}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {predictionTradeBlocked && (
                       <div
                         className="mt-4 rounded-[18px] border px-4 py-3.5"
@@ -1691,7 +1424,7 @@ export function UnifiedBuyPanel() {
 
                     <button
                       onClick={executePredictionMarketTrade}
-                      disabled={loading || executionPreviewLoading || !selectedMarketInstrumentId || predictionTradeBlocked || routeLooksBlocked}
+                      disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked}
                       className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
                       style={{
                         background: marketSide === "yes" ? "var(--accent)" : "var(--down)",
@@ -1704,14 +1437,10 @@ export function UnifiedBuyPanel() {
                         </>
                       ) : predictionTradeBlocked ? (
                         "Unavailable in your region"
-                      ) : executionPreviewLoading ? (
-                        "Checking route"
-                      ) : routeLooksBlocked ? (
-                        "Route not ready"
                       ) : isKalshiMarketTrade && !proofVerified && !dflowProofLoading ? (
                         "Verify wallet first"
                       ) : (
-                        `Buy ${marketSide === "yes" ? marketYesLabel : marketNoLabel}`
+                        `Buy ${marketSide.toUpperCase()}`
                       )}
                     </button>
 
@@ -1870,7 +1599,7 @@ export function UnifiedBuyPanel() {
                                   type="button"
                                   onClick={() => {
                                     hapticLight();
-                                    const amt = effectiveTokenBalance > 0 ? (effectiveTokenBalance * pct) / 100 : 0;
+                                    const amt = tokenBalance > 0 ? (tokenBalance * pct) / 100 : 0;
                                     setSellAmount(amt > 0 ? amt.toString() : "");
                                   }}
                                   className="flex-1 py-1.5 rounded-md text-[11px] font-heading font-semibold transition-all duration-100"
@@ -1884,101 +1613,16 @@ export function UnifiedBuyPanel() {
                                 </button>
                               ))}
                             </div>
-                            {suggestedSellChunkContracts != null && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  hapticLight();
-                                  setSellAmount(String(suggestedSellChunkContracts));
-                                }}
-                                className="mb-2 inline-flex rounded-full border px-3 py-1.5 font-mono text-[11px] font-semibold transition-colors"
-                                style={{
-                                  background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
-                                  borderColor: "color-mix(in srgb, var(--accent) 34%, transparent)",
-                                  color: "var(--text-1)",
-                                }}
-                              >
-                                Safe chunk {formatTokenAmount(suggestedSellChunkContracts, 2)}
-                              </button>
-                            )}
                             <input
                               type="number"
                               step="any"
                               min="0"
-                              placeholder={effectiveTokenBalance > 0 ? effectiveTokenBalance.toLocaleString() : "0"}
+                              placeholder={tokenBalance > 0 ? tokenBalance.toLocaleString() : "0"}
                               value={sellAmount}
                               onChange={(e) => setSellAmount(e.target.value)}
                               className="w-full px-3 py-2 rounded-lg font-body text-sm text-[var(--text-primary)] border transition-colors focus:border-[var(--border-active)] focus:outline-none"
                               style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
                             />
-                          </div>
-                          <div
-                            className="mt-3 rounded-xl border px-3 py-3"
-                            style={{
-                              background: "var(--bg-surface)",
-                              borderColor: sellRouteLooksBlocked
-                                ? "color-mix(in srgb, var(--down) 28%, var(--border-subtle))"
-                                : sellAmountExceedsSuggestedChunk
-                                  ? "color-mix(in srgb, var(--yellow) 28%, var(--border-subtle))"
-                                  : "var(--border-subtle)",
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-3)" }}>
-                                Close route read
-                              </p>
-                              {positionExecutionPreviewLoading && (
-                                <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--text-3)" }}>
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  probing
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                              {positionExecutionPreview
-                                ? positionExecutionPreview.route.summary
-                                : "Siren is checking what close size is likely to clear."}
-                            </p>
-                            {positionExecutionPreview && (
-                              <>
-                                <div className="mt-3 grid grid-cols-2 gap-2">
-                                  <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                    <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                                      Suggested chunk
-                                    </p>
-                                    <p className="mt-1 font-mono text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                                      {suggestedSellChunkContracts != null ? `${formatTokenAmount(suggestedSellChunkContracts, 2)} contracts` : "Start small"}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-lg border px-3 py-2" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-                                    <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                                      Chunk plan
-                                    </p>
-                                    <p className="mt-1 font-mono text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                                      {sellChunkPlan ? `${sellChunkPlan.estimatedChunks}x` : "Single clip"}
-                                    </p>
-                                  </div>
-                                </div>
-                                <p
-                                  className="mt-3 text-[10px] leading-relaxed"
-                                  style={{
-                                    color: sellRouteLooksBlocked
-                                      ? "var(--down)"
-                                      : sellAmountExceedsSuggestedChunk
-                                        ? "var(--yellow)"
-                                        : "var(--text-3)",
-                                  }}
-                                >
-                                  {sellRouteLooksBlocked
-                                    ? "Live close probes did not confirm a clean route right now. You can still try, but expect the adaptive chunker to work harder or fail."
-                                    : sellAmountExceedsSuggestedChunk
-                                      ? `This close size is above the latest clean chunk of ${formatTokenAmount(suggestedSellChunkContracts, 2)} contracts. Smaller clips should clear more reliably.`
-                                      : sellChunkPlan
-                                        ? `Siren would work this exit in about ${sellChunkPlan.estimatedChunks} chunks of ${formatTokenAmount(sellChunkPlan.chunkContracts, 2)} contracts.`
-                                        : "This size fits inside the latest clean close probe."}
-                                </p>
-                              </>
-                            )}
                           </div>
                           <div className="mt-3 rounded-xl border px-3 py-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
                             <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--text-3)" }}>
@@ -2012,10 +1656,6 @@ export function UnifiedBuyPanel() {
                               <>
                                 <Loader2 className="w-4 h-4 animate-spin" /> Closing…
                               </>
-                            ) : sellRouteLooksBlocked ? (
-                              "Try adaptive close"
-                            ) : sellAmountExceedsSuggestedChunk ? (
-                              "Close with chunking"
                             ) : (
                               "Sell position for USDC"
                             )}

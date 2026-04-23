@@ -114,12 +114,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         (m) =>
           m.title?.toLowerCase().includes(q) ||
           m.ticker?.toLowerCase().includes(q) ||
-          m.subtitle?.toLowerCase().includes(q) ||
-          m.outcomes?.some(
-            (outcome) =>
-              outcome.label?.toLowerCase().includes(q) ||
-              outcome.ticker?.toLowerCase().includes(q),
-          )
+          m.subtitle?.toLowerCase().includes(q)
       );
     }
 
@@ -220,7 +215,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
               Markets
             </p>
             <p className="mt-1 font-body text-[10px] md:text-[11px]" style={{ color: "var(--text-3)" }}>
-              {filtered.length.toLocaleString()} markets tracked{shownCount < filtered.length ? ` • ${shownCount.toLocaleString()} loaded` : ""} • {signalCount.toLocaleString()} moving
+              {filtered.length.toLocaleString()} shown{shownCount < filtered.length ? ` • ${shownCount.toLocaleString()} loaded` : ""} • {signalCount.toLocaleString()} moving
             </p>
           </div>
           {hasRecoveryActions && (
@@ -243,7 +238,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             <Search className="w-4 h-4 shrink-0" style={{ color: "var(--text-3)" }} />
             <input
               type="text"
-              placeholder="Search markets or tickers"
+              placeholder="Search Markets or Outcomes"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 bg-transparent font-body text-xs md:text-[13px] outline-none placeholder:text-[var(--text-3)]"
@@ -402,9 +397,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 pb-6 space-y-4 snap-y snap-proximity md:px-4 md:space-y-5">
           <AnimatePresence mode="popLayout">
             {visibleMarkets.map((m, i) => {
-              const isSelected = m.grouped_event
-                ? selectedMarket?.event_ticker === m.event_ticker
-                : selectedMarket?.ticker === m.ticker;
+              const isSelected = selectedMarket?.ticker === m.ticker;
               const isHot = hotSignalTickers.has(m.platform_id ?? m.ticker);
               return (
                 <motion.li

@@ -18,6 +18,7 @@ import {
   Rocket,
   Sparkles,
   TrendingUp,
+  Trophy,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -48,25 +49,20 @@ type WaitlistRow = {
   access_code_used_at: string | null;
 };
 
-type AudienceRow = {
-  email: string;
-  name: string | null;
-  source: "waitlist" | "app" | "both";
-  source_labels: string[];
-  waitlist_id: string | null;
-  app_user_id: string | null;
-  wallets: string[];
-  signup_source: string | null;
-  country: string | null;
+type AppUserRow = {
+  id: string;
+  wallet: string | null;
+  auth_user_id: string | null;
   created_at: string;
   last_seen_at: string | null;
-  access_code: string | null;
-  access_code_used_at: string | null;
+  signup_source: string | null;
+  country: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
-const STORAGE_KEY = "siren-admin-passcode";
+const ADMIN_PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE || "";
+const STORAGE_KEY = "siren-admin-pass-ok";
 const APP_PUBLIC_URL = "https://onsiren.xyz";
-const DOCS_PUBLIC_URL = "https://docs.onsiren.xyz";
 const TABLE_PAGE_SIZE = 25;
 const PANEL_BG =
   "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, white 6%) 0%, color-mix(in srgb, var(--bg-elevated) 96%, transparent) 100%)";
@@ -79,7 +75,7 @@ const BADGE_BG = "color-mix(in srgb, var(--accent-dim) 70%, var(--bg-elevated) 3
 const TOOLTIP_BG = "color-mix(in srgb, var(--bg-base) 94%, var(--bg-surface) 6%)";
 const GRID_STROKE = "color-mix(in srgb, var(--border-subtle) 52%, transparent)";
 const TAB_ACTIVE_BG = "color-mix(in srgb, var(--bg-elevated) 82%, white 18%)";
-type Tab = "waitlist" | "audience" | "volume";
+type Tab = "waitlist" | "app-users" | "volume";
 
 type VolumeData = {
   platform7d: number;
@@ -88,28 +84,14 @@ type VolumeData = {
   byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }>;
 };
 
-type ExecutionSummary = {
-  attempts: number;
-  successes: number;
-  failures: number;
-  successRate: number;
-  sellAttempts: number;
-  successfulSells: number;
-  sellSuccessRate: number;
-  partialFills: number;
-  uniqueWallets: number;
-  byVenue: Array<{ venue: string; attempts: number; successes: number; failures: number }>;
-  topFailureReasons: Array<{ reason: string; count: number }>;
-  topMarkets: Array<{ market: string; count: number }>;
-};
-
 type TorqueEmissionData = {
+  relayEnabled: boolean;
   rows: Array<{
     wallet: string | null;
-    createdAt: string;
+    createdAt: string | null;
     venue: string;
     mode: string;
-    market: string | null;
+    market: string;
     relayEligible: boolean;
     campaignHints: string[];
     preview: {
@@ -125,7 +107,6 @@ type TorqueEmissionData = {
     };
   }>;
   summary: {
-    relayEnabled: boolean;
     emittedRows: number;
     leaderboardCandidates: number;
     cleanCloseCandidates: number;
@@ -367,26 +348,26 @@ function CopyableCell({ value, mono = false, className = "" }: { value: string |
 export default function AdminPage() {
   const [hasAccess, setHasAccess] = useState(false);
   const [input, setInput] = useState("");
-  const [adminPasscode, setAdminPasscode] = useState("");
   const [tab, setTab] = useState<Tab>("waitlist");
   const [waitlistRows, setWaitlistRows] = useState<WaitlistRow[]>([]);
-  const [audienceRows, setAudienceRows] = useState<AudienceRow[]>([]);
+  const [appUsers, setAppUsers] = useState<AppUserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendAllLoading, setSendAllLoading] = useState(false);
   const [codeEmailResult, setCodeEmailResult] = useState<DispatchResult | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [audienceSearchQuery, setAudienceSearchQuery] = useState("");
-  const [audienceEmailLoading, setAudienceEmailLoading] = useState(false);
+  const [productEmailLoading, setProductEmailLoading] = useState(false);
   const [solPriceUsd, setSolPriceUsd] = useState(0);
   const [volumeData, setVolumeData] = useState<VolumeData | null>(null);
-  const [volumeLoading, setVolumeLoading] = useState(false);
-  const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
   const [torqueEmissionData, setTorqueEmissionData] = useState<TorqueEmissionData | null>(null);
-  const [audienceEmailInput, setAudienceEmailInput] = useState("");
-  const [audienceEmailResult, setAudienceEmailResult] = useState<DispatchResult | null>(null);
+  const [volumeLoading, setVolumeLoading] = useState(false);
+  const [productEmailInput, setProductEmailInput] = useState("");
+  const [productEmailResult, setProductEmailResult] = useState<DispatchResult | null>(null);
+  const [leaderboardEmailLoading, setLeaderboardEmailLoading] = useState(false);
+  const [leaderboardEmailInput, setLeaderboardEmailInput] = useState("");
+  const [leaderboardEmailResult, setLeaderboardEmailResult] = useState<DispatchResult | null>(null);
   const [waitlistPage, setWaitlistPage] = useState(1);
-  const [audiencePage, setAudiencePage] = useState(1);
+  const [appUsersPage, setAppUsersPage] = useState(1);
   const [volumePage, setVolumePage] = useState(1);
 
   type UserStats = {
@@ -399,19 +380,7 @@ export default function AdminPage() {
   const [dailyVolumeSeries, setDailyVolumeSeries] = useState<Array<{ day: string; volumeSol: number }>>([]);
   const [dashboardExporting, setDashboardExporting] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
-  const adminHeaders = useMemo(
-    () => getAdminPasscodeHeaders(adminPasscode),
-    [adminPasscode],
-  );
-
-  const handleAdminAuthFailure = useCallback((message = "Admin authentication required.") => {
-    setHasAccess(false);
-    setAdminPasscode("");
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(STORAGE_KEY);
-    }
-    setError(message);
-  }, []);
+  const adminHeaders = useMemo(() => getAdminPasscodeHeaders(ADMIN_PASSCODE), []);
 
   const filteredWaitlist = searchQuery.trim()
     ? waitlistRows.filter(
@@ -429,25 +398,12 @@ export default function AdminPage() {
     return filteredWaitlist.slice(start, start + TABLE_PAGE_SIZE);
   }, [filteredWaitlist, safeWaitlistPage]);
 
-  const filteredAudience = audienceSearchQuery.trim()
-    ? audienceRows.filter((row) => {
-        const query = audienceSearchQuery.toLowerCase();
-        return (
-          row.email.toLowerCase().includes(query) ||
-          row.name?.toLowerCase().includes(query) ||
-          row.wallets.some((wallet) => wallet.toLowerCase().includes(query)) ||
-          row.source_labels.some((source) => source.toLowerCase().includes(query)) ||
-          row.signup_source?.toLowerCase().includes(query)
-        );
-      })
-    : audienceRows;
-
-  const audienceTotalPages = pageCount(filteredAudience.length, TABLE_PAGE_SIZE);
-  const safeAudiencePage = Math.min(audiencePage, audienceTotalPages);
-  const paginatedAudience = useMemo(() => {
-    const start = (safeAudiencePage - 1) * TABLE_PAGE_SIZE;
-    return filteredAudience.slice(start, start + TABLE_PAGE_SIZE);
-  }, [filteredAudience, safeAudiencePage]);
+  const appUsersTotalPages = pageCount(appUsers.length, TABLE_PAGE_SIZE);
+  const safeAppUsersPage = Math.min(appUsersPage, appUsersTotalPages);
+  const paginatedAppUsers = useMemo(() => {
+    const start = (safeAppUsersPage - 1) * TABLE_PAGE_SIZE;
+    return appUsers.slice(start, start + TABLE_PAGE_SIZE);
+  }, [appUsers, safeAppUsersPage]);
 
   const volumeRows = volumeData?.byWallet ?? [];
   const volumeTotalPages = pageCount(volumeRows.length, TABLE_PAGE_SIZE);
@@ -498,20 +454,6 @@ export default function AdminPage() {
     };
   }, [waitlistDailySeries, waitlistRows]);
 
-  const audienceInsights = useMemo(() => {
-    const both = audienceRows.filter((row) => row.source === "both").length;
-    const appOnly = audienceRows.filter((row) => row.source === "app").length;
-    const waitlistOnly = audienceRows.filter((row) => row.source === "waitlist").length;
-    const active = audienceRows.filter((row) => !!row.last_seen_at).length;
-    return {
-      both,
-      appOnly,
-      waitlistOnly,
-      active,
-      contactable: audienceRows.length,
-    };
-  }, [audienceRows]);
-
   const usageInsights = useMemo(() => {
     const totalUsers = userStats?.totalUsers ?? 0;
     const newUsers7d = userStats?.newUsers7d ?? 0;
@@ -528,41 +470,27 @@ export default function AdminPage() {
     };
   }, [userStats, volumeData, waitlistInsights.last14d, waitlistRows.length]);
 
-  const handlePassSubmit = async () => {
-    const passcode = input.trim();
-    if (!passcode) {
-      setError("Enter the admin passcode to continue.");
+  const handlePassSubmit = () => {
+    if (!ADMIN_PASSCODE) {
+      setError("Admin passcode not configured. Set NEXT_PUBLIC_ADMIN_PASSCODE in env.");
       return;
     }
-
-    try {
-      const headers = getAdminPasscodeHeaders(passcode);
-      const res = await fetch(`${API_URL}/api/admin/users/stats`, {
-        credentials: "omit",
-        headers,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Incorrect passcode.");
-      }
-      setAdminPasscode(passcode);
+    if (input.trim() === ADMIN_PASSCODE) {
       setHasAccess(true);
       if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(STORAGE_KEY, passcode);
+        window.localStorage.setItem(STORAGE_KEY, "true");
       }
       setInput("");
       setError(null);
-      setUserStats(data.data ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Incorrect passcode.");
+    } else {
+      setError("Incorrect passcode.");
     }
   };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.sessionStorage.getItem(STORAGE_KEY)?.trim();
-    if (stored) {
-      setAdminPasscode(stored);
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === "true") {
       setHasAccess(true);
     }
   }, []);
@@ -572,16 +500,12 @@ export default function AdminPage() {
   }, [searchQuery]);
 
   useEffect(() => {
-    setAudiencePage(1);
-  }, [audienceSearchQuery]);
-
-  useEffect(() => {
     if (waitlistPage > waitlistTotalPages) setWaitlistPage(waitlistTotalPages);
   }, [waitlistPage, waitlistTotalPages]);
 
   useEffect(() => {
-    if (audiencePage > audienceTotalPages) setAudiencePage(audienceTotalPages);
-  }, [audiencePage, audienceTotalPages]);
+    if (appUsersPage > appUsersTotalPages) setAppUsersPage(appUsersTotalPages);
+  }, [appUsersPage, appUsersTotalPages]);
 
   useEffect(() => {
     if (volumePage > volumeTotalPages) setVolumePage(volumeTotalPages);
@@ -595,18 +519,11 @@ export default function AdminPage() {
   }, []);
 
   const loadWaitlist = useCallback(async () => {
-    if (!adminPasscode.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist?limit=500`, {
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/waitlist?limit=500`, { headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed to load waitlist.");
       setWaitlistRows(data.data ?? []);
     } catch (err) {
@@ -614,19 +531,14 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
+  }, []);
 
   const loadVolume = useCallback(async () => {
-    if (!adminPasscode.trim()) return;
     setVolumeLoading(true);
     setError(null);
     try {
       const res = await fetch(`${API_URL}/api/admin/volume`, { headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed to load volume");
       setVolumeData(data.data ?? { platform7d: 0, byWallet: [] });
     } catch (err) {
@@ -634,105 +546,55 @@ export default function AdminPage() {
     } finally {
       setVolumeLoading(false);
     }
-  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
-
-  const loadExecutionSummary = useCallback(async () => {
-    if (!adminPasscode.trim()) return;
-    try {
-      const res = await fetch(`${API_URL}/api/admin/execution/summary?days=7`, {
-        credentials: "omit",
-        headers: adminHeaders,
-      });
-      const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || "Failed to load execution summary");
-      setExecutionSummary(data.data ?? null);
-    } catch {
-      setExecutionSummary(null);
-    }
-  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
+  }, []);
 
   const loadTorqueEmissions = useCallback(async () => {
-    if (!adminPasscode.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/torque/emissions?limit=12`, {
-        credentials: "omit",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/torque/emissions?limit=10`, { headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed to load Torque relay activity");
       setTorqueEmissionData(data.data ?? null);
     } catch {
       setTorqueEmissionData(null);
     }
-  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
+  }, [adminHeaders]);
 
   const loadUserStats = useCallback(async () => {
-    if (!adminPasscode.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/users/stats`, {
-        credentials: "omit",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/users/stats`, { credentials: "omit", headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed to load user stats");
       setUserStats(data.data ?? null);
     } catch {
       setUserStats(null);
     }
-  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
+  }, []);
 
   const loadDailyVolume = useCallback(async () => {
-    if (!adminPasscode.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/volume/daily?days=14`, {
-        credentials: "omit",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/volume/daily?days=14`, { credentials: "omit", headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed to load daily volume");
       setDailyVolumeSeries(data.data?.series ?? []);
     } catch {
       setDailyVolumeSeries([]);
     }
-  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
+  }, []);
 
-  const loadAudience = useCallback(async () => {
-    if (!adminPasscode.trim()) return;
+  const loadAppUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/audience?limit=500`, {
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/users?limit=500`, { headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || "Failed to load audience.");
-      setAudienceRows(data.data ?? []);
+      if (!res.ok) throw new Error(data.error || "Failed to load app users.");
+      setAppUsers(data.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load audience.");
+      setError(err instanceof Error ? err.message : "Failed to load app users.");
     } finally {
       setLoading(false);
     }
-  }, [adminHeaders, adminPasscode, handleAdminAuthFailure]);
+  }, []);
 
   useEffect(() => {
     if (!hasAccess) return;
@@ -741,30 +603,28 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!hasAccess) return;
-    void loadAudience();
-  }, [hasAccess, loadAudience]);
-
-  useEffect(() => {
-    if (!hasAccess) return;
     void loadUserStats();
     void loadDailyVolume();
   }, [hasAccess, loadUserStats, loadDailyVolume]);
 
   useEffect(() => {
+    if (!hasAccess || tab !== "app-users") return;
+    void loadAppUsers();
+  }, [hasAccess, tab, loadAppUsers]);
+
+  useEffect(() => {
     if (!hasAccess || tab !== "volume") return;
     void loadVolume();
-    void loadExecutionSummary();
     void loadTorqueEmissions();
-  }, [hasAccess, tab, loadExecutionSummary, loadTorqueEmissions, loadVolume]);
+  }, [hasAccess, tab, loadVolume, loadTorqueEmissions]);
 
   const refresh = () => {
     void loadUserStats();
     void loadDailyVolume();
     if (tab === "waitlist") void loadWaitlist();
-    else if (tab === "audience") void loadAudience();
+    else if (tab === "app-users") void loadAppUsers();
     else if (tab === "volume") {
       void loadVolume();
-      void loadExecutionSummary();
       void loadTorqueEmissions();
     }
   };
@@ -799,15 +659,8 @@ export default function AdminPage() {
   const handleDelete = async (id: string) => {
     hapticLight();
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}`, {
-        method: "DELETE",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}`, { method: "DELETE", headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Delete failed");
       await loadWaitlist();
     } catch (err) {
@@ -820,15 +673,8 @@ export default function AdminPage() {
     setCodeEmailResult(null);
     setSendAllLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/send-all-codes`, {
-        method: "POST",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-all-codes`, { method: "POST", headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed");
       setCodeEmailResult({
         sent: data.sent,
@@ -846,22 +692,15 @@ export default function AdminPage() {
     }
   };
 
-  const handleSendAudienceEmail = async () => {
+  const handleSendProductEmail = async () => {
     hapticLight();
-    setAudienceEmailResult(null);
-    setAudienceEmailLoading(true);
+    setProductEmailResult(null);
+    setProductEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/audience/send-execution-update-email`, {
-        method: "POST",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-trading-live-email`, { method: "POST", headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || "Failed to send audience update emails");
-      setAudienceEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send product announcement emails");
+      setProductEmailResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -870,15 +709,15 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send audience update emails");
+      setError(e instanceof Error ? e.message : "Failed to send product announcement emails");
     } finally {
-      setAudienceEmailLoading(false);
+      setProductEmailLoading(false);
     }
   };
 
-  const handleSendAudienceEmailManual = async () => {
+  const handleSendProductEmailManual = async () => {
     hapticLight();
-    const raw = audienceEmailInput
+    const raw = productEmailInput
       .split(/[\n,]+/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
@@ -886,21 +725,17 @@ export default function AdminPage() {
       setError("Paste one or more emails first.");
       return;
     }
-    setAudienceEmailResult(null);
-    setAudienceEmailLoading(true);
+    setProductEmailResult(null);
+    setProductEmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/audience/send-execution-update-email-by-email`, {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-trading-live-email-by-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...adminHeaders },
         body: JSON.stringify({ emails: raw }),
       });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || "Failed to send audience update emails");
-      setAudienceEmailResult({
+      if (!res.ok) throw new Error(data.error || "Failed to send product announcement emails");
+      setProductEmailResult({
         sent: data.sent,
         failed: data.failed,
         skipped: data.skipped,
@@ -909,24 +744,75 @@ export default function AdminPage() {
         skippedEmails: data.skippedEmails ?? [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send audience update emails");
+      setError(e instanceof Error ? e.message : "Failed to send product announcement emails");
     } finally {
-      setAudienceEmailLoading(false);
+      setProductEmailLoading(false);
+    }
+  };
+
+  const handleSendLeaderboardSpotlightEmail = async () => {
+    hapticLight();
+    setLeaderboardEmailResult(null);
+    setLeaderboardEmailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-leaderboard-spotlight-email`, { method: "POST", headers: adminHeaders });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send leaderboard spotlight emails");
+      setLeaderboardEmailResult({
+        sent: data.sent,
+        failed: data.failed,
+        skipped: data.skipped,
+        total: data.total,
+        failedEmails: data.failedEmails ?? [],
+        skippedEmails: data.skippedEmails ?? [],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send leaderboard spotlight emails");
+    } finally {
+      setLeaderboardEmailLoading(false);
+    }
+  };
+
+  const handleSendLeaderboardSpotlightEmailManual = async () => {
+    hapticLight();
+    const raw = leaderboardEmailInput
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (raw.length === 0) {
+      setError("Paste one or more emails first.");
+      return;
+    }
+    setLeaderboardEmailResult(null);
+    setLeaderboardEmailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/waitlist/send-leaderboard-spotlight-email-by-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...adminHeaders },
+        body: JSON.stringify({ emails: raw }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send leaderboard spotlight emails");
+      setLeaderboardEmailResult({
+        sent: data.sent,
+        failed: data.failed,
+        skipped: data.skipped,
+        total: data.total,
+        failedEmails: data.failedEmails ?? [],
+        skippedEmails: data.skippedEmails ?? [],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send leaderboard spotlight emails");
+    } finally {
+      setLeaderboardEmailLoading(false);
     }
   };
 
   const handleGenerateCode = async (id: string) => {
     hapticLight();
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/generate-code`, {
-        method: "POST",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/generate-code`, { method: "POST", headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed to generate code");
       await loadWaitlist();
     } catch (err) {
@@ -939,15 +825,8 @@ export default function AdminPage() {
     hapticLight();
     setResendingId(id);
     try {
-      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/resend-email`, {
-        method: "POST",
-        headers: adminHeaders,
-      });
+      const res = await fetch(`${API_URL}/api/admin/waitlist/${id}/resend-email`, { method: "POST", headers: adminHeaders });
       const data = await res.json();
-      if (res.status === 401) {
-        handleAdminAuthFailure("Admin passcode expired. Enter it again.");
-        return;
-      }
       if (!res.ok) throw new Error(data.error || "Failed to resend email");
       await loadWaitlist();
     } catch (err) {
@@ -1032,7 +911,7 @@ export default function AdminPage() {
               </div>
               <h1 className="font-heading text-[30px] leading-none tracking-[-0.04em] md:text-[42px]">Siren Admin</h1>
               <p className="mt-3 max-w-xl font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                Waitlist operations, unified audience sends, and volume intelligence for the prediction-markets terminal.
+                Waitlist, activations, and volume for the prediction-markets terminal—plus email tools in one place.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1259,16 +1138,16 @@ export default function AdminPage() {
             </button>
             <button
               type="button"
-              onClick={() => { hapticLight(); setTab("audience"); }}
+              onClick={() => { hapticLight(); setTab("app-users"); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-heading transition-colors"
               style={{
-                background: tab === "audience" ? TAB_ACTIVE_BG : "transparent",
-                color: tab === "audience" ? "var(--text-1)" : "var(--text-3)",
-                border: tab === "audience" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
+                background: tab === "app-users" ? TAB_ACTIVE_BG : "transparent",
+                color: tab === "app-users" ? "var(--text-1)" : "var(--text-3)",
+                border: tab === "app-users" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
               }}
             >
               <Users className="w-4 h-4" />
-              Audience ({audienceRows.length})
+              App Users ({appUsers.length})
             </button>
             <button
               type="button"
@@ -1280,8 +1159,7 @@ export default function AdminPage() {
                 border: tab === "volume" ? `1px solid ${SUBTLE_BORDER}` : "1px solid transparent",
               }}
             >
-              <Gauge className="w-4 h-4" />
-              Execution
+              Volume
             </button>
           </div>
 
@@ -1335,10 +1213,10 @@ export default function AdminPage() {
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Waitlist operations
+                    Waitlist &amp; email
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Search the queue, manage access codes, and monitor onboarding conversion.
+                    Search the queue, send access codes, and broadcast the current Siren update to opted-in emails.
                   </p>
                 </div>
                 <div className="relative">
@@ -1365,26 +1243,22 @@ export default function AdminPage() {
                 >
                   <div className="p-5 md:p-6">
                     <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                      <ClipboardList className="h-3.5 w-3.5" />
-                      Queue operations
+                      <Mail className="h-3.5 w-3.5" />
+                      Siren update
                     </div>
                     <h3 className="font-heading text-2xl leading-tight tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Keep the waitlist moving cleanly.
+                      New X account and login update
                     </h3>
                     <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      This tab is now focused on onboarding operations only: queue review, code generation, resends, and conversion tracking. Broadcast emails now live on the unified audience tab so the panel is not mixing old campaigns with waitlist work.
+                      Sends the HTML campaign announcing @sirenmarketsxyz, confirming that all user funds and data are safe, pointing users to Telegram, and explaining that X login is being removed by 12:00 AM WAT today. Recipients must be on the waitlist with a valid email.
                     </p>
                     <ul className="mt-4 list-disc pl-5 font-body text-sm space-y-1" style={{ color: "var(--text-3)" }}>
-                      <li>Generate or resend one-time access codes.</li>
-                      <li>Watch activation rate and code usage.</li>
-                      <li>Use the audience tab for deduped app-user + waitlist broadcasts.</li>
+                      <li>Confirms that funds and account data are safe.</li>
+                      <li>Points people to the new X account, Telegram community, and founder account.</li>
+                      <li>Explains that X login is being removed to reduce platform risk.</li>
                     </ul>
 
                     <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Queue size</p>
-                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistRows.length.toLocaleString()}</p>
-                      </div>
                       <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
                         <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Emails on file</p>
                         <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.contactable.toLocaleString()}</p>
@@ -1392,6 +1266,10 @@ export default function AdminPage() {
                       <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
                         <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Codes used</p>
                         <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistInsights.activated.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Queue size</p>
+                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{waitlistRows.length.toLocaleString()}</p>
                       </div>
                     </div>
 
@@ -1405,18 +1283,100 @@ export default function AdminPage() {
                       >
                         Open terminal
                       </a>
+                      <button
+                        type="button"
+                        onClick={handleSendProductEmail}
+                        disabled={productEmailLoading || waitlistRows.length === 0}
+                        className="flex items-center gap-2 rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
+                      >
+                        {productEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
+                        {productEmailLoading ? "Sending…" : "Send to all waitlist emails"}
+                      </button>
                     </div>
+                    <InlineDispatchStatus result={productEmailResult} label="Announcement result" />
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                      <Mail className="h-3.5 w-3.5" />
-                      Access code dispatch
-                    </div>
                     <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Onboarding
+                      Manual resend
+                    </p>
+                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+                      Retry selected addresses
+                    </h3>
+                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
+                      Paste emails that must be on the waitlist. Sends the same Siren update to matches only.
+                    </p>
+                    <textarea
+                      value={productEmailInput}
+                      onChange={(e) => setProductEmailInput(e.target.value)}
+                      className="mt-4 min-h-[132px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
+                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
+                      placeholder={"one@example.com\ntwo@example.com"}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendProductEmailManual}
+                      disabled={productEmailLoading}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                    >
+                      {productEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <TrendingUp className="h-4 w-4" />}
+                      Send to pasted emails
+                    </button>
+                  </div>
+
+                  <DispatchSummary result={productEmailResult} accentLabel="Siren update email" />
+
+                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      Leaderboard spotlight
+                    </p>
+                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+                      Announce rankings + weekly / monthly top 3
+                    </h3>
+                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
+                      Sends the dark-theme campaign: prediction-only leaderboard, volume and win rate, spotlight program for top traders. Same waitlist rules as other blasts.
+                    </p>
+                    <textarea
+                      value={leaderboardEmailInput}
+                      onChange={(e) => setLeaderboardEmailInput(e.target.value)}
+                      className="mt-4 min-h-[100px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
+                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
+                      placeholder={"optional: one@example.com per line"}
+                    />
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={handleSendLeaderboardSpotlightEmail}
+                        disabled={leaderboardEmailLoading || waitlistRows.length === 0}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
+                      >
+                        {leaderboardEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Trophy className="h-4 w-4" />}
+                        {leaderboardEmailLoading ? "Sending…" : "Send to all waitlist"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSendLeaderboardSpotlightEmailManual}
+                        disabled={leaderboardEmailLoading}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
+                        style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
+                      >
+                        {leaderboardEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
+                        Send to pasted only
+                      </button>
+                    </div>
+                    <InlineDispatchStatus result={leaderboardEmailResult} label="Leaderboard email result" />
+                  </div>
+
+                  <DispatchSummary result={leaderboardEmailResult} accentLabel="Leaderboard spotlight email" />
+
+                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      Access code dispatch
                     </p>
                     <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
                       Keep onboarding moving
@@ -1591,10 +1551,10 @@ export default function AdminPage() {
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Execution and volume intelligence
+                    Volume intelligence
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    Attempt-level execution reporting plus the existing volume layer. This is the first operator view of Siren’s execution wedge.
+                    7d, 30d, and all-time flow, with the leaderboard paginated for easier review.
                   </p>
                 </div>
                 <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -1605,109 +1565,6 @@ export default function AdminPage() {
                 <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
               ) : volumeData ? (
                 <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <MetricCard
-                      label="7d attempts"
-                      value={formatCompactNumber(executionSummary?.attempts ?? 0)}
-                      hint="Persisted route attempts over the last 7 days."
-                      icon={<Activity className="h-5 w-5" />}
-                    />
-                    <MetricCard
-                      label="Route success"
-                      value={formatPercent(executionSummary?.successRate ?? 0)}
-                      hint="All attempts marked successful versus failed."
-                      icon={<Gauge className="h-5 w-5" />}
-                    />
-                    <MetricCard
-                      label="Sell success"
-                      value={formatPercent(executionSummary?.sellSuccessRate ?? 0)}
-                      hint="Core KPI for whether exit-side execution is actually improving."
-                      icon={<TrendingUp className="h-5 w-5" />}
-                    />
-                    <MetricCard
-                      label="Partial fills"
-                      value={formatCompactNumber(executionSummary?.partialFills ?? 0)}
-                      hint="Successful trades where only part of the requested sell size cleared."
-                      icon={<Sparkles className="h-5 w-5" />}
-                    />
-                  </div>
-
-                  <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-                    <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Venue breakdown</p>
-                          <p className="mt-1 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                            Success and failure counts by route source.
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border px-3 py-2" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                          <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>
-                            {formatCompactNumber(executionSummary?.uniqueWallets ?? 0)}
-                          </p>
-                          <p className="font-body text-[10px]" style={{ color: "var(--text-3)" }}>active wallets</p>
-                        </div>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        {(executionSummary?.byVenue?.length ?? 0) === 0 ? (
-                          <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-                            No persisted execution attempts yet.
-                          </p>
-                        ) : (
-                          executionSummary?.byVenue.map((row) => (
-                            <div key={row.venue} className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{row.venue}</p>
-                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>{row.attempts} attempts</p>
-                              </div>
-                              <div className="mt-2 flex flex-wrap gap-3 font-body text-[11px]">
-                                <span style={{ color: "var(--up)" }}>Success {row.successes}</span>
-                                <span style={{ color: "var(--down)" }}>Failed {row.failures}</span>
-                                <span style={{ color: "var(--text-3)" }}>
-                                  {row.attempts > 0 ? `${Math.round((row.successes / row.attempts) * 100)}% success` : "—"}
-                                </span>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4">
-                      <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                        <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Top failure reasons</p>
-                        <div className="mt-4 space-y-3">
-                          {(executionSummary?.topFailureReasons?.length ?? 0) === 0 ? (
-                            <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>No failures grouped yet.</p>
-                          ) : (
-                            executionSummary?.topFailureReasons.map((row) => (
-                              <div key={row.reason} className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>{row.reason}</p>
-                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>{row.count}</p>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                        <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Most attempted markets</p>
-                        <div className="mt-4 space-y-3">
-                          {(executionSummary?.topMarkets?.length ?? 0) === 0 ? (
-                            <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>No market-level execution data yet.</p>
-                          ) : (
-                            executionSummary?.topMarkets.map((row) => (
-                              <div key={row.market} className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                                <p className="font-body text-sm" style={{ color: "var(--text-1)" }}>{row.market}</p>
-                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>{row.count}</p>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
                     <p className="font-body text-[11px] mb-1" style={{ color: "var(--text-3)" }}>Platform volume</p>
                     <p className="font-mono text-xl font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
@@ -1725,80 +1582,106 @@ export default function AdminPage() {
                       )}
                     </p>
                   </div>
-
-                  <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Torque relay activity</p>
-                        <p className="mt-1 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                          Recent execution events Siren can turn into rewards, nudges, and leaderboard credit.
-                        </p>
-                      </div>
-                      <span
-                        className="rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.14em]"
-                        style={{
-                          borderColor: SUBTLE_BORDER,
-                          background: SOFT_BG,
-                          color: torqueEmissionData?.summary.relayEnabled ? "var(--accent)" : "var(--text-3)",
-                        }}
-                      >
-                        {torqueEmissionData?.summary.relayEnabled ? "Relay live" : "Relay pending"}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
-                      {[
-                        { label: "Recent emissions", value: formatCompactNumber(torqueEmissionData?.summary.emittedRows ?? 0), hint: "Latest relay-eligible trade events" },
-                        { label: "Clean close candidates", value: formatCompactNumber(torqueEmissionData?.summary.cleanCloseCandidates ?? 0), hint: "Successful sells ready for reward logic" },
-                        { label: "Leaderboard wallets", value: formatCompactNumber(torqueEmissionData?.summary.leaderboardCandidates ?? 0), hint: "Wallets earning execution-quality credit" },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                          <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>{item.label}</p>
-                          <p className="mt-2 font-heading text-lg" style={{ color: "var(--text-1)" }}>{item.value}</p>
-                          <p className="mt-1 font-body text-[11px] leading-5" style={{ color: "var(--text-3)" }}>{item.hint}</p>
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+                    <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-heading text-base" style={{ color: "var(--text-1)" }}>Torque relay activity</p>
+                          <p className="mt-1 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                            Recent Siren execution events that can become clean-close rewards, expiry nudges, and leaderboard credit.
+                          </p>
                         </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-4 space-y-3">
-                      {(torqueEmissionData?.rows?.length ?? 0) === 0 ? (
-                        <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-                          No relay activity yet. Once trade attempts start landing, this feed shows what Siren is turning into reward logic.
-                        </p>
-                      ) : (
-                        torqueEmissionData?.rows.map((row) => (
-                          <div key={`${row.createdAt}-${row.preview.eventName}-${row.wallet ?? "anon"}`} className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
-                            <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span
+                          className="inline-flex items-center rounded-full px-3 py-1 text-[10px] font-heading uppercase tracking-[0.16em]"
+                          style={{
+                            background: torqueEmissionData?.relayEnabled ? "var(--accent-dim)" : "var(--bg-elevated)",
+                            color: torqueEmissionData?.relayEnabled ? "var(--accent)" : "var(--text-3)",
+                            border: `1px solid ${SUBTLE_BORDER}`,
+                          }}
+                        >
+                          {torqueEmissionData?.relayEnabled ? "Relay live" : "Relay pending"}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        {[
+                          { label: "Recent emissions", value: formatCompactNumber(torqueEmissionData?.summary.emittedRows ?? 0), hint: "Rows eligible for relay" },
+                          { label: "Clean close", value: formatCompactNumber(torqueEmissionData?.summary.cleanCloseCandidates ?? 0), hint: "Successful close candidates" },
+                          { label: "Leaderboard", value: formatCompactNumber(torqueEmissionData?.summary.leaderboardCandidates ?? 0), hint: "Wallets earning execution credit" },
+                        ].map((metric) => (
+                          <div key={metric.label} className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>{metric.label}</p>
+                            <p className="mt-2 font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>{metric.value}</p>
+                            <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>{metric.hint}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {(torqueEmissionData?.rows ?? []).length === 0 ? (
+                          <div className="rounded-2xl border px-4 py-5 text-sm" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG, color: "var(--text-3)" }}>
+                            No relay-ready emissions yet. Once traders submit or close positions through Siren, they will appear here.
+                          </div>
+                        ) : (
+                          (torqueEmissionData?.rows ?? []).map((row, idx) => (
+                            <div key={`${row.createdAt ?? "na"}-${idx}`} className="rounded-2xl border px-4 py-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full px-2.5 py-1 text-[10px] font-heading uppercase tracking-[0.14em]" style={{ background: BADGE_BG, color: "var(--accent)" }}>
-                                  {row.preview.eventName}
+                                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-heading uppercase tracking-[0.14em]" style={{ background: BADGE_BG, color: "var(--accent)" }}>
+                                  {row.preview.eventName.replace(/_/g, " ")}
                                 </span>
-                                <span className="font-body text-sm" style={{ color: "var(--text-1)" }}>
-                                  {row.market || row.preview.market}
-                                </span>
-                              </div>
-                              <span className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                                {new Date(row.createdAt).toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-3 font-body text-[11px]" style={{ color: "var(--text-2)" }}>
-                              <span>{row.preview.route}</span>
-                              <span>{row.preview.side}</span>
-                              <span>{typeof row.preview.amount === "number" ? row.preview.amount.toLocaleString() : "—"}</span>
-                              {row.preview.failureReason && <span style={{ color: "var(--down)" }}>{row.preview.failureReason}</span>}
-                            </div>
-                            {row.campaignHints.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-2">
+                                <span className="font-body text-xs" style={{ color: "var(--text-2)" }}>{row.preview.route}</span>
                                 {row.campaignHints.map((hint) => (
-                                  <span key={`${row.createdAt}-${hint}`} className="rounded-full border px-2 py-1 text-[10px] font-heading uppercase tracking-[0.14em]" style={{ borderColor: SUBTLE_BORDER, color: "var(--text-2)" }}>
-                                    {hint.replaceAll("_", " ")}
+                                  <span key={hint} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-heading uppercase tracking-[0.14em]" style={{ background: "var(--bg-elevated)", color: "var(--text-3)", border: `1px solid ${SUBTLE_BORDER}` }}>
+                                    {hint.replace(/_/g, " ")}
                                   </span>
                                 ))}
                               </div>
-                            )}
+                              <p className="mt-2 font-body text-sm" style={{ color: "var(--text-1)" }}>{row.market}</p>
+                              <div className="mt-2 flex flex-wrap gap-4 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                                <span>Side: {row.preview.side}</span>
+                                <span>Status: {row.preview.status}</span>
+                                <span>Amount: {row.preview.amount != null ? row.preview.amount : "—"}</span>
+                                <span>{row.createdAt ? new Date(row.createdAt).toLocaleString() : "Unknown time"}</span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-[24px] border p-4" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
+                      <p className="font-heading text-base" style={{ color: "var(--text-1)" }}>Campaign candidates</p>
+                      <p className="mt-1 font-body text-sm" style={{ color: "var(--text-2)" }}>
+                        The relay is healthy when execution rows can feed real trader outcomes instead of just schema checks.
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        {[
+                          {
+                            title: "First clean close",
+                            detail: "Reward traders who close without a string of failed exits first.",
+                            value: torqueEmissionData?.summary.cleanCloseCandidates ?? 0,
+                          },
+                          {
+                            title: "Resolve before expiry",
+                            detail: "Nudge traders to reduce exposure before books get thin near resolution.",
+                            value: torqueEmissionData?.summary.expiryNudges ?? 0,
+                          },
+                          {
+                            title: "Execution leaderboard",
+                            detail: "Rank wallets by actual execution quality, not raw size alone.",
+                            value: torqueEmissionData?.summary.leaderboardCandidates ?? 0,
+                          },
+                        ].map((campaign) => (
+                          <div key={campaign.title} className="rounded-2xl border p-4" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-heading text-sm" style={{ color: "var(--text-1)" }}>{campaign.title}</p>
+                                <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>{campaign.detail}</p>
+                              </div>
+                              <span className="font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                                {formatCompactNumber(campaign.value)}
+                              </span>
+                            </div>
                           </div>
-                        ))
-                      )}
+                        ))}
+                      </div>
                     </div>
                   </div>
                   <div className="overflow-hidden rounded-[24px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
@@ -1862,161 +1745,44 @@ export default function AdminPage() {
             </section>
           )}
 
-          {tab === "audience" && (
+          {tab === "app-users" && (
             <section>
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                    Unified audience
+                    App users
                   </h2>
                   <p className="mt-2 font-body text-sm" style={{ color: "var(--text-2)" }}>
-                    One deduped list across waitlist signups and app users with captured auth emails.
+                    Wallet-connected users with a cleaner table layout and pagination.
                   </p>
                 </div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-3)" }} />
-                  <input
-                    type="text"
-                    placeholder="Search email, source, wallet..."
-                    value={audienceSearchQuery}
-                    onChange={(e) => setAudienceSearchQuery(e.target.value)}
-                    className="w-full rounded-2xl border py-3 pl-9 pr-4 font-body text-xs sm:w-80"
-                    style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
-                  />
-                </div>
+                <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
+                  {appUsers.length.toLocaleString()} users loaded
+                </p>
               </div>
-
-              <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr,0.9fr]">
-                <div className="overflow-hidden rounded-[28px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                  <div className="p-5 md:p-6">
-                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-heading uppercase tracking-[0.18em]" style={{ borderColor: PANEL_BORDER, background: BADGE_BG, color: "var(--accent)" }}>
-                      <Mail className="h-3.5 w-3.5" />
-                      Current campaign
-                    </div>
-                    <h3 className="font-heading text-2xl leading-tight tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Execution and risk intelligence update
-                    </h3>
-                    <p className="mt-3 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      This is the new core product email. It explains the Siren repositioning, the execution-feasibility wedge, risk guardrails, and the docs/app refresh. It goes to the merged audience, not just the waitlist.
-                    </p>
-                    <ul className="mt-4 list-disc pl-5 font-body text-sm space-y-1" style={{ color: "var(--text-3)" }}>
-                      <li>Explains the new Siren category clearly.</li>
-                      <li>Moves all old campaign sends out of the way.</li>
-                      <li>Uses one deduped audience for cleaner emailing.</li>
-                    </ul>
-                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-4">
-                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Reachable</p>
-                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.contactable.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Both sources</p>
-                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.both.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>App only</p>
-                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.appOnly.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-2xl border p-3" style={{ borderColor: SUBTLE_BORDER, background: SOFT_BG }}>
-                        <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>Seen in app</p>
-                        <p className="mt-2 font-heading text-xl" style={{ color: "var(--text-1)" }}>{audienceInsights.active.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSendAudienceEmail}
-                        disabled={audienceEmailLoading || audienceRows.length === 0}
-                        className="flex items-center gap-2 rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                        style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                      >
-                        {audienceEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Mail className="h-4 w-4" />}
-                        {audienceEmailLoading ? "Sending…" : "Send to all audience"}
-                      </button>
-                      <a
-                        href={DOCS_PUBLIC_URL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full px-4 py-3 text-xs font-heading uppercase tracking-[0.14em]"
-                        style={{ background: SOFT_BG, color: "var(--text-1)", border: `1px solid ${SUBTLE_BORDER}` }}
-                      >
-                        Preview docs
-                      </a>
-                    </div>
-                    <InlineDispatchStatus result={audienceEmailResult} label="Audience email result" />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="rounded-[28px] border p-5" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Manual resend
-                    </p>
-                    <h3 className="mt-2 font-heading text-xl tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
-                      Retry specific contacts
-                    </h3>
-                    <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
-                      Paste emails from either source. The API checks them against the unified audience and only sends to exact matches.
-                    </p>
-                    <textarea
-                      value={audienceEmailInput}
-                      onChange={(e) => setAudienceEmailInput(e.target.value)}
-                      className="mt-4 min-h-[140px] w-full rounded-2xl border px-4 py-3 font-mono text-[11px]"
-                      style={{ background: SOFT_BG, borderColor: SUBTLE_BORDER, color: "var(--text-1)" }}
-                      placeholder={"one@example.com\ntwo@example.com"}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSendAudienceEmailManual}
-                      disabled={audienceEmailLoading}
-                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-heading uppercase tracking-[0.14em] disabled:opacity-50"
-                      style={{ background: "var(--accent-dim)", color: "var(--accent)" }}
-                    >
-                      {audienceEmailLoading ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <TrendingUp className="h-4 w-4" />}
-                      Send to pasted emails
-                    </button>
-                  </div>
-
-                  <DispatchSummary result={audienceEmailResult} accentLabel="Execution update email" />
-                </div>
-              </div>
-
               <div className="overflow-hidden rounded-[24px] border" style={{ borderColor: PANEL_BORDER, background: PANEL_BG }}>
-                <div className="flex flex-col gap-2 border-b px-4 py-4 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
-                  <div>
-                    <h3 className="font-heading text-base" style={{ color: "var(--text-1)" }}>Audience table</h3>
-                    <p className="mt-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                      Deduped by email. Source tells you whether the address came from waitlist, app auth, or both.
-                    </p>
-                  </div>
-                  <p className="font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-                    {filteredAudience.length.toLocaleString()} matching contacts
-                  </p>
-                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-xs font-body">
                     <thead>
                       <tr style={{ background: "var(--bg-elevated)" }}>
                         <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Created</th>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Email</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider md:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Name</th>
-                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Source</th>
                         <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Last seen</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider lg:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallets</th>
-                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider xl:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Country</th>
+                        <th className="px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Wallet</th>
+                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider md:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Source</th>
+                        <th className="hidden px-4 py-3 border-b font-heading text-[11px] uppercase tracking-wider lg:table-cell" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>Country</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedAudience.length === 0 ? (
+                      {paginatedAppUsers.length === 0 ? (
                         <tr>
-                          <td className="px-4 py-6 text-center text-sm" colSpan={7} style={{ color: "var(--text-3)" }}>
-                            No audience contacts yet.
+                          <td className="px-4 py-6 text-center text-sm" colSpan={5} style={{ color: "var(--text-3)" }}>
+                            No app users yet.
                           </td>
                         </tr>
                       ) : (
-                        paginatedAudience.map((row, idx) => (
+                        paginatedAppUsers.map((row, idx) => (
                           <tr
-                            key={row.email}
+                            key={row.id}
                             className="border-t transition-colors hover:bg-[var(--bg-elevated)]"
                             style={{
                               borderColor: "var(--border-subtle)",
@@ -2024,47 +1790,17 @@ export default function AdminPage() {
                             }}
                           >
                             <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{new Date(row.created_at).toLocaleString()}</td>
-                            <CopyableCell value={row.email} />
-                            <td className="hidden px-4 py-3 md:table-cell" style={{ color: row.name ? "var(--text-2)" : "var(--text-3)" }}>{row.name || "—"}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex flex-wrap gap-1.5">
-                                {row.source_labels.map((source) => (
-                                  <span
-                                    key={`${row.email}-${source}`}
-                                    className="rounded-full border px-2 py-1 text-[10px] font-heading uppercase tracking-[0.14em]"
-                                    style={{
-                                      borderColor: source === "app" ? "color-mix(in srgb, var(--kalshi) 35%, transparent)" : "color-mix(in srgb, var(--accent) 35%, transparent)",
-                                      background: source === "app" ? "color-mix(in srgb, var(--kalshi) 12%, transparent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
-                                      color: source === "app" ? "var(--kalshi)" : "var(--accent)",
-                                    }}
-                                  >
-                                    {source}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
                             <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : "—"}</td>
-                            <td className="hidden px-4 py-3 lg:table-cell">
-                              <div className="flex flex-col gap-1">
-                                {row.wallets.length === 0 ? (
-                                  <span style={{ color: "var(--text-3)" }}>—</span>
-                                ) : (
-                                  row.wallets.slice(0, 2).map((wallet) => (
-                                    <div key={`${row.email}-${wallet}`} className="flex items-center gap-2">
-                                      <span className="font-mono text-[11px]" style={{ color: "var(--text-2)" }}>{wallet}</span>
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </td>
-                            <CopyableCell value={row.country} className="hidden xl:table-cell" />
+                            <CopyableCell value={row.wallet} mono />
+                            <td className="hidden px-4 py-3 md:table-cell">{row.signup_source || "—"}</td>
+                            <CopyableCell value={row.country} className="hidden lg:table-cell" />
                           </tr>
                         ))
                       )}
                     </tbody>
                   </table>
                 </div>
-                <PaginationControls page={safeAudiencePage} totalItems={filteredAudience.length} pageSize={TABLE_PAGE_SIZE} onPageChange={setAudiencePage} />
+                <PaginationControls page={safeAppUsersPage} totalItems={appUsers.length} pageSize={TABLE_PAGE_SIZE} onPageChange={setAppUsersPage} />
               </div>
             </section>
           )}

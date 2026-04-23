@@ -10,10 +10,10 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { useExplorerStore } from "@/store/useExplorerStore";
 import { toSelectedMarket } from "@/lib/marketSelection";
 import {
+  compareMarketExplorerSecondaryPriority,
   inferMarketCategory,
   marketCategoryBadgeStyle,
   marketCategoryLabel,
-  marketExplorerPriorityScore,
   marketHoursUntilClose,
   marketMatchesCategory,
   type MarketCategoryId,
@@ -252,7 +252,7 @@ export function TerminalMarketExplorer() {
         const leftMoving = liveSignals.some((signal) => signal.marketId === (left.platform_id ?? left.ticker));
         const rightMoving = liveSignals.some((signal) => signal.marketId === (right.platform_id ?? right.ticker));
         if (leftMoving !== rightMoving) return rightMoving ? 1 : -1;
-        return marketExplorerPriorityScore(right) - marketExplorerPriorityScore(left);
+        return compareMarketExplorerSecondaryPriority(left, right);
       });
   }, [markets, source, category, deferredQuery, liveSignals]);
 
@@ -276,7 +276,7 @@ export function TerminalMarketExplorer() {
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-2xl">
               <p className="font-heading text-[1.15rem] font-semibold tracking-[-0.05em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
-                Prediction market explorer
+                Prediction Market Explorer
               </p>
               <p className="mt-2 font-body text-[13px] leading-relaxed md:text-sm" style={{ color: "var(--text-2)" }}>
                 Current, tradeable books first. Open the market page when you want routing, feasibility, and risk.
@@ -360,8 +360,8 @@ export function TerminalMarketExplorer() {
           {Array.from({ length: 9 }).map((_, index) => (
             <div
               key={index}
-              className="h-[300px] rounded-[22px] border"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+              className="skeleton-card h-[300px] rounded-[22px]"
+              style={{ height: 300 }}
             />
           ))}
         </div>
