@@ -128,7 +128,7 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
           color: "var(--text-2)",
         }}
       >
-        Sign up
+        Connect
       </button>
       {(privateKey || pkError) && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }}>

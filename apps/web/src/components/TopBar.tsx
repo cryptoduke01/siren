@@ -97,7 +97,7 @@ export function TopBar() {
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search markets, tickers, or outcomes"
+              placeholder="Search Markets or Outcomes"
               className="w-full bg-transparent font-body text-sm outline-none placeholder:text-[var(--text-3)]"
               style={{ color: "var(--text-1)" }}
             />
@@ -238,7 +238,7 @@ export function TopBar() {
                         type="text"
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Search markets"
+                        placeholder="Search Markets"
                         className="w-full bg-transparent font-body text-sm outline-none placeholder:text-[var(--text-3)]"
                         style={{ color: "var(--text-1)" }}
                       />

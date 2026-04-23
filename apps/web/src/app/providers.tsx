@@ -18,6 +18,7 @@ const rpcUrl =
 const rpcWsUrl = rpcUrl
   .replace("https://", "wss://")
   .replace("http://", "ws://");
+const privyLogoUrl = "https://onsiren.xyz/brand/privy-wordmark.png";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
@@ -53,6 +54,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           appearance: {
             walletChainType: "solana-only",
             showWalletLoginFirst: false,
+            logo: privyLogoUrl,
           },
           solana: {
             rpcs: solanaRpcs,

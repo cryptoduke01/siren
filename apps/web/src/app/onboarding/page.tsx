@@ -14,14 +14,23 @@ const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
 export default function OnboardingPage() {
   const { connected, walletSessionStatus, publicKey, signMessage } = useSirenWallet();
-  const { login, ready } = usePrivy();
+  const { login, ready, logout } = usePrivy();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
   const [usernameDraft, setUsernameDraft] = useState("");
   const [usernameSaving, setUsernameSaving] = useState(false);
+  const [connectStalled, setConnectStalled] = useState(false);
 
   const walletKey = publicKey?.toBase58() ?? null;
   const showProfileStep = connected && walletSessionStatus === "ready";
+  const isInitializing =
+    walletSessionStatus === "privy-loading" || walletSessionStatus === "embedded-provisioning";
+  const statusLabel =
+    walletSessionStatus === "privy-loading"
+      ? "Initializing…"
+      : walletSessionStatus === "embedded-provisioning"
+        ? "Creating wallet…"
+        : null;
 
   const finishAndGo = useCallback(() => {
     try {
@@ -73,9 +82,23 @@ export default function OnboardingPage() {
     }
   }, [showProfileStep, router]);
 
+  useEffect(() => {
+    if (!isInitializing) {
+      setConnectStalled(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setConnectStalled(true);
+    }, 12000);
+
+    return () => window.clearTimeout(timer);
+  }, [isInitializing]);
+
   const handleLogin = async () => {
     hapticLight();
     setLoginError(null);
+    setConnectStalled(false);
     try {
       await login();
     } catch (e) {
@@ -84,14 +107,16 @@ export default function OnboardingPage() {
     }
   };
 
-  const isInitializing =
-    walletSessionStatus === "privy-loading" || walletSessionStatus === "embedded-provisioning";
-  const statusLabel =
-    walletSessionStatus === "privy-loading"
-      ? "Initializing…"
-      : walletSessionStatus === "embedded-provisioning"
-        ? "Creating wallet…"
-        : null;
+  const handleResetLogin = async () => {
+    hapticLight();
+    setConnectStalled(false);
+    setLoginError(null);
+    try {
+      await logout();
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <div
@@ -193,6 +218,41 @@ export default function OnboardingPage() {
                   >
                     <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: "var(--accent)" }} />
                     {statusLabel}
+                  </div>
+                )}
+
+                {connectStalled && (
+                  <div
+                    className="mb-4 w-full rounded-[18px] border px-4 py-3.5 text-left"
+                    style={{
+                      borderColor: "color-mix(in srgb, var(--yellow) 35%, transparent)",
+                      background: "color-mix(in srgb, var(--yellow) 8%, var(--bg-elevated))",
+                    }}
+                  >
+                    <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                      Wallet setup is taking too long.
+                    </p>
+                    <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      Close the login flow and try again, or keep browsing Siren without connecting first.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleResetLogin()}
+                        className="rounded-full border px-3 py-2 font-body text-xs font-semibold"
+                        style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-surface)" }}
+                      >
+                        Reset Login
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => finishAndGo()}
+                        className="rounded-full border px-3 py-2 font-body text-xs font-semibold"
+                        style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" }}
+                      >
+                        Keep Browsing
+                      </button>
+                    </div>
                   </div>
                 )}
 

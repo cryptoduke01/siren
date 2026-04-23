@@ -8,27 +8,19 @@ import { MarketExecutionSurface } from "@/components/MarketExecutionSurface";
 import { useMarketByTicker } from "@/hooks/useMarketByTicker";
 import { useSirenStore } from "@/store/useSirenStore";
 import { toSelectedMarket } from "@/lib/marketSelection";
-import { useSirenWallet } from "@/contexts/SirenWalletContext";
 
 export default function MarketSharePage() {
   const params = useParams();
   const router = useRouter();
   const ticker = params.ticker as string;
-  const { connected, isReady } = useSirenWallet();
   const { data: market, isLoading, isFetching, isError } = useMarketByTicker(ticker);
   const { selectedMarket, setSelectedMarket } = useSirenStore();
-
-  useEffect(() => {
-    if (isReady && !connected) router.replace("/onboarding");
-  }, [connected, isReady, router]);
 
   useEffect(() => {
     if (market) {
       setSelectedMarket(toSelectedMarket(market));
     }
   }, [market, setSelectedMarket]);
-
-  if (!isReady || !connected) return null;
 
   const hasLocalFallback = selectedMarket?.ticker === ticker;
   const showMarket = !!market || hasLocalFallback;
