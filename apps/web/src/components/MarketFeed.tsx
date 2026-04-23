@@ -238,7 +238,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             <Search className="w-4 h-4 shrink-0" style={{ color: "var(--text-3)" }} />
             <input
               type="text"
-              placeholder="Search Markets or Themes"
+              placeholder="Search Markets"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 bg-transparent font-body text-xs md:text-[13px] outline-none placeholder:text-[var(--text-3)]"

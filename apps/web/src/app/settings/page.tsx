@@ -149,7 +149,7 @@ export default function SettingsPage() {
                       Account
                     </p>
                     <h2 className="mt-1 font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
-                      Connect When You Want Account Controls
+                      Sign Up When You Want Account Controls
                     </h2>
                   </div>
                   <div
@@ -161,7 +161,7 @@ export default function SettingsPage() {
                 </div>
 
                 <p className="mt-4 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                  You do not need to connect to browse Siren. Connect only when you want to manage your public profile, sync your portfolio, or route trades from the app.
+                  You do not need an account to browse Siren. Sign up when you want to manage your profile, sync your portfolio, and trade from inside the app.
                 </p>
 
                 <button
@@ -175,8 +175,8 @@ export default function SettingsPage() {
                     } catch (error) {
                       showResultModal({
                         type: "error",
-                        title: "Connect",
-                        message: error instanceof Error ? error.message : "Could not start login.",
+                        title: "Sign up",
+                        message: error instanceof Error ? error.message : "Could not start sign up.",
                       });
                     } finally {
                       setConnecting(false);
@@ -186,7 +186,7 @@ export default function SettingsPage() {
                   style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                 >
                   {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-                  {connecting ? "Connecting…" : "Connect Wallet"}
+                  {connecting ? "Starting…" : "Sign Up"}
                 </button>
               </div>
 

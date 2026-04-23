@@ -3,17 +3,20 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, Radar, ShieldCheck, Wallet2 } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
 import { getWalletAuthHeaders } from "@/lib/requestAuth";
+import { Footer } from "@/components/Footer";
+import { useThemeStore } from "@/store/useThemeStore";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
 export default function OnboardingPage() {
   const { connected, walletSessionStatus, publicKey, signMessage } = useSirenWallet();
   const { login, ready, logout } = usePrivy();
+  const { theme } = useThemeStore();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
   const [usernameDraft, setUsernameDraft] = useState("");
@@ -104,7 +107,7 @@ export default function OnboardingPage() {
       await login();
     } catch (e) {
       console.error("[Siren] Privy login failed", e);
-      setLoginError(e instanceof Error ? e.message : "Could not start login. Try again.");
+      setLoginError(e instanceof Error ? e.message : "Could not start sign up. Try again.");
     }
   };
 
@@ -121,100 +124,138 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div
-      className="min-h-[100dvh] flex flex-col items-center justify-center px-5"
-      style={{ background: "var(--bg-void)" }}
-    >
-      <div className="w-full max-w-sm flex flex-col items-center text-center">
-        <img
-          src="/brand/logo.svg"
-          alt="Siren"
-          className="h-8 w-auto mb-10"
-        />
+    <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-void)" }}>
+      <main className="flex flex-1 items-center px-5 py-8 md:px-8 lg:px-10">
+        <div className="mx-auto w-full max-w-6xl">
+          {!showProfileStep ? (
+            <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)] lg:items-center">
+              <section className="max-w-2xl">
+                <img
+                  src="/brand/logo.svg"
+                  alt="Siren"
+                  className="h-8 w-auto md:h-10"
+                  style={{ filter: theme === "light" ? "brightness(0.08)" : "none" }}
+                />
 
-        {!showProfileStep ? (
-          <>
-            <h1
-              className="font-heading font-bold tracking-tight mb-3"
-              style={{ color: "var(--text-1)", fontSize: "clamp(1.6rem, 4vw, 2.2rem)", lineHeight: 1.08 }}
-            >
-              See Siren Before You Connect.
-            </h1>
-
-            <p className="font-body text-sm mb-7 leading-relaxed" style={{ color: "var(--text-2)" }}>
-              Browse live prediction markets first. Connect only when you want wallet routing, portfolio sync, or execution history.
-            </p>
-
-            <div className="mb-7 flex w-full flex-wrap justify-center gap-2">
-              {["Live Markets", "Execution Context", "No Sign-In Wall"].map((item) => (
-                <span
-                  key={item}
-                  className="rounded-full border px-3 py-1.5 font-body text-[11px] font-semibold uppercase tracking-[0.14em]"
-                  style={{
-                    borderColor: "var(--border-subtle)",
-                    background: "color-mix(in srgb, var(--bg-elevated) 90%, transparent)",
-                    color: "var(--text-2)",
-                  }}
+                <p className="mt-8 font-body text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                  Welcome To Siren
+                </p>
+                <h1
+                  className="mt-3 font-heading font-bold tracking-[-0.06em]"
+                  style={{ color: "var(--text-1)", fontSize: "clamp(2.2rem, 7vw, 4.4rem)", lineHeight: 0.92 }}
                 >
-                  {item}
-                </span>
-              ))}
-            </div>
+                  See The Market.
+                  <br />
+                  Read The Risk.
+                  <br />
+                  Trade When Ready.
+                </h1>
+                <p className="mt-5 max-w-xl font-body text-base leading-relaxed md:text-lg" style={{ color: "var(--text-2)" }}>
+                  Siren is the execution and risk intelligence layer for prediction markets. Browse live books first, understand what looks tradeable, then sign up only when you want portfolio sync, execution history, and wallet routing.
+                </p>
 
-            <button
-              type="button"
-              onClick={() => {
-                hapticLight();
-                finishAndGo();
-              }}
-              className="w-full py-3.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98]"
-              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-            >
-              Open Terminal
-            </button>
+                <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                  {[
+                    {
+                      icon: Radar,
+                      title: "Live Market View",
+                      body: "Open Kalshi and Polymarket books without handing over your info first.",
+                    },
+                    {
+                      icon: ShieldCheck,
+                      title: "Execution Read",
+                      body: "See whether a trade looks thin, crowded, or risky before you size up.",
+                    },
+                    {
+                      icon: Wallet2,
+                      title: "Sign Up Later",
+                      body: "Create an account only when you want routing, tracking, and a synced portfolio.",
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.title}
+                      className="rounded-[22px] border p-4"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                    >
+                      <div
+                        className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                        style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)" }}
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </div>
+                      <p className="mt-4 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                        {item.title}
+                      </p>
+                      <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {item.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
 
-            <p className="font-body text-[11px] mt-3 mb-5 leading-relaxed" style={{ color: "var(--text-2)" }}>
-              Sign in stays optional until you actually need wallet features.
-            </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticLight();
+                      finishAndGo();
+                    }}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em] transition-all duration-150 hover:brightness-110 active:scale-[0.98]"
+                    style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                  >
+                    Open Terminal
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
 
-            {PRIVY_APP_ID ? (
-              <>
+                  {PRIVY_APP_ID ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleLogin()}
+                      disabled={!ready || isInitializing}
+                      className="inline-flex min-h-12 items-center justify-center rounded-2xl border px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em] transition-all duration-150 hover:bg-[var(--bg-elevated)] active:scale-[0.98] disabled:opacity-50"
+                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-surface)" }}
+                    >
+                      {connectRequested && isInitializing ? "Starting Sign Up…" : "Sign Up To Trade"}
+                    </button>
+                  ) : null}
+                </div>
+
                 {connectRequested && isInitializing && (
                   <div
-                    className="flex items-center justify-center gap-2 w-full rounded-lg border px-3 py-2.5 mb-4 font-label text-[11px]"
+                    className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-2 font-body text-xs"
                     style={{
                       borderColor: "var(--border-subtle)",
-                      background: "var(--bg-elevated)",
+                      background: "var(--bg-surface)",
                       color: "var(--text-2)",
                     }}
                   >
-                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: "var(--accent)" }} />
-                    {statusLabel ?? "Connecting…"}
+                    <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" style={{ color: "var(--accent)" }} />
+                    {statusLabel ?? "Starting Sign Up…"}
                   </div>
                 )}
 
                 {connectRequested && connectStalled && (
                   <div
-                    className="mb-4 w-full rounded-[18px] border px-4 py-3.5 text-left"
+                    className="mt-4 max-w-xl rounded-[22px] border px-4 py-4"
                     style={{
                       borderColor: "color-mix(in srgb, var(--yellow) 35%, transparent)",
-                      background: "color-mix(in srgb, var(--yellow) 8%, var(--bg-elevated))",
+                      background: "color-mix(in srgb, var(--yellow) 8%, var(--bg-surface))",
                     }}
                   >
                     <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                      Wallet setup is taking too long.
+                      Sign Up Is Taking Longer Than It Should.
                     </p>
-                    <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
-                      Close the login flow and try again, or keep browsing Siren without connecting first.
+                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      Reset the login flow and try again, or open the terminal now and keep browsing without an account.
                     </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => void handleResetLogin()}
                         className="rounded-full border px-3 py-2 font-body text-xs font-semibold"
                         style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-surface)" }}
                       >
-                        Reset Login
+                        Reset Sign Up
                       </button>
                       <button
                         type="button"
@@ -228,82 +269,120 @@ export default function OnboardingPage() {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => void handleLogin()}
-                  disabled={!ready || isInitializing}
-                  className="w-full py-3.5 rounded-lg border font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:bg-[var(--bg-elevated)] active:scale-[0.98] disabled:opacity-50"
-                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                >
-                  {connectRequested && isInitializing ? "Connecting…" : "Connect"}
-                </button>
-
                 {loginError && (
-                  <p className="font-body text-xs mt-3" style={{ color: "var(--down)" }}>
+                  <p className="mt-3 font-body text-sm" style={{ color: "var(--down)" }}>
                     {loginError}
                   </p>
                 )}
-              </>
-            ) : (
-              <p className="font-body text-sm" style={{ color: "var(--text-3)" }}>
-                Privy app ID not configured.
+              </section>
+
+              <section className="lg:justify-self-end">
+                <div
+                  className="overflow-hidden rounded-[30px] border p-3"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    background:
+                      "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 97%, transparent), color-mix(in srgb, var(--bg-base) 92%, transparent))",
+                    boxShadow: "0 32px 80px -56px rgba(0,0,0,0.48)",
+                  }}
+                >
+                  <div className="rounded-[24px] border p-3 md:p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                    <img
+                      src="/brand/mockup-browser.png"
+                      alt="Siren market explorer preview"
+                      className="w-full rounded-[18px] border object-cover"
+                      style={{ borderColor: "var(--border-subtle)" }}
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    {[
+                      ["Execution Before Entry", "See what looks tradeable before you commit."],
+                      ["Current Books First", "Siren prioritizes live, current books over dead listings."],
+                      ["Portfolio When You Need It", "Sign up later to unlock tracking and wallet-aware actions."],
+                    ].map(([title, body]) => (
+                      <div
+                        key={title}
+                        className="rounded-[20px] border p-4"
+                        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                      >
+                        <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                          {title}
+                        </p>
+                        <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                          {body}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </div>
+          ) : (
+            <div className="mx-auto max-w-md rounded-[30px] border p-6 text-center" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+              <img
+                src="/brand/logo.svg"
+                alt="Siren"
+                className="mx-auto h-8 w-auto"
+                style={{ filter: theme === "light" ? "brightness(0.08)" : "none" }}
+              />
+              <h1
+                className="mt-8 font-heading font-bold tracking-tight"
+                style={{ color: "var(--text-1)", fontSize: "clamp(1.5rem, 4vw, 2rem)", lineHeight: 1.06 }}
+              >
+                You Are In.
+              </h1>
+              <p className="mt-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                Add a handle if you want one. It shows on share cards and your portfolio, and you can change it later.
               </p>
-            )}
-          </>
-        ) : (
-          <>
-            <h1
-              className="font-heading font-bold tracking-tight mb-3"
-              style={{ color: "var(--text-1)", fontSize: "clamp(1.35rem, 4vw, 1.75rem)", lineHeight: 1.15 }}
-            >
-              You Are In.
-            </h1>
-            <p className="font-body text-sm mb-6" style={{ color: "var(--text-3)" }}>
-              Username is optional. It shows on share cards and your portfolio. You can add or change it later in portfolio or skip now.
-            </p>
-            <label className="sr-only" htmlFor="onboarding-username">
-              Username (optional)
-            </label>
-            <input
-              id="onboarding-username"
-              type="text"
-              value={usernameDraft}
-              onChange={(e) => setUsernameDraft(e.target.value.replace(/[^a-zA-Z0-9_.\-]/g, "").slice(0, 20))}
-              placeholder="username (optional)"
-              className="w-full rounded-lg border px-3 py-2.5 font-body text-sm text-left outline-none mb-3"
-              style={{
-                borderColor: "var(--border-subtle)",
-                background: "var(--bg-elevated)",
-                color: "var(--text-1)",
-              }}
-              autoComplete="username"
-            />
-            {loginError && (
-              <p className="font-body text-xs mb-3 w-full text-left" style={{ color: "var(--down)" }}>
-                {loginError}
-              </p>
-            )}
-            <button
-              type="button"
-              disabled={usernameSaving}
-              onClick={() => void handleSaveUsernameAndContinue()}
-              className="w-full py-3.5 rounded-lg font-heading font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-              style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-            >
-              {usernameSaving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Continue"}
-            </button>
-            <button
-              type="button"
-              disabled={usernameSaving}
-              onClick={() => { hapticLight(); setLoginError(null); finishAndGo(); }}
-              className="mt-3 font-sub text-xs"
-              style={{ color: "var(--text-3)" }}
-            >
-              Skip For Now
-            </button>
-          </>
-        )}
-      </div>
+              <label className="sr-only" htmlFor="onboarding-username">
+                Username
+              </label>
+              <input
+                id="onboarding-username"
+                type="text"
+                value={usernameDraft}
+                onChange={(e) => setUsernameDraft(e.target.value.replace(/[^a-zA-Z0-9_.\-]/g, "").slice(0, 20))}
+                placeholder="Choose a username (optional)"
+                className="mt-5 w-full rounded-2xl border px-4 py-3 font-body text-sm text-left outline-none"
+                style={{
+                  borderColor: "var(--border-subtle)",
+                  background: "var(--bg-base)",
+                  color: "var(--text-1)",
+                }}
+                autoComplete="username"
+              />
+              {loginError && (
+                <p className="mt-3 w-full text-left font-body text-xs" style={{ color: "var(--down)" }}>
+                  {loginError}
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={usernameSaving}
+                onClick={() => void handleSaveUsernameAndContinue()}
+                className="mt-4 w-full rounded-2xl py-3.5 font-heading text-sm font-semibold uppercase tracking-[0.1em] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+                style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+              >
+                {usernameSaving ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Enter Siren"}
+              </button>
+              <button
+                type="button"
+                disabled={usernameSaving}
+                onClick={() => {
+                  hapticLight();
+                  setLoginError(null);
+                  finishAndGo();
+                }}
+                className="mt-4 font-body text-sm"
+                style={{ color: "var(--text-3)" }}
+              >
+                Skip This For Now
+              </button>
+            </div>
+          )}
+        </div>
+      </main>
+      <Footer />
     </div>
   );
 }

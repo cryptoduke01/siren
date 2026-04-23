@@ -2,8 +2,9 @@
 
 import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, TrendingUp } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import type { MarketOutcome, MarketWithVelocity } from "@siren/shared";
+import { CenteredLoaderState } from "@/components/CenteredLoaderState";
 import { useMarkets } from "@/hooks/useMarkets";
 import { useSignals } from "@/hooks/useSignals";
 import { useSirenStore } from "@/store/useSirenStore";
@@ -356,61 +357,10 @@ export function TerminalMarketExplorer() {
       </div>
 
       {showWarmLoader ? (
-        <div className="space-y-4" aria-live="polite" aria-busy="true">
-          <div
-            className="rounded-[22px] border px-5 py-4"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
-          >
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
-                  Loading Current Markets
-                </p>
-                <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                  Pulling the latest Kalshi and Polymarket books into Siren.
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full border px-3 py-2" style={{ borderColor: "var(--border-subtle)", color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 8%, var(--bg-surface))" }}>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="font-body text-xs font-semibold uppercase tracking-[0.12em]">Syncing</span>
-              </div>
-            </div>
-            <div className="progress-track mt-4">
-              <span className="progress-bar" />
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div
-                key={index}
-                className="rounded-[22px] border p-4"
-                style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", minHeight: 248 }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="loader-line w-24" />
-                  <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
-                </div>
-                <div className="mt-5 space-y-3">
-                  <div className="loader-line w-[72%]" />
-                  <div className="loader-line w-[58%]" />
-                </div>
-                <div className="mt-6 space-y-2.5">
-                  {Array.from({ length: 4 }).map((__, row) => (
-                    <div key={row} className="loader-row">
-                      <div className="loader-line w-[62%]" />
-                      <div className="loader-line w-10" />
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-6 grid grid-cols-2 gap-2.5">
-                  <div className="loader-box" />
-                  <div className="loader-box" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <CenteredLoaderState
+          title="Loading Current Markets"
+          detail="Pulling the latest Kalshi and Polymarket books into Siren."
+        />
       ) : isError ? (
         <div className="rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <p className="font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>

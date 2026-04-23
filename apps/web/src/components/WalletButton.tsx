@@ -123,12 +123,12 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
           }}
         className={`h-10 rounded-[14px] px-3 font-body text-xs transition-all duration-[120ms] ease hover:border-[var(--border-active)] ${fullWidth ? "w-full" : ""}`}
         style={{
-          background: "var(--bg-elevated)",
-          border: "1px solid var(--border-default)",
-          color: "var(--text-2)",
+          background: "var(--accent)",
+          border: "1px solid color-mix(in srgb, var(--accent) 24%, var(--border-default))",
+          color: "var(--accent-text)",
         }}
       >
-        Connect
+        Start Trading
       </button>
       {(privateKey || pkError) && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }}>

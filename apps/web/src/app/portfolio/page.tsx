@@ -10,6 +10,7 @@ import {
   Shield, Loader2, ArrowLeft, Copy, Check,
   ChevronDown, ArrowUp, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2, Settings,
 } from "lucide-react";
+import { Footer } from "@/components/Footer";
 import { TopBar } from "@/components/TopBar";
 import { useToastStore } from "@/store/useToastStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
@@ -1163,7 +1164,7 @@ export default function PortfolioPage() {
   const handleDeposit = useCallback(async () => {
     hapticLight();
     if (!publicKey) {
-      showResultModal({ type: "error", title: "Wallet", message: "Connect your wallet first." });
+      showResultModal({ type: "error", title: "Sign up", message: "Sign up first to fund and manage your portfolio." });
       return;
     }
     try {
@@ -1178,7 +1179,7 @@ export default function PortfolioPage() {
   const openVerify = useCallback(async () => {
     hapticLight();
     if (!publicKey || !signMessage) {
-      showResultModal({ type: "error", title: "Verify", message: "Connect your wallet to verify identity." });
+      showResultModal({ type: "error", title: "Verify", message: "Sign up first to verify your trading identity." });
       return;
     }
     setProofLoading(true);
@@ -1216,7 +1217,85 @@ export default function PortfolioPage() {
 
   // ── Render ────────────────────────────────────────────────────
 
-  const loading = !connected || balancesLoading;
+  const loading = balancesLoading;
+
+  if (!connected || !walletKey) {
+    return (
+      <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
+        <TopBar />
+        <main className="mx-auto flex w-full max-w-5xl flex-1 items-center px-4 py-10 md:px-6">
+          <div className="grid w-full gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+            <section
+              className="rounded-[28px] border p-6 md:p-8"
+              style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+            >
+              <p className="font-body text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                Portfolio Locked
+              </p>
+              <h1 className="mt-3 font-heading text-[clamp(2rem,5vw,3rem)] font-bold tracking-[-0.06em]" style={{ color: "var(--text-1)", lineHeight: 0.95 }}>
+                Sign Up To Track
+                <br />
+                Your Positions.
+              </h1>
+              <p className="mt-4 max-w-2xl font-body text-base leading-relaxed" style={{ color: "var(--text-2)" }}>
+                Portfolio is where Siren stores your synced positions, execution history, and trade outcomes. Browse the terminal freely first, then sign up when you want those tools unlocked.
+              </p>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/onboarding"
+                  onClick={() => hapticLight()}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em]"
+                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                >
+                  Start Trading
+                </Link>
+                <Link
+                  href="/"
+                  onClick={() => hapticLight()}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em]"
+                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-base)" }}
+                >
+                  Browse Terminal
+                </Link>
+              </div>
+            </section>
+
+            <section className="grid gap-4">
+              {[
+                {
+                  title: "Portfolio Sync",
+                  body: "Keep your live positions, fills, and execution history in one place instead of guessing what you still hold.",
+                },
+                {
+                  title: "Post-Trade Reports",
+                  body: "See what Siren advised, what route failed, and how your latest attempts actually ended.",
+                },
+                {
+                  title: "Wallet Readiness",
+                  body: "Unlock GoldRush-backed reserve, concentration, and readiness signals before you take more size.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-[22px] border p-5"
+                  style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                >
+                  <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                    {item.title}
+                  </p>
+                  <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    {item.body}
+                  </p>
+                </div>
+              ))}
+            </section>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
@@ -1603,6 +1682,7 @@ export default function PortfolioPage() {
       {withdrawOpen && (
         <WithdrawModal solBalance={sol} solPrice={solPrice} onClose={() => setWithdrawOpen(false)} />
       )}
+      <Footer />
     </div>
   );
 }
