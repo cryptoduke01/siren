@@ -1,14 +1,28 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export function CenteredLoaderState({
   title,
   detail,
+  phrases,
 }: {
   title: string;
   detail: string;
+  phrases?: string[];
 }) {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const activePhrase = phrases?.length ? phrases[phraseIndex % phrases.length] : null;
+
+  useEffect(() => {
+    if (!phrases?.length || phrases.length < 2) return;
+    const timer = window.setInterval(() => {
+      setPhraseIndex((index) => (index + 1) % phrases.length);
+    }, 1900);
+    return () => window.clearInterval(timer);
+  }, [phrases]);
+
   return (
     <div
       className="mx-auto flex min-h-[46vh] w-full items-center justify-center px-4 py-8"
@@ -30,7 +44,12 @@ export function CenteredLoaderState({
         <p className="mt-5 font-heading text-xl font-semibold tracking-[-0.05em]" style={{ color: "var(--text-1)" }}>
           {title}
         </p>
-        <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+        {activePhrase && (
+          <p className="mt-3 font-body text-sm font-medium leading-relaxed" style={{ color: "var(--accent)" }}>
+            {activePhrase}
+          </p>
+        )}
+        <p className={`${activePhrase ? "mt-2" : "mt-3"} font-body text-sm leading-relaxed`} style={{ color: "var(--text-2)" }}>
           {detail}
         </p>
       </div>

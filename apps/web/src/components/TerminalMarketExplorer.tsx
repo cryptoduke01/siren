@@ -213,7 +213,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
 
 export function TerminalMarketExplorer() {
   const router = useRouter();
-  const { data: markets = [], isLoading, isFetching, isFetched, isError, refetch } = useMarkets();
+  const { data: markets = [], isLoading, isFetching, isError, refetch } = useMarkets();
   const { signals } = useSignals();
   const { setSelectedMarket } = useSirenStore();
   const { query, setQuery, source, setSource, category, setCategory } = useExplorerStore();
@@ -258,7 +258,7 @@ export function TerminalMarketExplorer() {
   }, [markets, source, category, deferredQuery, liveSignals]);
 
   const visibleMarkets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const showWarmLoader = !isError && (isLoading || (!isFetched && markets.length === 0) || (isFetching && markets.length === 0));
+  const showWarmLoader = !isError && (isLoading || isFetching || markets.length === 0);
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE);
@@ -360,6 +360,12 @@ export function TerminalMarketExplorer() {
         <CenteredLoaderState
           title="Loading Current Markets"
           detail="Pulling the latest Kalshi and Polymarket books into Siren."
+          phrases={[
+            "Checking live Kalshi books",
+            "Pulling fresh Polymarket listings",
+            "Sorting current opportunities",
+            "Preparing execution context",
+          ]}
         />
       ) : isError ? (
         <div className="rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>

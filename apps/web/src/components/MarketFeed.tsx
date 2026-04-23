@@ -389,6 +389,11 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         <CenteredLoaderState
           title="Loading Markets"
           detail="Pulling current books and routing context into the terminal."
+          phrases={[
+            "Checking live Kalshi books",
+            "Pulling fresh Polymarket listings",
+            "Preparing route context",
+          ]}
         />
       ) : (
         <ul className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 pb-6 space-y-4 snap-y snap-proximity md:px-4 md:space-y-5">

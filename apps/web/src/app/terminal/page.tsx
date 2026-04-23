@@ -7,7 +7,18 @@ import { TopBar } from "@/components/TopBar";
 import { HomeInner } from "../HomeInner";
 
 function TerminalShellFallback() {
-  return <CenteredLoaderState title="Loading Terminal" detail="Siren is syncing current markets and execution context." />;
+  return (
+    <CenteredLoaderState
+      title="Loading Terminal"
+      detail="Siren is syncing current markets and execution context."
+      phrases={[
+        "Checking live Kalshi books",
+        "Pulling fresh Polymarket listings",
+        "Preparing route context",
+        "Building the terminal view",
+      ]}
+    />
+  );
 }
 
 export default function TerminalPage() {
