@@ -33,9 +33,6 @@ export function CenteredLoaderState({
         <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
           {detail}
         </p>
-        <div className="progress-track mx-auto mt-5 max-w-[240px]">
-          <span className="progress-bar" />
-        </div>
       </div>
     </div>
   );

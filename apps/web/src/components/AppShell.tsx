@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { UnifiedBuyPanel } from "./UnifiedBuyPanel";
 import { GlobalResultModal } from "./GlobalResultModal";
 import { GlobalTradePnLShareModal } from "./GlobalTradePnLShareModal";
@@ -12,6 +13,14 @@ import { RegisterSW } from "./RegisterSW";
 import { AccessGate } from "./AccessGate";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const publicRoute =
+    pathname === "/" ||
+    pathname === "/onboarding" ||
+    pathname === "/terms" ||
+    pathname === "/privacy" ||
+    pathname === "/waitlist";
+
   return (
     <>
       <ThemeSync />
@@ -20,12 +29,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AccessGate>
         {children}
       </AccessGate>
-      <UnifiedBuyPanel />
-      <GlobalResultModal />
-      <GlobalTradePnLShareModal />
+      {!publicRoute && <UnifiedBuyPanel />}
+      {!publicRoute && <GlobalResultModal />}
+      {!publicRoute && <GlobalTradePnLShareModal />}
       <ToastContainer />
-      <OnboardingModal />
-      <IssueBadge />
+      {!publicRoute && <OnboardingModal />}
+      {!publicRoute && <IssueBadge />}
     </>
   );
 }

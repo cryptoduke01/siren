@@ -42,7 +42,7 @@ export default function MarketSharePage() {
             </p>
             <button
               type="button"
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/terminal")}
               className="mt-4 rounded-full border px-4 py-2 font-body text-sm font-semibold"
               style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 8%, var(--bg-surface))" }}
             >

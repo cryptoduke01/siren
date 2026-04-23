@@ -19,7 +19,7 @@ export function AdminNav() {
     >
       <div className="flex items-center gap-6">
         <Link
-          href="/"
+          href="/terminal"
           onClick={() => hapticLight()}
           className="flex items-center gap-2 py-2 topbar-logo-wrap"
         >
@@ -43,10 +43,10 @@ export function AdminNav() {
             Waitlist
           </Link>
           <Link
-            href="/"
+            href="/terminal"
             onClick={() => hapticLight()}
             className="font-body text-xs uppercase tracking-wide transition-colors"
-            style={{ color: pathname === "/" ? "var(--accent)" : "var(--text-3)" }}
+            style={{ color: pathname === "/terminal" ? "var(--accent)" : "var(--text-3)" }}
           >
             Terminal
           </Link>

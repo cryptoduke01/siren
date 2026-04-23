@@ -849,7 +849,7 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
             View on Kalshi ↗
           </a>
           <Link
-            href="/"
+            href="/terminal"
             className="inline-flex items-center gap-1 rounded-lg border px-4 py-2.5 font-heading text-xs font-semibold hover:brightness-110 transition-all"
             style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
           >
@@ -1248,10 +1248,10 @@ export default function PortfolioPage() {
                   className="inline-flex min-h-12 items-center justify-center rounded-2xl px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em]"
                   style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                 >
-                  Start Trading
+                  Sign Up To Trade
                 </Link>
                 <Link
-                  href="/"
+                  href="/terminal"
                   onClick={() => hapticLight()}
                   className="inline-flex min-h-12 items-center justify-center rounded-2xl border px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em]"
                   style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-base)" }}
@@ -1663,7 +1663,7 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        <Link href="/" className="mt-6 inline-flex items-center gap-1.5 font-body text-xs"
+        <Link href="/terminal" className="mt-6 inline-flex items-center gap-1.5 font-body text-xs"
           style={{ color: "var(--text-3)" }}>
           <ArrowLeft className="h-3 w-3" /> Back
         </Link>

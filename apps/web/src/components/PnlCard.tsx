@@ -385,7 +385,7 @@ export function PnlCard({
             Connect and trade to see P&amp;L.
           </p>
           <Link
-            href="/"
+            href="/terminal"
             onClick={() => hapticLight()}
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
             style={{ background: "var(--accent)", color: "var(--accent-text)" }}

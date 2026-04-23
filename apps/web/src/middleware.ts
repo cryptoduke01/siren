@@ -4,10 +4,10 @@ import { NextResponse } from "next/server";
 /** Terminal gate: when enabled, / and terminal routes require siren_access cookie.
  * Gate is ON by default; set SIREN_GATE_ENABLED=false to disable (e.g. local dev). */
 const ACCESS_COOKIE = "siren_access";
-const TERMINAL_PATHS = ["/", "/portfolio", "/watchlist", "/onboarding", "/settings", "/leaderboard"];
+const TERMINAL_PATHS = ["/terminal", "/portfolio", "/watchlist", "/onboarding", "/settings", "/leaderboard"];
 
 function isTerminalPath(pathname: string) {
-  return pathname === "/" || TERMINAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  return pathname === "/terminal" || TERMINAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
 export function middleware(req: NextRequest) {
@@ -54,4 +54,3 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
-

@@ -14,7 +14,7 @@ import { hapticLight } from "@/lib/haptics";
 import { useSignals } from "@/hooks/useSignals";
 
 const PRIMARY_NAV = [
-  { href: "/", label: "Terminal", icon: Rocket },
+  { href: "/terminal", label: "Terminal", icon: Rocket },
   { href: "/leaderboard", label: "Ranks", icon: Trophy },
 ];
 const SECONDARY_NAV = [
@@ -27,8 +27,8 @@ export function TopBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useThemeStore();
-  const showSignalSummary = pathname === "/";
-  const isExplorer = pathname === "/";
+  const showSignalSummary = pathname === "/terminal";
+  const isExplorer = pathname === "/terminal";
   const { signals } = useSignals({ enabled: showSignalSummary });
   const [menuOpen, setMenuOpen] = useState(false);
   const { query, setQuery } = useExplorerStore();
@@ -54,7 +54,7 @@ export function TopBar() {
     if (deferredQuery.trim()) params.set("q", deferredQuery.trim());
     else params.delete("q");
     const next = params.toString();
-    const href = next ? `/?${next}` : "/";
+    const href = next ? `/terminal?${next}` : "/terminal";
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== href) {
       router.replace(href, { scroll: false });
@@ -105,7 +105,7 @@ export function TopBar() {
         )}
         <nav className="hidden md:flex items-center gap-6">
           {navItems.map(({ href, label }) => {
-            const isActive = pathname === href || (href === "/" && pathname === "/");
+            const isActive = pathname === href;
             const linkProps = {
               href,
               onClick: () => hapticLight(),
@@ -249,7 +249,7 @@ export function TopBar() {
                   Navigate
                 </p>
                 {navItems.map(({ href, label, icon: Icon }) => {
-                  const isActive = pathname === href || (href === "/" && pathname === "/");
+                  const isActive = pathname === href;
                   const className = "font-body font-medium text-sm py-3 px-3 rounded-[8px]";
                   const style = { color: isActive ? "var(--accent)" : "var(--text-1)", background: "var(--bg-elevated)" };
                   return (

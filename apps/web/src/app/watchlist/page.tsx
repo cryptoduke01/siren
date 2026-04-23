@@ -39,7 +39,7 @@ export default function WatchlistPage() {
               No starred markets yet. Open the terminal and star events you track.
             </p>
             <Link
-              href="/"
+              href="/terminal"
               className="inline-block mt-4 font-body font-medium text-sm px-4 py-2 rounded-[6px] transition-colors hover:bg-[var(--bg-elevated)]"
               style={{ color: "var(--accent)" }}
               onClick={() => hapticLight()}
@@ -63,7 +63,7 @@ export default function WatchlistPage() {
                   onClick={() => {
                     hapticLight();
                     setSelectedMarket(toSelectedMarket(m));
-                    router.push("/");
+                    router.push("/terminal");
                   }}
                 >
                   <div className="absolute top-2 right-2">

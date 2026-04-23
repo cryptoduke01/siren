@@ -7,6 +7,7 @@ import { LayoutGrid, Trophy, Wallet, UserRound } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 
 const HIDDEN_PATHS = [
+  "/",
   "/access",
   "/admin",
   "/landing",
@@ -17,7 +18,7 @@ const HIDDEN_PATHS = [
 ];
 
 const ITEMS = [
-  { href: "/", label: "Feed", icon: LayoutGrid },
+  { href: "/terminal", label: "Feed", icon: LayoutGrid },
   { href: "/leaderboard", label: "Ranks", icon: Trophy },
   { href: "/portfolio", label: "Wallet", icon: Wallet },
   { href: "/settings", label: "Profile", icon: UserRound },
@@ -57,7 +58,7 @@ export function MobileBottomNav() {
         }}
       >
         {ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { BookOpen, Scale, Shield } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 
@@ -53,9 +54,18 @@ function FooterIconLink({
 }
 
 export function Footer() {
+  const pathname = usePathname();
+  const compactAppFooter =
+    pathname === "/terminal" ||
+    pathname === "/portfolio" ||
+    pathname === "/settings" ||
+    pathname === "/leaderboard" ||
+    pathname === "/watchlist" ||
+    pathname.startsWith("/market/");
+
   return (
     <footer
-      className="mt-auto w-full shrink-0 border-t"
+      className={`mt-auto w-full shrink-0 border-t ${compactAppFooter ? "hidden md:block" : ""}`}
       style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
     >
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-5">

@@ -154,7 +154,7 @@ export default function LeaderboardPage() {
       <TopBar />
       <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-16 pt-4 md:pt-6">
         <Link
-          href="/"
+          href="/terminal"
           className="inline-flex items-center gap-1.5 font-sub text-xs mb-5"
           style={{ color: "var(--text-3)" }}
           onClick={() => hapticLight()}

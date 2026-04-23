@@ -30,7 +30,7 @@ export default function NotFound() {
         </p>
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Link
-            href="/"
+            href="/terminal"
             onClick={() => hapticLight()}
             className="font-heading font-semibold text-sm uppercase tracking-wider px-5 py-2.5 rounded-[10px] transition-all duration-200"
             style={{
