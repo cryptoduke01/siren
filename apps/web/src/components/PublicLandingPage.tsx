@@ -266,7 +266,7 @@ export function PublicLandingPage() {
               <br />
               With Execution
               <br />
-              Clarity.
+              Clarity
             </h1>
             <p
               className="mt-7 max-w-2xl font-body text-[1.02rem] leading-[1.72] md:text-[1.12rem]"
