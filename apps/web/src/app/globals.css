@@ -60,9 +60,9 @@
   --kalshi: #5DDFB0;
   --polymarket: #6B3FDB;
   --text-1: #F0F0F5;
-  --text-2: #E2E4EF;
-  --text-3: #C6CADB;
-  --placeholder: #CDD2E2;
+  --text-2: #E8EBF6;
+  --text-3: #D4D9EA;
+  --placeholder: #D7DCEE;
   --up: #00E87A;
   --down: #FF4560;
   --down-dim: #FF456014;
@@ -98,9 +98,9 @@ html.light {
   --kalshi: #2BA86E;
   --polymarket: #6B3FDB;
   --text-1: #16161D;
-  --text-2: #31374B;
-  --text-3: #4B5268;
-  --placeholder: #5C647C;
+  --text-2: #273045;
+  --text-3: #3E475E;
+  --placeholder: #56607A;
   --up: #00B85C;
   --down: #D92B4A;
   --down-dim: #FF456018;
@@ -161,7 +161,7 @@ body {
   opacity: 1;
 }
 
-/* Skeleton shimmer — no spinner, no "Loading..." text */
+/* Legacy skeleton shimmer */
 @keyframes shimmer {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
@@ -182,6 +182,52 @@ body {
   inset: 0;
   background: linear-gradient(90deg, transparent, var(--bg-elevated), transparent);
   animation: shimmer 1.6s infinite;
+}
+
+@keyframes progress-slide {
+  0% { transform: translateX(-55%); width: 28%; }
+  50% { transform: translateX(85%); width: 42%; }
+  100% { transform: translateX(235%); width: 28%; }
+}
+
+.progress-track {
+  position: relative;
+  overflow: hidden;
+  height: 8px;
+  width: 100%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  border: 1px solid var(--border-subtle);
+}
+
+.progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 35%, transparent), var(--accent), color-mix(in srgb, var(--accent) 40%, transparent));
+  animation: progress-slide 1.5s ease-in-out infinite;
+}
+
+.loader-line {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--bg-elevated) 90%, transparent), color-mix(in srgb, var(--border-active) 55%, var(--bg-elevated)), color-mix(in srgb, var(--bg-elevated) 90%, transparent));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.loader-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.loader-box {
+  min-height: 76px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, transparent), color-mix(in srgb, var(--bg-elevated) 86%, transparent));
 }
 
 /* Live number update flash */

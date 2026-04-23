@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Check, Copy, Loader2, Scale, Shield, Upload } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Copy, Loader2, Scale, Shield, Upload, Wallet, Radar, LineChart } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
@@ -11,16 +11,19 @@ import { useResultModalStore } from "@/store/useResultModalStore";
 import { hapticLight } from "@/lib/haptics";
 import { API_URL } from "@/lib/apiUrl";
 import { getWalletAuthHeaders } from "@/lib/requestAuth";
+import { usePrivy } from "@privy-io/react-auth";
 
 const MAX_FILE_BYTES = 1_500_000;
 
 export default function SettingsPage() {
   const { publicKey, connected, signMessage } = useSirenWallet();
+  const { login, ready } = usePrivy();
   const walletKey = publicKey?.toBase58() ?? null;
   const queryClient = useQueryClient();
   const showResultModal = useResultModalStore((s) => s.show);
   const [uploading, setUploading] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["user-profile", walletKey],
@@ -114,7 +117,7 @@ export default function SettingsPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-12 pt-6 md:px-5 md:pt-8 font-body">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-20 pt-6 md:px-5 md:pt-8 font-body">
         <Link
           href="/portfolio"
           className="inline-flex items-center gap-1.5 font-sub text-xs mb-6"
@@ -129,23 +132,102 @@ export default function SettingsPage() {
             Settings
           </h1>
           <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Manage your profile, wallet identity, and the links people rely on when they need context about you or Siren.
+            Manage your profile, wallet identity, and the references people use when they need context about you or Siren.
           </p>
         </div>
 
         <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)] lg:items-start">
           {!connected || !walletKey ? (
-            <div
-              className="rounded-2xl border p-5 lg:col-span-2"
-              style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-            >
-              <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Wallet required
-              </h2>
-              <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                Connect your wallet to update your profile photo, confirm execution identity, and manage your account surface.
-              </p>
-            </div>
+            <>
+              <div
+                className="rounded-2xl border p-5"
+                style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-sub text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-3)" }}>
+                      Account
+                    </p>
+                    <h2 className="mt-1 font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
+                      Connect When You Want Account Controls
+                    </h2>
+                  </div>
+                  <div
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                    style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent)" }}
+                  >
+                    <Wallet className="h-4 w-4" />
+                  </div>
+                </div>
+
+                <p className="mt-4 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  You do not need to connect to browse Siren. Connect only when you want to manage your public profile, sync your portfolio, or route trades from the app.
+                </p>
+
+                <button
+                  type="button"
+                  disabled={!ready || connecting}
+                  onClick={async () => {
+                    hapticLight();
+                    setConnecting(true);
+                    try {
+                      await login();
+                    } catch (error) {
+                      showResultModal({
+                        type: "error",
+                        title: "Connect",
+                        message: error instanceof Error ? error.message : "Could not start login.",
+                      });
+                    } finally {
+                      setConnecting(false);
+                    }
+                  }}
+                  className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-heading text-xs font-semibold uppercase tracking-[0.12em] transition-all duration-150 hover:brightness-110 disabled:opacity-60"
+                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                >
+                  {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                  {connecting ? "Connecting…" : "Connect Wallet"}
+                </button>
+              </div>
+
+              <div className="grid gap-4">
+                {[
+                  {
+                    icon: Radar,
+                    title: "Execution Identity",
+                    body: "Confirm which wallet Siren should use for routing, proof checks, and trade history.",
+                  },
+                  {
+                    icon: LineChart,
+                    title: "Portfolio Sync",
+                    body: "See positions, trade attempts, and execution history without guessing what belongs to you.",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className="rounded-2xl border p-5"
+                    style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
+                        style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)" }}
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                          {item.title}
+                        </h3>
+                        <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                          {item.body}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <>
               <div className="space-y-4">
@@ -281,7 +363,7 @@ export default function SettingsPage() {
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
             <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Docs and policies
+              Docs and Policies
             </h2>
             <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
               Keep the core references close when you need product context or legal detail.

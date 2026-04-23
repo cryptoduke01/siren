@@ -97,7 +97,7 @@ export function TopBar() {
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search Markets or Outcomes"
+              placeholder="Search Markets or Themes"
               className="w-full bg-transparent font-body text-sm outline-none placeholder:text-[var(--text-3)]"
               style={{ color: "var(--text-1)" }}
             />

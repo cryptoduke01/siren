@@ -238,7 +238,7 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
             <Search className="w-4 h-4 shrink-0" style={{ color: "var(--text-3)" }} />
             <input
               type="text"
-              placeholder="Search Markets or Outcomes"
+              placeholder="Search Markets or Themes"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 bg-transparent font-body text-xs md:text-[13px] outline-none placeholder:text-[var(--text-3)]"
@@ -386,11 +386,33 @@ export function MarketFeed({ onAfterSelectMarket }: { onAfterSelectMarket?: (m: 
         </div>
       ) : isLoading ? (
         <div className="flex flex-col gap-3 px-3 md:px-4" aria-live="polite" aria-busy="true">
-          <p className="px-1 font-body text-[11px]" style={{ color: "var(--text-3)" }}>
-            Loading live markets...
-          </p>
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="skeleton-card rounded-[22px]" style={{ height: 200 }} />
+          <div className="rounded-[22px] border px-4 py-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+            <div className="flex items-center gap-2" style={{ color: "var(--accent)" }}>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="font-body text-xs font-semibold uppercase tracking-[0.12em]">Loading Markets</span>
+            </div>
+            <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+              Pulling current books and routing context into the terminal.
+            </p>
+            <div className="progress-track mt-4">
+              <span className="progress-bar" />
+            </div>
+          </div>
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="rounded-[22px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", minHeight: 188 }}>
+              <div className="flex items-center justify-between">
+                <div className="loader-line w-20" />
+                <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
+              </div>
+              <div className="mt-5 space-y-3">
+                <div className="loader-line w-[68%]" />
+                <div className="loader-line w-[56%]" />
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-2.5">
+                <div className="loader-box" />
+                <div className="loader-box" />
+              </div>
+            </div>
           ))}
         </div>
       ) : (
