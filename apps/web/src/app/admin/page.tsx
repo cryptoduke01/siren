@@ -74,7 +74,7 @@ type WaitlistUserRow = {
 };
 
 type CampaignPreset = {
-  id: "access_codes" | "launch_thread" | "trading_live" | "leaderboard_spotlight";
+  id: "access_codes" | "launch_thread" | "execution_risk_update" | "trading_live" | "leaderboard_spotlight";
   label: string;
   description: string;
   endpoint: string;
@@ -856,7 +856,7 @@ export default function AdminPage() {
 
           <SectionCard
             title="Audience and email dissemination"
-            subtitle="Reachable contacts, waitlist coverage, and one-click campaign sends from the admin board."
+            subtitle="Code-defined campaigns live in the backend and surface here automatically with one-click sends."
           >
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
               <div className="space-y-4">

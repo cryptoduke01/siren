@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { canSendEmail } from "./email.js";
+import { buildEmailCampaignPresets } from "./emailCampaigns.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_ANALYTICS_ROWS = 10_000;
@@ -116,7 +117,7 @@ type AudienceContactRow = {
 };
 
 type CampaignPreset = {
-  id: "access_codes" | "launch_thread" | "trading_live" | "leaderboard_spotlight";
+  id: "access_codes" | "launch_thread" | "execution_risk_update" | "trading_live" | "leaderboard_spotlight";
   label: string;
   description: string;
   endpoint: string;
@@ -870,49 +871,18 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
   const firstTradeInLastHour = Array.from(successTimestampsByWallet.values()).some((ts) => ts >= lastHourStartMs);
   const emailConfigured = canSendEmail();
 
-  const campaignPresets: CampaignPreset[] = [
-    {
-      id: "access_codes",
-      label: "Access code drop",
-      description: "Generate missing codes and deliver access emails to the waitlist.",
-      endpoint: "/api/admin/waitlist/send-all-codes",
-      audienceLabel: "Waitlist emails",
-      eligibleContacts: waitlistWithEmail,
-      recommended: waitlistMissingCodes > 0,
-    },
-    {
-      id: "launch_thread",
-      label: "Launch thread blast",
-      description: "Push the story and product positioning to the waitlist audience.",
-      endpoint: "/api/admin/waitlist/send-launch-thread-email",
-      audienceLabel: "Waitlist emails",
-      eligibleContacts: waitlistWithEmail,
-      recommended: waitlistWithEmail > 0 && attemptedAtLeastOneTrade === 0,
-    },
-    {
-      id: "trading_live",
-      label: "Trading live announcement",
-      description: "Send a product-open update once the trading experience is stable enough to invite people back.",
-      endpoint: "/api/admin/waitlist/send-trading-live-email",
-      audienceLabel: "Waitlist emails",
-      eligibleContacts: waitlistWithEmail,
-      recommended: waitlistWithEmail > 0 && attemptedAtLeastOneTrade > 0,
-    },
-    {
-      id: "leaderboard_spotlight",
-      label: "Leaderboard spotlight",
-      description: "Re-engage the audience with proof that real traders are using Siren repeatedly.",
-      endpoint: "/api/admin/waitlist/send-leaderboard-spotlight-email",
-      audienceLabel: "Waitlist emails",
-      eligibleContacts: waitlistWithEmail,
-      recommended: waitlistWithEmail > 0 && attemptedThreePlusTrades > 0,
-    },
-  ];
+  const campaignPresets: CampaignPreset[] = buildEmailCampaignPresets({
+    waitlistWithEmail,
+    waitlistMissingCodes,
+    reachableContacts: audienceContacts.length,
+    attemptedAtLeastOneTrade,
+    attemptedThreePlusTrades,
+  });
 
   const campaignGapSummary =
     appOnlyContacts > 0
-      ? `${appOnlyContacts} app-only contacts have email, but the current send endpoints still target the waitlist audience.`
-      : "Current send endpoints cover the same reachable audience you have in the waitlist.";
+      ? `${appOnlyContacts} app-only contacts are now included in code-defined merged-audience campaigns from this panel.`
+      : "Campaign buttons are generated from the backend campaign registry, so adding a new coded campaign will surface here automatically.";
 
   const alerts: DashboardAlert[] = [
     {

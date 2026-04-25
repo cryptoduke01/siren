@@ -9,6 +9,7 @@ import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
 import { buildAdminTractionDashboard, logMarketViewTelemetry, logTradeAttemptTelemetry } from "./services/adminTraction.js";
+import { getEmailCampaignDefinition, runEmailCampaign } from "./services/emailCampaigns.js";
 import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
 import {
   sendWelcomeWithAccessCode,
@@ -923,6 +924,28 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to send emails" });
+    }
+  });
+
+  /** Admin: trigger any code-defined email campaign from the backend registry. */
+  app.post<{ Params: { id: string } }>("/api/admin/email-campaigns/:id/send", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = req.params.id?.trim() ?? "";
+    const definition = getEmailCampaignDefinition(id);
+    if (!definition) {
+      return reply.status(404).send({ success: false, error: "Unknown email campaign." });
+    }
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      const result = await runEmailCampaign(supabase, definition.id);
+      if (!result) {
+        return reply.status(404).send({ success: false, error: "Unknown email campaign." });
+      }
+      return reply.send({ success: true, ...result });
+    } catch (error) {
+      app.log.error({ err: error, campaign: definition.id }, "Failed to send code-defined email campaign");
+      return reply.status(500).send({ success: false, error: "Failed to send email campaign." });
     }
   });
 
