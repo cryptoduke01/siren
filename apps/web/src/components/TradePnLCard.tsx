@@ -29,12 +29,6 @@ function formatUsd(value: number) {
   return `$${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function maskWallet(address?: string | null) {
-  if (!address) return "";
-  if (address.length < 12) return address;
-  return `${address.slice(0, 4)}…${address.slice(-4)}`;
-}
-
 export function TradePnLCard({
   token,
   profitUsd,
@@ -52,6 +46,19 @@ export function TradePnLCard({
   const isProfit = profitUsd >= 0;
   const accentHex = isProfit ? "#00FF85" : "#FF4560";
   const accentRgb = isProfit ? "0,255,133" : "255,69,96";
+  const contractLabel = useMemo(() => {
+    const symbol = token.symbol?.trim();
+    const name = token.name?.trim();
+    if (symbol && symbol.length > 0) return symbol;
+    if (name && name.length > 0) return name;
+    return "Position";
+  }, [token.name, token.symbol]);
+  const marketLabel = useMemo(() => {
+    const primary = kalshiMarket?.trim();
+    if (primary) return primary;
+    const fallback = token.name?.trim();
+    return fallback && fallback.length > 0 ? fallback : "Prediction market position";
+  }, [kalshiMarket, token.name]);
 
   const { boughtUsd, valueUsd } = useMemo(() => {
     if (
@@ -79,6 +86,10 @@ export function TradePnLCard({
       return "";
     }
   }, [executedAt]);
+  const handleLabel = useMemo(() => {
+    if (!displayName) return null;
+    return displayName.startsWith("@") ? displayName : `@${displayName}`;
+  }, [displayName]);
 
   const handleExport = (asShare: boolean) => async () => {
     hapticLight();
@@ -139,7 +150,6 @@ export function TradePnLCard({
         />
 
         <div className="relative z-[2] p-5">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div
@@ -147,15 +157,15 @@ export function TradePnLCard({
                 style={{ background: `rgba(${accentRgb},0.12)` }}
               >
                 <span className="font-heading text-sm font-bold" style={{ color: accentHex }}>
-                  {token.symbol.slice(0, 2).toUpperCase()}
+                  SR
                 </span>
               </div>
               <div>
                 <p className="font-heading text-sm font-bold" style={{ color: "#F5F5F7" }}>
-                  ${token.symbol}
+                  Siren PnL
                 </p>
                 <p className="font-body text-[11px]" style={{ color: "#6B6B80" }}>
-                  {token.name.length > 24 ? `${token.name.slice(0, 24)}…` : token.name}
+                  Basic position snapshot
                 </p>
               </div>
             </div>
@@ -167,7 +177,6 @@ export function TradePnLCard({
             </div>
           </div>
 
-          {/* PnL */}
           <div className="mt-5">
             <p className="font-body text-[10px] uppercase tracking-[0.15em]" style={{ color: "#6B6B80" }}>
               Profit / Loss
@@ -180,24 +189,34 @@ export function TradePnLCard({
             </p>
           </div>
 
-          {/* Market */}
           <div
             className="mt-4 rounded-lg border px-3.5 py-3"
             style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)" }}
           >
-            <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "#6B6B80" }}>
-              Signal
-            </p>
-            <p className="mt-1 font-heading text-sm font-semibold leading-snug" style={{ color: "#F5F5F7" }}>
-              {kalshiMarket}
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "#6B6B80" }}>
+                  Market
+                </p>
+                <p className="mt-1 font-heading text-sm font-semibold leading-snug" style={{ color: "#F5F5F7" }}>
+                  {marketLabel}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "#6B6B80" }}>
+                  Position
+                </p>
+                <p className="mt-1 font-money text-xs font-semibold tabular-nums" style={{ color: "#B8B8CC" }}>
+                  {contractLabel}
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Stats */}
           <div className="mt-4 grid grid-cols-3 gap-3">
             <div>
               <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "#6B6B80" }}>
-                Bought
+                Entry
               </p>
               <p className="mt-0.5 font-money text-sm font-semibold tabular-nums" style={{ color: "#B8B8CC" }}>
                 {boughtUsd != null ? formatUsd(boughtUsd) : "—"}
@@ -213,31 +232,34 @@ export function TradePnLCard({
             </div>
             <div className="text-right">
               <p className="font-body text-[10px] uppercase tracking-[0.12em]" style={{ color: "#6B6B80" }}>
-                {dateLabel ? "Date" : ""}
+                Return
               </p>
-              <p className="mt-0.5 font-body text-[11px]" style={{ color: "#6B6B80" }}>
-                {dateLabel}
+              <p className="mt-0.5 font-money text-sm font-semibold tabular-nums" style={{ color: accentHex }}>
+                {percent >= 0 ? "+" : ""}{percent.toFixed(1)}%
               </p>
             </div>
           </div>
 
-          {/* Footer */}
           <div className="mt-4 flex items-center justify-between border-t pt-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
             <div className="flex items-center gap-2">
               <img src="/brand/mark.svg" alt="Siren" className="h-5 w-auto" style={{ filter: "brightness(1.1)" }} />
               <span className="font-heading text-xs font-bold" style={{ color: "#F5F5F7" }}>SIREN</span>
-              {displayName && (
+              {handleLabel && (
                 <span className="font-body text-[10px]" style={{ color: "#6B6B80" }}>
-                  @{displayName}
+                  {handleLabel}
                 </span>
               )}
             </div>
-            <span
-              className="rounded-full px-2.5 py-1 font-sub text-[10px] font-medium"
-              style={{ background: `rgba(${accentRgb},0.1)`, color: accentHex }}
-            >
-              onsiren.xyz
-            </span>
+            <div className="text-right">
+              {dateLabel && (
+                <p className="font-body text-[10px]" style={{ color: "#6B6B80" }}>
+                  {dateLabel}
+                </p>
+              )}
+              <p className="font-body text-[10px]" style={{ color: accentHex }}>
+                onsiren.xyz
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -265,12 +287,6 @@ export function TradePnLCard({
           Share
         </button>
       </div>
-
-      {wallet && (
-        <p className="font-sub text-[10px]" style={{ color: "var(--text-3)" }}>
-          {maskWallet(wallet)}
-        </p>
-      )}
     </div>
   );
 }

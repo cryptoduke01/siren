@@ -29,6 +29,11 @@ export default function OnboardingPage() {
   const showProfileStep = connected && walletSessionStatus === "ready";
   const isInitializing =
     walletSessionStatus === "privy-loading" || walletSessionStatus === "embedded-provisioning";
+  const signUpHint = !PRIVY_APP_ID
+    ? "Sign up is not configured on this deployment yet."
+    : !ready
+      ? "Sign up is still loading. If you click now, we will tell you what is blocking it."
+      : null;
 
   const finishAndGo = useCallback(() => {
     try {
@@ -67,6 +72,19 @@ export default function OnboardingPage() {
     hapticLight();
     setLoginError(null);
     setConnectStalled(false);
+    if (!PRIVY_APP_ID) {
+      setLoginError("Sign up is not configured on this deployment yet. Add NEXT_PUBLIC_PRIVY_APP_ID and reload.");
+      return;
+    }
+    if (!ready) {
+      setLoginError("Sign up is still loading. Give it a second and try again.");
+      return;
+    }
+    if (isInitializing) {
+      setConnectRequested(true);
+      setLoginError("Sign up is already starting. If nothing appears, reset and try again.");
+      return;
+    }
     setConnectRequested(true);
     try {
       await login();
@@ -279,7 +297,7 @@ export default function OnboardingPage() {
                   <button
                     type="button"
                     onClick={() => void handleLogin()}
-                    disabled={!PRIVY_APP_ID || !ready || isInitializing}
+                    disabled={connectRequested && isInitializing}
                     className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
                     style={{ background: "var(--accent)", color: "var(--accent-text)" }}
                   >
@@ -295,6 +313,12 @@ export default function OnboardingPage() {
                       </>
                     )}
                   </button>
+
+                  {signUpHint && !loginError && (
+                    <p className="mt-3 font-body text-sm" style={{ color: "var(--text-3)" }}>
+                      {signUpHint}
+                    </p>
+                  )}
 
                   {connectStalled && (
                     <div

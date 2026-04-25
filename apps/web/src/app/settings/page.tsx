@@ -14,6 +14,7 @@ import { getWalletAuthHeaders } from "@/lib/requestAuth";
 import { usePrivy } from "@privy-io/react-auth";
 
 const MAX_FILE_BYTES = 1_500_000;
+const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
 export default function SettingsPage() {
   const { publicKey, connected, signMessage } = useSirenWallet();
@@ -166,9 +167,25 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
-                  disabled={!ready || connecting}
+                  disabled={connecting}
                   onClick={async () => {
                     hapticLight();
+                    if (!PRIVY_APP_ID) {
+                      showResultModal({
+                        type: "error",
+                        title: "Sign up unavailable",
+                        message: "Sign up is not configured on this deployment yet.",
+                      });
+                      return;
+                    }
+                    if (!ready) {
+                      showResultModal({
+                        type: "error",
+                        title: "Sign up loading",
+                        message: "Auth is still loading. Try again in a moment.",
+                      });
+                      return;
+                    }
                     setConnecting(true);
                     try {
                       await login();

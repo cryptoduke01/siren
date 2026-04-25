@@ -34,7 +34,13 @@ import {
   pnlFromAvgEntry,
   markCentsForSide,
 } from "@/lib/positionEntryStorage";
-import { pushLocalTrade, readLocalTrades, type LocalTradeLedgerRow } from "@/lib/localTradeLedger";
+import {
+  buildLocalPositionStatsMap,
+  pushLocalTrade,
+  readLocalTrades,
+  type LocalPositionStat,
+  type LocalTradeLedgerRow,
+} from "@/lib/localTradeLedger";
 
 const LAMPORTS_PER_SOL = 1e9;
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -44,6 +50,7 @@ interface Position {
   ticker: string;
   title: string;
   side: string;
+  decimals?: number;
   probability?: number;
   entryPrice?: number;
   currentPrice?: number;
@@ -67,15 +74,30 @@ type PositionsQueryData = {
   degradedReason?: string;
 };
 
-function computePositionPnl(p: Position): { usd: number; pct: number } {
+function resolvePositionAvgEntryCents(
+  p: Position,
+  localStat?: LocalPositionStat | null,
+): number | null {
+  const savedEntry = p.mint ? getPositionEntry(p.mint) : null;
+  if (savedEntry) return savedEntry.avgCents;
+  if (localStat?.avgEntryCents != null && Number.isFinite(localStat.avgEntryCents)) {
+    return localStat.avgEntryCents;
+  }
+  if (typeof p.entryPrice === "number" && Number.isFinite(p.entryPrice) && p.entryPrice >= 0) {
+    return p.entryPrice;
+  }
+  return null;
+}
+
+function computePositionPnl(p: Position, localStat?: LocalPositionStat | null): { usd: number; pct: number } {
   const shares = p.quantity ?? p.balance ?? 0;
-  const entry = p.mint ? getPositionEntry(p.mint) : null;
-  if (entry && shares > 0) {
+  const avgEntryCents = resolvePositionAvgEntryCents(p, localStat);
+  if (avgEntryCents != null && shares > 0) {
     const { pnlUsd, pnlPct } = pnlFromAvgEntry({
       side: p.side,
       probability: p.probability,
       shares,
-      avgCents: entry.avgCents,
+      avgCents: avgEntryCents,
     });
     return { usd: pnlUsd, pct: pnlPct };
   }
@@ -585,7 +607,15 @@ function TokenRow({ symbol, balance, usdValue }: {
 
 // ── Position Row ────────────────────────────────────────────────────
 
-function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntrySaved: () => void }) {
+function PositionRow({
+  position: p,
+  localStat,
+  onEntrySaved,
+}: {
+  position: Position;
+  localStat?: LocalPositionStat | null;
+  onEntrySaved: () => void;
+}) {
   const [shareOpen, setShareOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [avgCentsDraft, setAvgCentsDraft] = useState("");
@@ -615,10 +645,15 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
   const kalshiUrl = p.kalshi_url || `https://kalshi.com/markets/${p.ticker?.toLowerCase()}`;
   const markCents = markCentsForSide(p.side, p.probability);
   const savedEntry = p.mint ? getPositionEntry(p.mint) : null;
+  const autoAvgCents =
+    savedEntry?.avgCents == null
+      ? localStat?.avgEntryCents ?? (typeof p.entryPrice === "number" && Number.isFinite(p.entryPrice) ? p.entryPrice : null)
+      : null;
   const draftParsed = avgCentsDraft.trim() === "" ? Number.NaN : parseFloat(avgCentsDraft);
   const draftAvg =
     Number.isFinite(draftParsed) && draftParsed >= 0 && draftParsed <= 100 ? draftParsed : null;
-  const avgCentsForPnl = draftAvg ?? savedEntry?.avgCents ?? null;
+  const baseAvgCents = resolvePositionAvgEntryCents(p, localStat);
+  const avgCentsForPnl = draftAvg ?? baseAvgCents;
   const fromLocalAvg =
     avgCentsForPnl != null && shares > 0
       ? pnlFromAvgEntry({
@@ -628,13 +663,13 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
           avgCents: avgCentsForPnl,
         })
       : null;
-  const apiPnl = computePositionPnl(p);
+  const apiPnl = computePositionPnl(p, localStat);
   const pnl = fromLocalAvg != null ? fromLocalAvg.pnlUsd : apiPnl.usd;
   const pnlPct = fromLocalAvg != null ? fromLocalAvg.pnlPct : apiPnl.pct;
   const pnlIsPreview =
-    draftAvg != null && (!savedEntry || Math.abs(draftAvg - savedEntry.avgCents) > 1e-6);
+    draftAvg != null && (baseAvgCents == null || Math.abs(draftAvg - baseAvgCents) > 1e-6);
   const stakeForCard =
-    savedEntry && shares > 0 ? (shares * savedEntry.avgCents) / 100 : null;
+    avgCentsForPnl != null && shares > 0 ? (shares * avgCentsForPnl) / 100 : null;
   const valueForCard =
     typeof p.marketValueUsd === "number" && Number.isFinite(p.marketValueUsd)
       ? p.marketValueUsd
@@ -656,6 +691,8 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
         symbol: p.ticker,
         price: typeof current === "number" ? current : prob > 1 ? prob / 100 : prob,
         assetType: "prediction",
+        decimals: p.decimals,
+        entryPrice: baseAvgCents ?? undefined,
         marketTicker: p.ticker,
         marketTitle: p.title,
         marketSide,
@@ -772,8 +809,9 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
 
         {!settled && (
           <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-            To estimate profit or loss, enter what you paid per share in cents (for example 20), then Save. We do not see
-            your Kalshi history automatically.
+            {autoAvgCents != null
+              ? `Using your logged Siren trades at about ${autoAvgCents.toFixed(1)}¢ per share. Save a manual price only if you opened this position elsewhere or want to override it on this device.`
+              : "To estimate profit or loss, enter what you paid per share in cents (for example 20), then Save. We do not see your outside Kalshi history automatically."}
           </p>
         )}
 
@@ -789,7 +827,7 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
                 min={0}
                 max={100}
                 step={1}
-                placeholder={savedEntry ? String(savedEntry.avgCents) : "e.g. 20"}
+                placeholder={savedEntry ? String(savedEntry.avgCents) : autoAvgCents != null ? autoAvgCents.toFixed(1) : "e.g. 20"}
                 value={avgCentsDraft}
                 onChange={(e) => setAvgCentsDraft(e.target.value)}
                 className="w-28 rounded-lg border px-3 py-2.5 font-money text-base tabular-nums outline-none"
@@ -833,6 +871,14 @@ function PositionRow({ position: p, onEntrySaved }: { position: Position; onEntr
                 style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
               >
                 Saved @ {savedEntry.avgCents.toFixed(0)}¢
+              </span>
+            )}
+            {!savedEntry && autoAvgCents != null && (
+              <span
+                className="rounded-full border px-3 py-1 font-heading text-xs font-semibold self-center"
+                style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+              >
+                Auto @ {autoAvgCents.toFixed(1)}¢
               </span>
             )}
           </div>
@@ -948,6 +994,10 @@ export default function PortfolioPage() {
     if (!walletKey) return [];
     return [...readLocalTrades(walletKey)].sort((a, b) => b.ts - a.ts).slice(0, 40);
   }, [walletKey, activityEpoch]);
+  const localPositionStatsByMint = useMemo(
+    () => (walletKey ? buildLocalPositionStatsMap(walletKey) : new Map<string, LocalPositionStat>()),
+    [walletKey, activityEpoch],
+  );
 
   useEffect(() => {
     const bump = () => setActivityEpoch((n) => n + 1);
@@ -1134,8 +1184,12 @@ export default function PortfolioPage() {
   const settledPositions = positions.filter((p) => p.status === "settled");
   const activeTab = positionTab === "open" ? openPositions : settledPositions;
   const totalPnl = useMemo(
-    () => positions.reduce((sum, p) => sum + computePositionPnl(p).usd, 0),
-    [positions, entryEpoch],
+    () =>
+      positions.reduce(
+        (sum, p) => sum + computePositionPnl(p, p.mint ? (localPositionStatsByMint.get(p.mint) ?? null) : null).usd,
+        0,
+      ),
+    [positions, localPositionStatsByMint, entryEpoch],
   );
 
   // ── Identity ──────────────────────────────────────────────────
@@ -1656,6 +1710,7 @@ export default function PortfolioPage() {
                 <PositionRow
                   key={`${p.ticker}-${i}`}
                   position={p}
+                  localStat={p.mint ? (localPositionStatsByMint.get(p.mint) ?? null) : null}
                   onEntrySaved={() => setEntryEpoch((n) => n + 1)}
                 />
               ))

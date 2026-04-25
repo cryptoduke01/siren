@@ -8,6 +8,7 @@ import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
+import { getWalletPositionStats } from "./services/positionStats.js";
 import { buildAdminTractionDashboard, logMarketViewTelemetry, logTradeAttemptTelemetry } from "./services/adminTraction.js";
 import { getEmailCampaignDefinition, runEmailCampaign } from "./services/emailCampaigns.js";
 import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
@@ -208,6 +209,52 @@ async function fetchEthPriceUsd(): Promise<number> {
 
 function isHexEvmAddress(value: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+async function enrichDflowPositionsWithTradeStats(
+  wallet: string,
+  data: Awaited<ReturnType<typeof getDflowPositionsForWallet>>,
+): Promise<Awaited<ReturnType<typeof getDflowPositionsForWallet>>> {
+  if (data.error || !wallet.trim() || data.positions.length === 0) return data;
+
+  try {
+    const statsByMint = await getWalletPositionStats(getSupabaseAdminClient(), wallet);
+    if (statsByMint.size === 0) return data;
+
+    return {
+      ...data,
+      positions: data.positions.map((position) => {
+        const stat = statsByMint.get(position.mint);
+        if (!stat) return position;
+
+        const avgEntryUsd = stat.avgEntryUsd;
+        const avgEntryCents = stat.avgEntryCents != null ? Number(stat.avgEntryCents.toFixed(2)) : undefined;
+        const qty = position.quantity ?? position.balance ?? 0;
+        const markUsd =
+          typeof position.currentPriceUsd === "number" && Number.isFinite(position.currentPriceUsd)
+            ? position.currentPriceUsd
+            : typeof position.currentPrice === "number" && Number.isFinite(position.currentPrice)
+              ? position.currentPrice / 100
+              : null;
+
+        const enriched = { ...position };
+        if (avgEntryCents != null) {
+          enriched.entryPrice = avgEntryCents;
+        }
+
+        if (avgEntryUsd != null && markUsd != null && Number.isFinite(qty) && qty > 0) {
+          const pnlUsd = Number(((markUsd - avgEntryUsd) * qty).toFixed(6));
+          const costUsd = qty * avgEntryUsd;
+          enriched.pnlUsd = pnlUsd;
+          enriched.pnlPct = costUsd > 0 ? Number(((pnlUsd / costUsd) * 100).toFixed(4)) : 0;
+        }
+
+        return enriched;
+      }),
+    };
+  } catch {
+    return data;
+  }
 }
 
 function parseEthFromHexWei(value: string): number {
@@ -2123,7 +2170,8 @@ export function registerRoutes(app: FastifyInstance) {
     }
     if (!(await requireWalletSignature(req, reply, addr, "read"))) return;
     try {
-      const positions = await getDflowPositionsForWallet(addr);
+      const rawPositions = await getDflowPositionsForWallet(addr);
+      const positions = await enrichDflowPositionsWithTradeStats(addr, rawPositions);
       if (positions.error) {
         app.log.warn({ wallet: `${addr.slice(0, 6)}...${addr.slice(-4)}`, err: positions.error }, "DFlow positions lookup degraded");
         return reply.status(503).send({ success: false, error: positions.error });
@@ -2179,7 +2227,8 @@ export function registerRoutes(app: FastifyInstance) {
     const writeSnapshot = async () => {
       if (closed) return;
       try {
-        const data = await getDflowPositionsForWallet(addr);
+        const rawData = await getDflowPositionsForWallet(addr);
+        const data = await enrichDflowPositionsWithTradeStats(addr, rawData);
         if (data.error) {
           reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: data.error })}\n\n`);
           return;

@@ -7,7 +7,6 @@ import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { Loader2, ExternalLink } from "lucide-react";
-import { useFundWallet as useEvmFundWallet } from "@privy-io/react-auth";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useResultModalStore } from "@/store/useResultModalStore";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
@@ -20,7 +19,6 @@ import {
   encodeProofSignature,
   DFLOW_PROOF_PORTAL_URL,
 } from "@/lib/dflowProof";
-import { buildPolymarketFundingConfig } from "@/lib/privyFunding";
 import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
 import { getPositionEntry } from "@/lib/positionEntryStorage";
 import { fetchSolPriceUsd } from "@/lib/pricing";
@@ -31,6 +29,7 @@ const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
 const POLYMARKET_HOST = "https://clob.polymarket.com";
 const POLYGON_CHAIN_ID = 137;
+const POLYMARKET_TRADING_ENABLED = false;
 
 function formatCompactNumber(value?: number, digits = 1): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -224,7 +223,6 @@ export function UnifiedBuyPanel() {
     useSirenStore();
   const { connected, publicKey, evmAddress, signTransaction, signMessage, getEvmProvider, switchEvmChain } = useSirenWallet();
   const { connection } = useConnection();
-  const { fundWallet: fundEvmWallet } = useEvmFundWallet();
   const showResultModal = useResultModalStore((s) => s.show);
   const hideResultModal = useResultModalStore((s) => s.hide);
   const resultModalOpen = useResultModalStore((s) => s.payload != null);
@@ -237,7 +235,6 @@ export function UnifiedBuyPanel() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [polymarketFundingLoading, setPolymarketFundingLoading] = useState(false);
   const [solAmount, setSolAmount] = useState("");
   const [sellAmount, setSellAmount] = useState("");
   const [sellMode, setSellMode] = useState(false);
@@ -363,6 +360,11 @@ export function UnifiedBuyPanel() {
   const predictionTradeBlocked = isKalshiMarketTrade && !!predictionEligibility?.blocked;
   const predictionTradeBlockReason =
     predictionEligibility?.reason ?? "Prediction market trading is not available in your jurisdiction right now.";
+  const polymarketTradeBlocked = isPolymarketTrade && !POLYMARKET_TRADING_ENABLED;
+  const marketTradeBlocked = predictionTradeBlocked || polymarketTradeBlocked;
+  const marketTradeBlockReason = polymarketTradeBlocked
+    ? "Polymarket is browse-only in Siren right now. Open the market on Polymarket while we finish execution support."
+    : predictionTradeBlockReason;
   const selectedTokenPriceUsd =
     typeof selectedToken?.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
   const predictionMarkUsd =
@@ -597,7 +599,10 @@ export function UnifiedBuyPanel() {
       let inputMint: string;
       let outputMint: string;
       let amount: string;
-      const sellDecimals = 6;
+      const sellDecimals =
+        typeof selectedToken.decimals === "number" && Number.isFinite(selectedToken.decimals) && selectedToken.decimals >= 0
+          ? selectedToken.decimals
+          : 6;
       let partialSellFilled = false;
 
       let amountNum: number;
@@ -616,6 +621,14 @@ export function UnifiedBuyPanel() {
       const tokenPriceUsd = typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
       const tokenNameToLog = tokenDisplayName || selectedToken.name;
       const tokenSymbolToLog = tokenDisplaySymbol || selectedToken.symbol;
+      const selectedTokenEntryCents = (() => {
+        const localEntry = getPositionEntry(selectedToken.mint);
+        if (localEntry) return localEntry.avgCents;
+        if (typeof selectedToken.entryPrice === "number" && Number.isFinite(selectedToken.entryPrice)) {
+          return selectedToken.entryPrice;
+        }
+        return null;
+      })();
 
       logTradeAttemptTelemetry({
         attemptId,
@@ -735,10 +748,9 @@ export function UnifiedBuyPanel() {
       setBuyPanelOpen(false);
       const realizedSummary = (() => {
         if (!isPredictionToken || !selectedToken.mint) return null;
-        const entry = getPositionEntry(selectedToken.mint);
-        if (!entry || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
+        if (selectedTokenEntryCents == null || tokenPriceUsd == null || tokenPriceUsd <= 0) return null;
         const soldValueUsd = amountNum * tokenPriceUsd;
-        const costUsd = amountNum * (entry.avgCents / 100);
+        const costUsd = amountNum * (selectedTokenEntryCents / 100);
         if (costUsd <= 0) return null;
         const pnlUsd = soldValueUsd - costUsd;
         const pnlPct = (pnlUsd / costUsd) * 100;
@@ -857,47 +869,22 @@ export function UnifiedBuyPanel() {
     }
   };
 
-  const openPolymarketFundingFlow = async () => {
-    hapticLight();
-    if (!evmAddress) {
-      const message = "Sign in to set up your Polygon wallet for Polymarket trading.";
-      setError(message);
-      showResultModal({ type: "error", title: "Sign in required", message });
-      return;
-    }
-
-    try {
-      setPolymarketFundingLoading(true);
-      const result = await fundEvmWallet({
-        address: evmAddress,
-        options: buildPolymarketFundingConfig(solAmount.trim() || "50"),
-      });
-      if (result?.status === "cancelled") {
-        showResultModal({
-          type: "info",
-          title: "Funding closed",
-          message: "You closed the funding window. Open it again anytime from the trade panel.",
-        });
-      } else {
-        showResultModal({
-          type: "info",
-          title: "Funding opened",
-          message: "Card and Apple Pay options appear inside Privy when available.",
-        });
-      }
-    } catch (e) {
-      const friendly = e instanceof Error ? e.message : "Unable to open funding right now.";
-      setError(friendly);
-      showResultModal({ type: "error", title: "Funding", message: friendly });
-    } finally {
-      setPolymarketFundingLoading(false);
-    }
-  };
-
   const executePolymarketTrade = async () => {
     hapticLight();
     if (!selectedMarket || selectedMarket.source !== "polymarket") {
       setError("Pick a Polymarket market first.");
+      return;
+    }
+    if (!POLYMARKET_TRADING_ENABLED) {
+      const marketHref = selectedMarket.market_url || "https://polymarket.com";
+      setError("Polymarket trading is not enabled in Siren yet.");
+      showResultModal({
+        type: "info",
+        title: "Browse only",
+        message: "Polymarket markets are visible in Siren, but trading still happens on Polymarket for now.",
+        actionLabel: "Open on Polymarket",
+        actionHref: marketHref,
+      });
       return;
     }
     if (!evmAddress) {
@@ -1369,7 +1356,7 @@ export function UnifiedBuyPanel() {
                     </p>
                     <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
-                        ? "Pick YES or NO and enter USDC from your Polygon wallet."
+                        ? "Browse odds and contract sizing here. Open Polymarket itself to execute while Siren's Polymarket flow is offline."
                         : "Pick YES or NO and enter USDC from your Solana wallet."}
                     </p>
 
@@ -1577,7 +1564,7 @@ export function UnifiedBuyPanel() {
                       </div>
                     )}
 
-                    {predictionTradeBlocked && (
+                    {marketTradeBlocked && (
                       <div
                         className="mt-4 rounded-[18px] border px-4 py-3.5"
                         style={{
@@ -1589,32 +1576,48 @@ export function UnifiedBuyPanel() {
                           Trade unavailable
                         </p>
                         <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-2)" }}>
-                          {predictionTradeBlockReason}
+                          {marketTradeBlockReason}
                         </p>
                       </div>
                     )}
 
-                    <button
-                      onClick={executePredictionMarketTrade}
-                      disabled={loading || !selectedMarketInstrumentId || predictionTradeBlocked}
-                      className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
-                      style={{
-                        background: marketSide === "yes" ? "var(--accent)" : "var(--down)",
-                        color: "var(--bg-base)",
-                      }}
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" /> Building order...
-                        </>
-                      ) : predictionTradeBlocked ? (
-                        "Unavailable in your region"
-                      ) : isKalshiMarketTrade && !proofVerified && !dflowProofLoading ? (
-                        "Verify wallet first"
-                      ) : (
-                        `Buy ${marketSide.toUpperCase()}`
-                      )}
-                    </button>
+                    {isPolymarketTrade ? (
+                      <a
+                        href={selectedMarket.market_url || "https://polymarket.com"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110"
+                        style={{
+                          background: "var(--polymarket)",
+                          color: "var(--bg-base)",
+                        }}
+                      >
+                        Open on Polymarket
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    ) : (
+                      <button
+                        onClick={executePredictionMarketTrade}
+                        disabled={loading || !selectedMarketInstrumentId || marketTradeBlocked}
+                        className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-heading text-sm font-bold uppercase tracking-[0.08em] transition-all duration-100 hover:brightness-110 disabled:opacity-50"
+                        style={{
+                          background: marketSide === "yes" ? "var(--accent)" : "var(--down)",
+                          color: "var(--bg-base)",
+                        }}
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" /> Building order...
+                          </>
+                        ) : marketTradeBlocked ? (
+                          "Unavailable in your region"
+                        ) : isKalshiMarketTrade && !proofVerified && !dflowProofLoading ? (
+                          "Verify wallet first"
+                        ) : (
+                          `Buy ${marketSide.toUpperCase()}`
+                        )}
+                      </button>
+                    )}
 
                     <a
                       href={selectedMarket.market_url || selectedMarket.kalshi_url || (selectedMarket.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com")}
@@ -1656,23 +1659,23 @@ export function UnifiedBuyPanel() {
                       ) : (
                         <>
                           <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--polymarket)" }}>
-                            Polymarket wallet
+                            Polymarket in Siren
                           </p>
                           <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                            Polymarket trades use your Polygon wallet. Add USDC there before you buy.
+                            Browse pricing and liquidity here, then open the source market to trade. Siren Polymarket execution is still offline.
                           </p>
-                          <button
-                            type="button"
-                            onClick={openPolymarketFundingFlow}
-                            disabled={polymarketFundingLoading || !evmAddress}
-                            className="mt-2 inline-flex items-center gap-2 text-xs font-medium disabled:opacity-60"
+                          <a
+                            href={selectedMarket.market_url || "https://polymarket.com"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center gap-2 text-xs font-medium"
                             style={{ color: "var(--polymarket)" }}
                           >
-                            {polymarketFundingLoading ? "Opening funding..." : "Add Polygon USDC"}
+                            Open market on Polymarket
                             <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                          </a>
                           <p className="mt-2 text-[10px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                            DFlow proof is only needed for Kalshi/DFlow markets. Polymarket uses your Polygon wallet.
+                            We are not asking users to fund or sign from Siren for Polymarket until the execution path is reliable.
                           </p>
                         </>
                       )}
@@ -1680,7 +1683,7 @@ export function UnifiedBuyPanel() {
 
                     <p className="mt-3 text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
-                        ? "This can take a few seconds while your wallet signs and the order lands."
+                        ? "Use this panel for decision support, then trade on Polymarket until Siren execution goes live."
                         : "This can take a few seconds after your wallet confirms."}
                     </p>
                   </div>
