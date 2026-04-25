@@ -232,6 +232,18 @@ function buildWalletOrFilter(wallets: string[]): string {
   return wallets.map((wallet) => `wallet.eq.${wallet}`).join(",");
 }
 
+function isUniqueConstraintViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeCode = "code" in error ? error.code : undefined;
+  const maybeMessage = "message" in error ? error.message : undefined;
+  const maybeDetails = "details" in error ? error.details : undefined;
+  return (
+    maybeCode === "23505" ||
+    (typeof maybeMessage === "string" && maybeMessage.toLowerCase().includes("duplicate key")) ||
+    (typeof maybeDetails === "string" && maybeDetails.toLowerCase().includes("already exists"))
+  );
+}
+
 async function enrichDflowPositionsWithTradeStats(
   wallet: string,
   data: Awaited<ReturnType<typeof getDflowPositionsForWallet>>,
@@ -1577,6 +1589,9 @@ export function registerRoutes(app: FastifyInstance) {
           .select("id,wallet,username,display_name")
           .single();
         if (error) {
+          if (isUniqueConstraintViolation(error)) {
+            return reply.status(409).send({ success: false, error: "Username already taken" });
+          }
           req.log.error({ err: error }, "username update failed");
           return reply.status(503).send({ success: false, error: "Failed to update username" });
         }
