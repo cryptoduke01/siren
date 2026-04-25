@@ -25,7 +25,15 @@ async function main() {
       : true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-siren-admin-passcode",
+      "x-siren-wallet",
+      "x-siren-signature",
+      "x-siren-timestamp",
+      "x-siren-scope",
+    ],
   });
   await fastify.register(fastifyWebsocket);
 

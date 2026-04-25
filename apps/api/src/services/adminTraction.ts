@@ -1,13 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { canSendEmail } from "./email.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_ANALYTICS_ROWS = 10_000;
 
 type WaitlistRow = {
+  id: string;
   created_at: string | null;
+  access_code: string | null;
   access_code_used_at: string | null;
   email: string | null;
   wallet: string | null;
+  name: string | null;
 };
 
 type UserRow = {
@@ -15,6 +19,9 @@ type UserRow = {
   wallet: string | null;
   created_at: string | null;
   last_seen_at: string | null;
+  signup_source: string | null;
+  country: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type TradeAttemptRow = {
@@ -70,11 +77,52 @@ type TopSize = {
 type TractionUserRow = {
   id: string;
   wallet: string | null;
+  email: string | null;
+  name: string | null;
   signupDate: string | null;
   lastActive: string | null;
+  signupSource: string | null;
+  country: string | null;
   tradesAttempted: number;
   tradesSucceeded: number;
   volumeUsd: number;
+};
+
+type WaitlistUserRow = {
+  id: string;
+  email: string | null;
+  name: string | null;
+  wallet: string | null;
+  signupDate: string | null;
+  accessCode: string | null;
+  accessCodeIssued: boolean;
+  accessCodeUsedAt: string | null;
+  converted: boolean;
+};
+
+type AudienceSource = "waitlist" | "app" | "both";
+
+type AudienceContactRow = {
+  email: string;
+  name: string | null;
+  source: AudienceSource;
+  wallets: string[];
+  signupSource: string | null;
+  country: string | null;
+  createdAt: string | null;
+  lastSeenAt: string | null;
+  accessCode: string | null;
+  accessCodeUsedAt: string | null;
+};
+
+type CampaignPreset = {
+  id: "access_codes" | "launch_thread" | "trading_live" | "leaderboard_spotlight";
+  label: string;
+  description: string;
+  endpoint: string;
+  audienceLabel: string;
+  eligibleContacts: number;
+  recommended: boolean;
 };
 
 export type AdminTractionDashboard = {
@@ -87,6 +135,14 @@ export type AdminTractionDashboard = {
     totalTradesAttempted: number;
     totalTradesSuccessful: number;
     platformVolumeUsd: number;
+  };
+  allTime: {
+    waitlistUsers: number;
+    appUsers: number;
+    reachableContacts: number;
+    convertedWaitlistUsers: number;
+    totalMarketViews: number;
+    totalTradeFailures: number;
   };
   growth: {
     dailySignups: SeriesPoint[];
@@ -120,7 +176,27 @@ export type AdminTractionDashboard = {
     activeThisWeekAlsoLastWeek: number;
     estimatedFromLastSeen: boolean;
   };
-  users: TractionUserRow[];
+  audience: {
+    emailConfigured: boolean;
+    reachableContacts: number;
+    waitlistOnlyContacts: number;
+    appOnlyContacts: number;
+    bothSourceContacts: number;
+    waitlistWithEmail: number;
+    waitlistMissingCodes: number;
+    waitlistIssuedCodes: number;
+    waitlistRedeemedCodes: number;
+    appUsersWithEmail: number;
+    activeAppContacts7d: number;
+    dormantAppContacts14d: number;
+  };
+  campaigns: {
+    presets: CampaignPreset[];
+    gapSummary: string;
+  };
+  appUsers: TractionUserRow[];
+  waitlistUsers: WaitlistUserRow[];
+  audienceContacts: AudienceContactRow[];
 };
 
 type TelemetryTradeAttemptInput = {
@@ -149,6 +225,41 @@ function normalizeWallet(value?: string | null): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
   return trimmed || null;
+}
+
+function normalizeEmail(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed || null;
+}
+
+function cleanString(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function getMetadataString(metadata: Record<string, unknown> | null | undefined, keys: string[]): string | null {
+  if (!metadata) return null;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function getUserEmail(row: UserRow): string | null {
+  return normalizeEmail(
+    getMetadataString(row.metadata, ["email", "contact_email", "primary_email", "privy_email", "google_email", "github_email"]),
+  );
+}
+
+function getUserName(row: UserRow): string | null {
+  return cleanString(
+    getMetadataString(row.metadata, ["display_name", "full_name", "name", "username", "handle"]),
+  );
 }
 
 function normalizeVenue(value?: string | null): "kalshi" | "polymarket" | "other" {
@@ -312,7 +423,7 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
     fetchOptionalRows<WaitlistRow>(
       client
         .from("waitlist_signups")
-        .select("created_at,access_code_used_at,email,wallet")
+        .select("id,created_at,access_code,access_code_used_at,email,wallet,name")
         .order("created_at", { ascending: true })
         .limit(MAX_ANALYTICS_ROWS),
       "waitlist_signups",
@@ -320,7 +431,7 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
     fetchOptionalRows<UserRow>(
       client
         .from("users")
-        .select("id,wallet,created_at,last_seen_at")
+        .select("id,wallet,created_at,last_seen_at,signup_source,country,metadata")
         .order("created_at", { ascending: true })
         .limit(MAX_ANALYTICS_ROWS),
       "users",
@@ -494,7 +605,7 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
     if (ts >= previousWeekStart && ts < currentWeekStart) activityPreviousWeek.add(wallet);
   }
 
-  const userRowsForTable: TractionUserRow[] = userRows.map((row) => {
+  const appUsersForTable: TractionUserRow[] = userRows.map((row) => {
     const wallet = normalizeWallet(row.wallet);
     const attemptCount = wallet
       ? maxOf(
@@ -508,20 +619,172 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
     return {
       id: row.id,
       wallet: row.wallet,
+      email: getUserEmail(row),
+      name: getUserName(row),
       signupDate: row.created_at,
       lastActive: row.last_seen_at,
+      signupSource: cleanString(row.signup_source),
+      country: cleanString(row.country),
       tradesAttempted: attemptCount,
       tradesSucceeded: successCount,
       volumeUsd,
     };
   });
 
-  const attemptedAtLeastOneTrade = userRowsForTable.filter((row) => row.tradesAttempted >= 1).length;
-  const attemptedThreePlusTrades = userRowsForTable.filter((row) => row.tradesAttempted >= 3).length;
-  const openedTerminalNeverTraded = userRowsForTable.filter((row) => row.tradesAttempted === 0).length;
-  const signupToFirstTradeDropoffRate = toPercent(openedTerminalNeverTraded, userRowsForTable.length);
+  const waitlistUsersForTable: WaitlistUserRow[] = [...waitlistRows]
+    .sort((left, right) => (parseTimestamp(right.created_at) ?? 0) - (parseTimestamp(left.created_at) ?? 0))
+    .map((row) => ({
+      id: row.id,
+      email: normalizeEmail(row.email),
+      name: cleanString(row.name),
+      wallet: row.wallet,
+      signupDate: row.created_at,
+      accessCode: cleanString(row.access_code),
+      accessCodeIssued: Boolean(cleanString(row.access_code)),
+      accessCodeUsedAt: row.access_code_used_at,
+      converted: Boolean(row.access_code_used_at),
+    }));
 
-  const totalTradesSuccessful = userRowsForTable.reduce((sum, row) => sum + row.tradesSucceeded, 0);
+  const audienceContactMap = new Map<
+    string,
+    {
+      email: string;
+      name: string | null;
+      seenWaitlist: boolean;
+      seenApp: boolean;
+      wallets: Set<string>;
+      signupSource: string | null;
+      country: string | null;
+      createdAt: string | null;
+      lastSeenAt: string | null;
+      accessCode: string | null;
+      accessCodeUsedAt: string | null;
+    }
+  >();
+
+  const mergeAudienceContact = (input: {
+    email: string | null;
+    name?: string | null;
+    source: "waitlist" | "app";
+    wallet?: string | null;
+    signupSource?: string | null;
+    country?: string | null;
+    createdAt?: string | null;
+    lastSeenAt?: string | null;
+    accessCode?: string | null;
+    accessCodeUsedAt?: string | null;
+  }) => {
+    if (!input.email) return;
+    const existing = audienceContactMap.get(input.email) ?? {
+      email: input.email,
+      name: null,
+      seenWaitlist: false,
+      seenApp: false,
+      wallets: new Set<string>(),
+      signupSource: null,
+      country: null,
+      createdAt: null,
+      lastSeenAt: null,
+      accessCode: null,
+      accessCodeUsedAt: null,
+    };
+
+    if (!existing.name && input.name) existing.name = input.name;
+    if (input.source === "waitlist") existing.seenWaitlist = true;
+    if (input.source === "app") existing.seenApp = true;
+
+    const wallet = normalizeWallet(input.wallet);
+    if (wallet) existing.wallets.add(wallet);
+    if (!existing.signupSource && input.signupSource) existing.signupSource = input.signupSource;
+    if (!existing.country && input.country) existing.country = input.country;
+    if (!existing.accessCode && input.accessCode) existing.accessCode = input.accessCode;
+    if (!existing.accessCodeUsedAt && input.accessCodeUsedAt) existing.accessCodeUsedAt = input.accessCodeUsedAt;
+
+    const createdAtTs = parseTimestamp(input.createdAt ?? null);
+    const existingCreatedAtTs = parseTimestamp(existing.createdAt);
+    if (createdAtTs != null && (existingCreatedAtTs == null || createdAtTs < existingCreatedAtTs)) {
+      existing.createdAt = input.createdAt ?? null;
+    }
+
+    const lastSeenTs = parseTimestamp(input.lastSeenAt ?? null);
+    const existingLastSeenTs = parseTimestamp(existing.lastSeenAt);
+    if (lastSeenTs != null && (existingLastSeenTs == null || lastSeenTs > existingLastSeenTs)) {
+      existing.lastSeenAt = input.lastSeenAt ?? null;
+    }
+
+    audienceContactMap.set(input.email, existing);
+  };
+
+  for (const row of waitlistRows) {
+    mergeAudienceContact({
+      email: normalizeEmail(row.email),
+      name: cleanString(row.name),
+      source: "waitlist",
+      wallet: row.wallet,
+      createdAt: row.created_at,
+      accessCode: cleanString(row.access_code),
+      accessCodeUsedAt: row.access_code_used_at,
+    });
+  }
+
+  for (const row of userRows) {
+    mergeAudienceContact({
+      email: getUserEmail(row),
+      name: getUserName(row),
+      source: "app",
+      wallet: row.wallet,
+      signupSource: cleanString(row.signup_source),
+      country: cleanString(row.country),
+      createdAt: row.created_at,
+      lastSeenAt: row.last_seen_at,
+    });
+  }
+
+  const audienceContacts: AudienceContactRow[] = Array.from(audienceContactMap.values())
+    .map((row) => {
+      const source: AudienceSource = row.seenWaitlist && row.seenApp ? "both" : row.seenApp ? "app" : "waitlist";
+      return {
+        email: row.email,
+        name: row.name,
+        source,
+        wallets: Array.from(row.wallets).sort(),
+        signupSource: row.signupSource,
+        country: row.country,
+        createdAt: row.createdAt,
+        lastSeenAt: row.lastSeenAt,
+        accessCode: row.accessCode,
+        accessCodeUsedAt: row.accessCodeUsedAt,
+      };
+    })
+    .sort((left, right) => {
+      const rightTs = parseTimestamp(right.lastSeenAt) ?? parseTimestamp(right.createdAt) ?? 0;
+      const leftTs = parseTimestamp(left.lastSeenAt) ?? parseTimestamp(left.createdAt) ?? 0;
+      return rightTs - leftTs;
+    });
+
+  const waitlistOnlyContacts = audienceContacts.filter((row) => row.source === "waitlist").length;
+  const appOnlyContacts = audienceContacts.filter((row) => row.source === "app").length;
+  const bothSourceContacts = audienceContacts.filter((row) => row.source === "both").length;
+  const waitlistWithEmail = waitlistRows.filter((row) => !!normalizeEmail(row.email)).length;
+  const waitlistMissingCodes = waitlistRows.filter((row) => !!normalizeEmail(row.email) && !cleanString(row.access_code)).length;
+  const waitlistIssuedCodes = waitlistRows.filter((row) => !!normalizeEmail(row.email) && !!cleanString(row.access_code)).length;
+  const waitlistRedeemedCodes = waitlistRows.filter((row) => !!normalizeEmail(row.email) && !!row.access_code_used_at).length;
+  const appUsersWithEmail = userRows.filter((row) => !!getUserEmail(row)).length;
+  const activeAppContacts7d = audienceContacts.filter((row) => row.source !== "waitlist" && (parseTimestamp(row.lastSeenAt) ?? 0) >= currentWeekStart).length;
+  const dormantAppContacts14d = audienceContacts.filter((row) => {
+    if (row.source === "waitlist") return false;
+    const lastSeenTs = parseTimestamp(row.lastSeenAt);
+    if (lastSeenTs != null) return lastSeenTs < nowMs - 14 * DAY_MS;
+    const createdAtTs = parseTimestamp(row.createdAt);
+    return createdAtTs != null && createdAtTs < nowMs - 14 * DAY_MS;
+  }).length;
+
+  const attemptedAtLeastOneTrade = appUsersForTable.filter((row) => row.tradesAttempted >= 1).length;
+  const attemptedThreePlusTrades = appUsersForTable.filter((row) => row.tradesAttempted >= 3).length;
+  const openedTerminalNeverTraded = appUsersForTable.filter((row) => row.tradesAttempted === 0).length;
+  const signupToFirstTradeDropoffRate = toPercent(openedTerminalNeverTraded, appUsersForTable.length);
+
+  const totalTradesSuccessful = appUsersForTable.reduce((sum, row) => sum + row.tradesSucceeded, 0);
   const totalTradesFailed = Array.from(attemptFailedByWallet.values()).reduce((sum, count) => sum + count, 0);
   const totalTradesAttempted = maxOf(
     Array.from(attemptStartsByWallet.values()).reduce((sum, count) => sum + count, 0),
@@ -605,6 +868,51 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
   const recent24hSignups = userCreatedTimestamps.filter((ts) => ts != null && ts >= last24hStart).length;
   const previous24hSignups = userCreatedTimestamps.filter((ts) => ts != null && ts >= nowMs - 2 * DAY_MS && ts < last24hStart).length;
   const firstTradeInLastHour = Array.from(successTimestampsByWallet.values()).some((ts) => ts >= lastHourStartMs);
+  const emailConfigured = canSendEmail();
+
+  const campaignPresets: CampaignPreset[] = [
+    {
+      id: "access_codes",
+      label: "Access code drop",
+      description: "Generate missing codes and deliver access emails to the waitlist.",
+      endpoint: "/api/admin/waitlist/send-all-codes",
+      audienceLabel: "Waitlist emails",
+      eligibleContacts: waitlistWithEmail,
+      recommended: waitlistMissingCodes > 0,
+    },
+    {
+      id: "launch_thread",
+      label: "Launch thread blast",
+      description: "Push the story and product positioning to the waitlist audience.",
+      endpoint: "/api/admin/waitlist/send-launch-thread-email",
+      audienceLabel: "Waitlist emails",
+      eligibleContacts: waitlistWithEmail,
+      recommended: waitlistWithEmail > 0 && attemptedAtLeastOneTrade === 0,
+    },
+    {
+      id: "trading_live",
+      label: "Trading live announcement",
+      description: "Send a product-open update once the trading experience is stable enough to invite people back.",
+      endpoint: "/api/admin/waitlist/send-trading-live-email",
+      audienceLabel: "Waitlist emails",
+      eligibleContacts: waitlistWithEmail,
+      recommended: waitlistWithEmail > 0 && attemptedAtLeastOneTrade > 0,
+    },
+    {
+      id: "leaderboard_spotlight",
+      label: "Leaderboard spotlight",
+      description: "Re-engage the audience with proof that real traders are using Siren repeatedly.",
+      endpoint: "/api/admin/waitlist/send-leaderboard-spotlight-email",
+      audienceLabel: "Waitlist emails",
+      eligibleContacts: waitlistWithEmail,
+      recommended: waitlistWithEmail > 0 && attemptedThreePlusTrades > 0,
+    },
+  ];
+
+  const campaignGapSummary =
+    appOnlyContacts > 0
+      ? `${appOnlyContacts} app-only contacts have email, but the current send endpoints still target the waitlist audience.`
+      : "Current send endpoints cover the same reachable audience you have in the waitlist.";
 
   const alerts: DashboardAlert[] = [
     {
@@ -640,6 +948,14 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
       totalTradesAttempted,
       totalTradesSuccessful,
       platformVolumeUsd,
+    },
+    allTime: {
+      waitlistUsers: waitlistRows.length,
+      appUsers: userRows.length,
+      reachableContacts: audienceContacts.length,
+      convertedWaitlistUsers: waitlistConverted,
+      totalMarketViews: marketViewRows.length,
+      totalTradeFailures: totalTradesFailed,
     },
     growth: {
       dailySignups,
@@ -680,6 +996,26 @@ export async function buildAdminTractionDashboard(client: SupabaseClient): Promi
       activeThisWeekAlsoLastWeek: weeklyReturningUsers,
       estimatedFromLastSeen: retentionEstimatedFromLastSeen,
     },
-    users: userRowsForTable,
+    audience: {
+      emailConfigured,
+      reachableContacts: audienceContacts.length,
+      waitlistOnlyContacts,
+      appOnlyContacts,
+      bothSourceContacts,
+      waitlistWithEmail,
+      waitlistMissingCodes,
+      waitlistIssuedCodes,
+      waitlistRedeemedCodes,
+      appUsersWithEmail,
+      activeAppContacts7d,
+      dormantAppContacts14d,
+    },
+    campaigns: {
+      presets: campaignPresets,
+      gapSummary: campaignGapSummary,
+    },
+    appUsers: appUsersForTable,
+    waitlistUsers: waitlistUsersForTable,
+    audienceContacts,
   };
 }

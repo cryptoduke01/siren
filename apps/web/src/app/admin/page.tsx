@@ -50,11 +50,37 @@ type TopSize = {
 type DashboardUserRow = {
   id: string;
   wallet: string | null;
+  email: string | null;
+  name: string | null;
   signupDate: string | null;
   lastActive: string | null;
+  signupSource: string | null;
+  country: string | null;
   tradesAttempted: number;
   tradesSucceeded: number;
   volumeUsd: number;
+};
+
+type WaitlistUserRow = {
+  id: string;
+  email: string | null;
+  name: string | null;
+  wallet: string | null;
+  signupDate: string | null;
+  accessCode: string | null;
+  accessCodeIssued: boolean;
+  accessCodeUsedAt: string | null;
+  converted: boolean;
+};
+
+type CampaignPreset = {
+  id: "access_codes" | "launch_thread" | "trading_live" | "leaderboard_spotlight";
+  label: string;
+  description: string;
+  endpoint: string;
+  audienceLabel: string;
+  eligibleContacts: number;
+  recommended: boolean;
 };
 
 type TractionDashboard = {
@@ -67,6 +93,14 @@ type TractionDashboard = {
     totalTradesAttempted: number;
     totalTradesSuccessful: number;
     platformVolumeUsd: number;
+  };
+  allTime: {
+    waitlistUsers: number;
+    appUsers: number;
+    reachableContacts: number;
+    convertedWaitlistUsers: number;
+    totalMarketViews: number;
+    totalTradeFailures: number;
   };
   growth: {
     dailySignups: SeriesPoint[];
@@ -100,10 +134,29 @@ type TractionDashboard = {
     activeThisWeekAlsoLastWeek: number;
     estimatedFromLastSeen: boolean;
   };
-  users: DashboardUserRow[];
+  audience: {
+    emailConfigured: boolean;
+    reachableContacts: number;
+    waitlistOnlyContacts: number;
+    appOnlyContacts: number;
+    bothSourceContacts: number;
+    waitlistWithEmail: number;
+    waitlistMissingCodes: number;
+    waitlistIssuedCodes: number;
+    waitlistRedeemedCodes: number;
+    appUsersWithEmail: number;
+    activeAppContacts7d: number;
+    dormantAppContacts14d: number;
+  };
+  campaigns: {
+    presets: CampaignPreset[];
+    gapSummary: string;
+  };
+  appUsers: DashboardUserRow[];
+  waitlistUsers: WaitlistUserRow[];
 };
 
-type SortKey = "wallet" | "signupDate" | "lastActive" | "tradesAttempted" | "tradesSucceeded" | "volumeUsd";
+type SortKey = "wallet" | "email" | "signupDate" | "lastActive" | "tradesAttempted" | "tradesSucceeded" | "volumeUsd";
 type SortDirection = "asc" | "desc";
 
 function formatCompactNumber(value: number | null | undefined, digits = 0) {
@@ -275,6 +328,60 @@ function AlertBadge({ alert }: { alert: DashboardAlert }) {
   );
 }
 
+function CampaignCard({
+  campaign,
+  emailConfigured,
+  busy,
+  onRun,
+}: {
+  campaign: CampaignPreset;
+  emailConfigured: boolean;
+  busy: boolean;
+  onRun: (campaign: CampaignPreset) => void;
+}) {
+  const disabled = !emailConfigured || campaign.eligibleContacts === 0 || busy;
+
+  return (
+    <div className="rounded-3xl border p-4" style={{ borderColor: PANEL_BORDER }}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-heading text-lg tracking-[-0.03em]" style={{ color: "var(--text-1)" }}>
+            {campaign.label}
+          </p>
+          <p className="mt-2 font-body text-sm leading-6" style={{ color: "var(--text-2)" }}>
+            {campaign.description}
+          </p>
+        </div>
+        {campaign.recommended ? (
+          <span
+            className="rounded-full border px-3 py-1 font-heading text-[10px] uppercase tracking-[0.14em]"
+            style={{
+              borderColor: "color-mix(in srgb, var(--accent) 30%, transparent)",
+              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-surface))",
+              color: "var(--accent)",
+            }}
+          >
+            Recommended
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-4 space-y-1">
+        <MetricRow label="Audience" value={campaign.audienceLabel} />
+        <MetricRow label="Eligible contacts" value={formatCompactNumber(campaign.eligibleContacts)} />
+      </div>
+      <button
+        type="button"
+        onClick={() => onRun(campaign)}
+        disabled={disabled}
+        className="mt-4 w-full rounded-2xl border px-4 py-3 font-heading text-[11px] uppercase tracking-[0.14em] disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ background: "var(--bg-elevated)", borderColor: PANEL_BORDER, color: "var(--text-1)" }}
+      >
+        {busy ? "Sending..." : !emailConfigured ? "Email not configured" : campaign.eligibleContacts === 0 ? "No audience yet" : "Send campaign"}
+      </button>
+    </div>
+  );
+}
+
 function SortHeader({
   label,
   sortKey,
@@ -310,9 +417,13 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [dashboard, setDashboard] = useState<TractionDashboard | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [waitlistSearchQuery, setWaitlistSearchQuery] = useState("");
+  const [campaignBusyId, setCampaignBusyId] = useState<string | null>(null);
+  const [campaignStatus, setCampaignStatus] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("volumeUsd");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const deferredSearch = useDeferredValue(searchQuery);
+  const deferredWaitlistSearch = useDeferredValue(waitlistSearchQuery);
   const adminHeaders = useMemo(() => getAdminPasscodeHeaders(ADMIN_PASSCODE), []);
 
   const loadDashboard = useCallback(async () => {
@@ -366,17 +477,20 @@ export default function AdminPage() {
       return;
     }
     setSortKey(nextKey);
-    setSortDirection(nextKey === "wallet" ? "asc" : "desc");
+    setSortDirection(nextKey === "wallet" || nextKey === "email" ? "asc" : "desc");
   };
 
-  const filteredUsers = useMemo(() => {
+  const filteredAppUsers = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
     const rows = query
-      ? (dashboard?.users ?? []).filter((row) => (row.wallet ?? "").toLowerCase().includes(query))
-      : [...(dashboard?.users ?? [])];
+      ? (dashboard?.appUsers ?? []).filter((row) =>
+          [row.wallet ?? "", row.email ?? "", row.name ?? ""].some((value) => value.toLowerCase().includes(query))
+        )
+      : [...(dashboard?.appUsers ?? [])];
 
     rows.sort((left, right) => {
       if (sortKey === "wallet") return compareStrings(left.wallet, right.wallet, sortDirection);
+      if (sortKey === "email") return compareStrings(left.email, right.email, sortDirection);
       if (sortKey === "signupDate") return compareDates(left.signupDate, right.signupDate, sortDirection);
       if (sortKey === "lastActive") return compareDates(left.lastActive, right.lastActive, sortDirection);
       if (sortKey === "tradesAttempted") return compareNumbers(left.tradesAttempted, right.tradesAttempted, sortDirection);
@@ -385,7 +499,50 @@ export default function AdminPage() {
     });
 
     return rows;
-  }, [dashboard?.users, deferredSearch, sortDirection, sortKey]);
+  }, [dashboard?.appUsers, deferredSearch, sortDirection, sortKey]);
+
+  const filteredWaitlistUsers = useMemo(() => {
+    const query = deferredWaitlistSearch.trim().toLowerCase();
+    const rows = [...(dashboard?.waitlistUsers ?? [])];
+    if (!query) return rows;
+    return rows.filter((row) =>
+      [row.email ?? "", row.wallet ?? "", row.name ?? "", row.accessCode ?? ""].some((value) => value.toLowerCase().includes(query))
+    );
+  }, [dashboard?.waitlistUsers, deferredWaitlistSearch]);
+
+  const runCampaign = useCallback(
+    async (campaign: CampaignPreset) => {
+      if (!window.confirm(`Send "${campaign.label}" to ${campaign.audienceLabel.toLowerCase()} now?`)) return;
+      setCampaignBusyId(campaign.id);
+      setCampaignStatus(null);
+      setError(null);
+
+      try {
+        const res = await fetch(`${API_URL}${campaign.endpoint}`, {
+          method: "POST",
+          headers: adminHeaders,
+          credentials: "omit",
+        });
+        const payload = await res.json();
+        if (!res.ok || payload.success === false) {
+          throw new Error(payload.error || `Failed to send ${campaign.label.toLowerCase()}.`);
+        }
+
+        const summary =
+          typeof payload.sent === "number"
+            ? `${campaign.label}: sent ${payload.sent}/${payload.total ?? payload.sent}, failed ${payload.failed ?? 0}, skipped ${payload.skipped ?? 0}.`
+            : `${campaign.label} triggered successfully.`;
+
+        setCampaignStatus(summary);
+        await loadDashboard();
+      } catch (campaignError) {
+        setError(campaignError instanceof Error ? campaignError.message : "Failed to run campaign.");
+      } finally {
+        setCampaignBusyId(null);
+      }
+    },
+    [adminHeaders, loadDashboard],
+  );
 
   if (!hasAccess) {
     return (
@@ -467,6 +624,20 @@ export default function AdminPage() {
               <StatCard label="Platform volume in USD" value={formatUsd(dashboard?.header.platformVolumeUsd)} />
             </div>
           </div>
+
+          <SectionCard
+            title="All-time footprint"
+            subtitle="Permanent totals across user acquisition, audience reach, browsing, and failed trade attempts."
+          >
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+              <StatCard label="Waitlist users" value={formatCompactNumber(dashboard?.allTime.waitlistUsers)} />
+              <StatCard label="App users" value={formatCompactNumber(dashboard?.allTime.appUsers)} />
+              <StatCard label="Reachable contacts" value={formatCompactNumber(dashboard?.allTime.reachableContacts)} />
+              <StatCard label="Converted waitlist users" value={formatCompactNumber(dashboard?.allTime.convertedWaitlistUsers)} />
+              <StatCard label="Market views tracked" value={formatCompactNumber(dashboard?.allTime.totalMarketViews)} />
+              <StatCard label="Trade failures logged" value={formatCompactNumber(dashboard?.allTime.totalTradeFailures)} />
+            </div>
+          </SectionCard>
 
           <SectionCard
             title="User growth"
@@ -684,81 +855,250 @@ export default function AdminPage() {
           </div>
 
           <SectionCard
-            title="User table"
-            subtitle="All registered users with wallet search and sortable columns."
+            title="Audience and email dissemination"
+            subtitle="Reachable contacts, waitlist coverage, and one-click campaign sends from the admin board."
           >
-            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
-                  {formatCompactNumber(filteredUsers.length)} users shown
-                </p>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <StatCard
+                    label="Email delivery"
+                    value={dashboard?.audience.emailConfigured ? "Configured" : "Offline"}
+                    hint={dashboard?.audience.emailConfigured ? "Resend is available for campaign sends." : "Set RESEND_API_KEY and sender envs."}
+                  />
+                  <StatCard label="Reachable contacts" value={formatCompactNumber(dashboard?.audience.reachableContacts)} />
+                  <StatCard label="Waitlist-only contacts" value={formatCompactNumber(dashboard?.audience.waitlistOnlyContacts)} />
+                  <StatCard label="App-only contacts" value={formatCompactNumber(dashboard?.audience.appOnlyContacts)} />
+                  <StatCard label="Overlap contacts" value={formatCompactNumber(dashboard?.audience.bothSourceContacts)} />
+                  <StatCard label="Active app contacts 7d" value={formatCompactNumber(dashboard?.audience.activeAppContacts7d)} />
+                </div>
+                <div className="rounded-3xl border p-4" style={{ borderColor: PANEL_BORDER }}>
+                  <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                    Audience readiness
+                  </p>
+                  <div className="mt-3 space-y-1">
+                    <MetricRow label="Waitlist emails" value={formatCompactNumber(dashboard?.audience.waitlistWithEmail)} />
+                    <MetricRow label="Missing access codes" value={formatCompactNumber(dashboard?.audience.waitlistMissingCodes)} tone="var(--down)" />
+                    <MetricRow label="Issued access codes" value={formatCompactNumber(dashboard?.audience.waitlistIssuedCodes)} />
+                    <MetricRow label="Redeemed access codes" value={formatCompactNumber(dashboard?.audience.waitlistRedeemedCodes)} tone="var(--accent)" />
+                    <MetricRow label="App users with email" value={formatCompactNumber(dashboard?.audience.appUsersWithEmail)} />
+                    <MetricRow label="Dormant app contacts 14d" value={formatCompactNumber(dashboard?.audience.dormantAppContacts14d)} />
+                  </div>
+                  <p className="mt-4 font-body text-xs leading-6" style={{ color: "var(--text-3)" }}>
+                    {dashboard?.campaigns.gapSummary ?? "Campaign audience summary unavailable."}
+                  </p>
+                </div>
               </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search wallet address"
-                className="w-full rounded-2xl border px-4 py-3 font-body text-sm lg:w-80"
-                style={{ background: "var(--bg-elevated)", borderColor: PANEL_BORDER, color: "var(--text-1)" }}
-              />
-            </div>
 
-            <div className="overflow-hidden rounded-3xl border" style={{ borderColor: PANEL_BORDER }}>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-xs font-body">
-                  <thead style={{ background: "var(--bg-elevated)" }}>
-                    <tr>
-                      <SortHeader label="Wallet" sortKey="wallet" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
-                      <SortHeader label="Signup date" sortKey="signupDate" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
-                      <SortHeader label="Last active" sortKey="lastActive" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
-                      <SortHeader label="Trades attempted" sortKey="tradesAttempted" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
-                      <SortHeader label="Trades succeeded" sortKey="tradesSucceeded" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
-                      <SortHeader label="Volume" sortKey="volumeUsd" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-3)" }}>
-                          {searchQuery.trim() ? "No users match that wallet search." : "No registered users yet."}
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredUsers.map((row, index) => (
-                        <tr
-                          key={row.id}
-                          className="border-t"
-                          style={{
-                            borderColor: PANEL_BORDER,
-                            background: index % 2 === 0 ? "color-mix(in srgb, var(--bg-surface) 92%, transparent)" : "transparent",
-                          }}
-                        >
-                          <td className="px-4 py-3 font-mono text-[11px]" style={{ color: row.wallet ? "var(--text-1)" : "var(--text-3)" }}>
-                            {row.wallet ?? "—"}
-                          </td>
-                          <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>
-                            {formatDateTime(row.signupDate)}
-                          </td>
-                          <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>
-                            {formatDateTime(row.lastActive)}
-                          </td>
-                          <td className="px-4 py-3 font-mono" style={{ color: "var(--text-1)" }}>
-                            {row.tradesAttempted.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 font-mono" style={{ color: "var(--text-1)" }}>
-                            {row.tradesSucceeded.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 font-mono" style={{ color: "var(--text-1)" }}>
-                            {formatUsd(row.volumeUsd)}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div className="space-y-4">
+                {campaignStatus ? (
+                  <div className="rounded-3xl border px-4 py-3 font-body text-sm" style={{ borderColor: PANEL_BORDER, background: "color-mix(in srgb, var(--accent) 8%, var(--bg-surface))", color: "var(--text-1)" }}>
+                    {campaignStatus}
+                  </div>
+                ) : null}
+                <div className="grid gap-4 md:grid-cols-2">
+                  {(dashboard?.campaigns.presets ?? []).map((campaign) => (
+                    <CampaignCard
+                      key={campaign.id}
+                      campaign={campaign}
+                      emailConfigured={Boolean(dashboard?.audience.emailConfigured)}
+                      busy={campaignBusyId === campaign.id}
+                      onRun={runCampaign}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </SectionCard>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <SectionCard
+              title="App users"
+              subtitle="All registered app users with search and sortable trade columns."
+            >
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                  {formatCompactNumber(filteredAppUsers.length)} users shown
+                </p>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search wallet, email, or name"
+                  className="w-full rounded-2xl border px-4 py-3 font-body text-sm lg:w-80"
+                  style={{ background: "var(--bg-elevated)", borderColor: PANEL_BORDER, color: "var(--text-1)" }}
+                />
+              </div>
+
+              <div className="overflow-hidden rounded-3xl border" style={{ borderColor: PANEL_BORDER }}>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-xs font-body">
+                    <thead style={{ background: "var(--bg-elevated)" }}>
+                      <tr>
+                        <SortHeader label="Wallet" sortKey="wallet" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
+                        <SortHeader label="Email" sortKey="email" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
+                        <SortHeader label="Signup date" sortKey="signupDate" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
+                        <SortHeader label="Last active" sortKey="lastActive" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
+                        <SortHeader label="Trades attempted" sortKey="tradesAttempted" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
+                        <SortHeader label="Trades succeeded" sortKey="tradesSucceeded" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
+                        <SortHeader label="Volume" sortKey="volumeUsd" activeKey={sortKey} direction={sortDirection} onClick={toggleSort} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAppUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-3)" }}>
+                            {searchQuery.trim() ? "No app users match that search." : "No registered app users yet."}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredAppUsers.map((row, index) => (
+                          <tr
+                            key={row.id}
+                            className="border-t"
+                            style={{
+                              borderColor: PANEL_BORDER,
+                              background: index % 2 === 0 ? "color-mix(in srgb, var(--bg-surface) 92%, transparent)" : "transparent",
+                            }}
+                          >
+                            <td className="px-4 py-3 font-mono text-[11px]" style={{ color: row.wallet ? "var(--text-1)" : "var(--text-3)" }}>
+                              {row.wallet ?? "—"}
+                            </td>
+                            <td className="px-4 py-3" style={{ color: row.email ? "var(--text-1)" : "var(--text-3)" }}>
+                              <div>{row.email ?? "—"}</div>
+                              {row.name ? (
+                                <div className="mt-1 text-[11px]" style={{ color: "var(--text-3)" }}>
+                                  {row.name}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>
+                              {formatDateTime(row.signupDate)}
+                            </td>
+                            <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>
+                              {formatDateTime(row.lastActive)}
+                            </td>
+                            <td className="px-4 py-3 font-mono" style={{ color: "var(--text-1)" }}>
+                              {row.tradesAttempted.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 font-mono" style={{ color: "var(--text-1)" }}>
+                              {row.tradesSucceeded.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 font-mono" style={{ color: "var(--text-1)" }}>
+                              {formatUsd(row.volumeUsd)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Waitlist users"
+              subtitle="Raw waitlist entries with email reach, wallet linkage, and access-code status."
+            >
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+                  {formatCompactNumber(filteredWaitlistUsers.length)} waitlist users shown
+                </p>
+                <input
+                  type="text"
+                  value={waitlistSearchQuery}
+                  onChange={(event) => setWaitlistSearchQuery(event.target.value)}
+                  placeholder="Search email, wallet, name, or code"
+                  className="w-full rounded-2xl border px-4 py-3 font-body text-sm lg:w-80"
+                  style={{ background: "var(--bg-elevated)", borderColor: PANEL_BORDER, color: "var(--text-1)" }}
+                />
+              </div>
+
+              <div className="overflow-hidden rounded-3xl border" style={{ borderColor: PANEL_BORDER }}>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-xs font-body">
+                    <thead style={{ background: "var(--bg-elevated)" }}>
+                      <tr>
+                        <th className="px-4 py-3 font-heading text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Email
+                        </th>
+                        <th className="px-4 py-3 font-heading text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Wallet
+                        </th>
+                        <th className="px-4 py-3 font-heading text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Signup date
+                        </th>
+                        <th className="px-4 py-3 font-heading text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Access code
+                        </th>
+                        <th className="px-4 py-3 font-heading text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredWaitlistUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-3)" }}>
+                            {waitlistSearchQuery.trim() ? "No waitlist users match that search." : "No waitlist users yet."}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredWaitlistUsers.map((row, index) => (
+                          <tr
+                            key={row.id}
+                            className="border-t"
+                            style={{
+                              borderColor: PANEL_BORDER,
+                              background: index % 2 === 0 ? "color-mix(in srgb, var(--bg-surface) 92%, transparent)" : "transparent",
+                            }}
+                          >
+                            <td className="px-4 py-3" style={{ color: row.email ? "var(--text-1)" : "var(--text-3)" }}>
+                              <div>{row.email ?? "—"}</div>
+                              {row.name ? (
+                                <div className="mt-1 text-[11px]" style={{ color: "var(--text-3)" }}>
+                                  {row.name}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-[11px]" style={{ color: row.wallet ? "var(--text-1)" : "var(--text-3)" }}>
+                              {row.wallet ?? "—"}
+                            </td>
+                            <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>
+                              {formatDateTime(row.signupDate)}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-[11px]" style={{ color: row.accessCode ? "var(--text-1)" : "var(--text-3)" }}>
+                              {row.accessCode ?? "—"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className="inline-flex rounded-full border px-3 py-1 font-heading text-[10px] uppercase tracking-[0.14em]"
+                                style={{
+                                  borderColor: row.converted
+                                    ? "color-mix(in srgb, var(--up) 28%, transparent)"
+                                    : row.accessCodeIssued
+                                      ? "color-mix(in srgb, #f2c94c 32%, transparent)"
+                                      : "color-mix(in srgb, var(--down) 28%, transparent)",
+                                  background: row.converted
+                                    ? "color-mix(in srgb, var(--up) 10%, var(--bg-surface))"
+                                    : row.accessCodeIssued
+                                      ? "color-mix(in srgb, #f2c94c 10%, var(--bg-surface))"
+                                      : "color-mix(in srgb, var(--down) 10%, var(--bg-surface))",
+                                  color: row.converted ? "var(--up)" : row.accessCodeIssued ? "#d6a41f" : "var(--down)",
+                                }}
+                              >
+                                {row.converted ? "Redeemed" : row.accessCodeIssued ? "Code issued" : "No code"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </SectionCard>
+          </div>
         </div>
       </main>
     </div>
