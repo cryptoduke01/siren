@@ -44,6 +44,12 @@ function clampProbability(value: number): number {
   return Math.min(100, Math.max(0, Number(value.toFixed(2))));
 }
 
+function parseDateMs(value?: string): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizeMarket(raw: PolymarketGammaMarketResponse): PolymarketMarket {
   const outcomeLabels = parseListField(raw.outcomes);
   return {
@@ -122,9 +128,17 @@ export async function getActiveMarkets(): Promise<PolymarketMarket[]> {
   }
 
   const rawMarkets = (await response.json()) as PolymarketGammaMarketResponse[];
+  const now = Date.now();
   return rawMarkets
+    .filter((market) => market.active !== false && market.closed !== true && market.acceptingOrders !== false)
     .map(normalizeMarket)
-    .filter((market) => market.question && market.outcomePrices.length >= 2 && market.clobTokenIds.length >= 1)
+    .filter((market) => {
+      const closeMs = parseDateMs(market.endDate);
+      if (closeMs && closeMs <= now) return false;
+      const openMs = parseDateMs(market.startDate);
+      if (openMs && openMs > now) return false;
+      return market.question && market.outcomePrices.length >= 2 && market.clobTokenIds.length >= 1;
+    })
     .sort((a, b) => b.volume - a.volume);
 }
 

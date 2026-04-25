@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
+import { getMarketByTicker, getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
 import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
 import { getDflowPositionsForWallet } from "./services/dflowPositions.js";
 import { getSwapOrder } from "./services/swapRouter.js";
@@ -1365,6 +1365,25 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.warn(e);
       return reply.send({ success: true, data: [] });
+    }
+  });
+
+  app.get<{ Params: { ticker: string } }>("/api/markets/:ticker", async (req, reply) => {
+    const ticker = req.params.ticker?.trim();
+    if (!ticker) {
+      return reply.status(400).send({ success: false, error: "ticker required" });
+    }
+
+    reply.header("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
+    try {
+      const market = await withTimeout(getMarketByTicker(ticker), MARKET_ROUTE_TIMEOUT_MS, "market-detail");
+      if (!market) {
+        return reply.status(404).send({ success: false, error: "Market not found" });
+      }
+      return reply.send({ success: true, data: market });
+    } catch (e) {
+      app.log.warn(e);
+      return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch market detail" });
     }
   });
 

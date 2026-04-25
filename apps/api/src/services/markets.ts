@@ -147,6 +147,15 @@ function parseTimestamp(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function normalizeTimestampMs(value?: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
+function normalizeTickerKey(value?: string | null): string {
+  return value?.trim().toUpperCase() ?? "";
+}
+
 function clampProbability(value: number): number {
   return Math.min(100, Math.max(0, Number(value.toFixed(2))));
 }
@@ -226,18 +235,8 @@ function getKalshiCustomStrikeLabel(market?: KalshiEventMarketMetadata): string 
 
 function hasVisibleMarketSignal(market: DFlowMarketResponse): boolean {
   const now = Date.now();
-  const closeMs =
-    typeof market.closeTime === "number"
-      ? market.closeTime < 1_000_000_000_000
-        ? market.closeTime * 1000
-        : market.closeTime
-      : null;
-  const openMs =
-    typeof market.openTime === "number"
-      ? market.openTime < 1_000_000_000_000
-        ? market.openTime * 1000
-        : market.openTime
-      : null;
+  const closeMs = normalizeTimestampMs(market.closeTime);
+  const openMs = normalizeTimestampMs(market.openTime);
   if (closeMs && closeMs <= now) return false;
   if (openMs && openMs > now) return false;
 
@@ -254,6 +253,41 @@ function hasVisibleMarketSignal(market: DFlowMarketResponse): boolean {
   return (
     hasQuote || hasFlow
   );
+}
+
+function cloneMarketOutcomeList(outcomes?: MarketOutcome[]): MarketOutcome[] | undefined {
+  return outcomes?.map((outcome) => ({ ...outcome }));
+}
+
+function cloneMarket(market: MarketWithVelocity): MarketWithVelocity {
+  return {
+    ...market,
+    outcomes: cloneMarketOutcomeList(market.outcomes),
+  };
+}
+
+function applySelectedOutcome(market: MarketWithVelocity, outcomeTicker: string): MarketWithVelocity {
+  const outcome = market.outcomes?.find((item) => normalizeTickerKey(item.ticker) === normalizeTickerKey(outcomeTicker));
+  if (!outcome) return cloneMarket(market);
+
+  return {
+    ...cloneMarket(market),
+    platform_id: outcome.ticker ?? market.platform_id,
+    ticker: outcome.ticker ?? market.ticker,
+    market_url: outcome.market_url ?? market.market_url,
+    kalshi_url: outcome.market_url ?? market.kalshi_url,
+    probability: outcome.probability ?? market.probability,
+    subtitle: outcome.subtitle ?? market.subtitle,
+    yes_mint: outcome.yes_mint,
+    no_mint: outcome.no_mint,
+    yes_token_id: outcome.yes_token_id,
+    no_token_id: outcome.no_token_id,
+    volume: outcome.volume ?? market.volume,
+    volume_24h: outcome.volume_24h ?? market.volume_24h,
+    liquidity: outcome.liquidity ?? market.liquidity,
+    open_interest: outcome.open_interest ?? market.open_interest,
+    selected_outcome_label: outcome.label,
+  };
 }
 
 async function fetchKalshiEventMetadata(eventTicker: string): Promise<KalshiEventMetadata | null> {
@@ -447,6 +481,34 @@ export async function getMarketTradeActivity(ticker: string): Promise<MarketTrad
 
   marketTradeActivityInFlight.set(normalizedTicker, promise);
   return promise;
+}
+
+export async function getMarketByTicker(ticker: string): Promise<MarketWithVelocity | null> {
+  const normalizedTicker = normalizeTickerKey(ticker);
+  if (!normalizedTicker) return null;
+
+  const markets = await getMarketsWithVelocity();
+
+  const direct = markets.find((market) => {
+    return [
+      normalizeTickerKey(market.ticker),
+      normalizeTickerKey(market.platform_id),
+      normalizeTickerKey(market.event_ticker),
+      normalizeTickerKey(market.condition_id),
+    ].includes(normalizedTicker);
+  });
+  if (direct) {
+    return cloneMarket(direct);
+  }
+
+  const grouped = markets.find((market) =>
+    market.outcomes?.some((outcome) => normalizeTickerKey(outcome.ticker) === normalizedTicker),
+  );
+  if (grouped) {
+    return applySelectedOutcome(grouped, normalizedTicker);
+  }
+
+  return null;
 }
 
 export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
@@ -656,9 +718,16 @@ function getMarketPriorityScore(market: MarketWithVelocity): number {
 
 async function getPolymarketMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
   const markets = await getActiveMarkets();
+  const now = Date.now();
 
   return markets
-    .filter((market) => market.question && ((market.volume ?? 0) > 0 || (market.liquidity ?? 0) > 0))
+    .filter((market) => {
+      const closeMs = parseTimestamp(market.endDate);
+      if (closeMs && closeMs <= now) return false;
+      const openMs = parseTimestamp(market.startDate);
+      if (openMs && openMs > now) return false;
+      return market.question && ((market.volume ?? 0) > 0 || (market.liquidity ?? 0) > 0);
+    })
     .map((market) => {
       const marketUrl = market.slug ? `https://polymarket.com/event/${market.slug}` : "https://polymarket.com";
       const probability = clampProbability((market.outcomePrices[0] ?? 0.5) * 100);

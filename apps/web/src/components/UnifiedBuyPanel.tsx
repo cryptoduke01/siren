@@ -219,7 +219,7 @@ function parseUnitsToBigInt(amountStr: string, decimals: number): bigint {
 }
 
 export function UnifiedBuyPanel() {
-  const { selectedMarket, selectedToken, buyPanelOpen, buyPanelMode, setBuyPanelOpen, setSelectedToken, openForSell } =
+  const { selectedMarket, selectedToken, buyPanelOpen, buyPanelMode, setBuyPanelOpen, setSelectedToken, setSelectedMarketOutcome, openForSell } =
     useSirenStore();
   const { connected, publicKey, evmAddress, signTransaction, signMessage, getEvmProvider, switchEvmChain } = useSirenWallet();
   const { connection } = useConnection();
@@ -349,6 +349,9 @@ export function UnifiedBuyPanel() {
     selectedToken?.symbol && selectedToken.symbol !== "-" && selectedToken.symbol !== "—" ? selectedToken.symbol : selectedToken?.name ?? "";
   const marketYesPriceUsd = selectedMarket ? Math.min(1, Math.max(0, selectedMarket.probability / 100)) : null;
   const marketNoPriceUsd = selectedMarket ? Math.min(1, Math.max(0, 1 - selectedMarket.probability / 100)) : null;
+  const groupedOutcomes = selectedMarket?.outcomes && selectedMarket.outcomes.length > 1
+    ? [...selectedMarket.outcomes].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0))
+    : [];
   const selectedMarketPriceUsd = marketSide === "yes" ? marketYesPriceUsd : marketNoPriceUsd;
   const selectedMarketMint = marketSide === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
   const selectedPolymarketTokenId = marketSide === "yes" ? selectedMarket?.yes_token_id : selectedMarket?.no_token_id;
@@ -1356,9 +1359,54 @@ export function UnifiedBuyPanel() {
                     </p>
                     <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
                       {isPolymarketTrade
-                        ? "Browse odds and contract sizing here. Open Polymarket itself to execute while Siren's Polymarket flow is offline."
-                        : "Pick YES or NO and enter USDC from your Solana wallet."}
+                        ? groupedOutcomes.length > 0
+                          ? "Choose the outcome you want, inspect odds here, then open Polymarket itself to execute while Siren's Polymarket flow is offline."
+                          : "Browse odds and contract sizing here. Open Polymarket itself to execute while Siren's Polymarket flow is offline."
+                        : groupedOutcomes.length > 0
+                          ? "Choose the outcome first, then size YES or NO on that market with USDC from your Solana wallet."
+                          : "Pick YES or NO and enter USDC from your Solana wallet."}
                     </p>
+
+                    {groupedOutcomes.length > 0 && (
+                      <div className="mt-5">
+                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Outcomes
+                        </p>
+                        <div className="mt-2 grid gap-2">
+                          {groupedOutcomes.slice(0, 8).map((outcome) => {
+                            const isSelected = outcome.label === selectedMarket.selected_outcome_label;
+                            return (
+                              <button
+                                key={outcome.ticker ?? outcome.label}
+                                type="button"
+                                onClick={() => {
+                                  hapticLight();
+                                  if (outcome.ticker) setSelectedMarketOutcome(outcome.ticker);
+                                }}
+                                disabled={!outcome.ticker}
+                                className="flex items-center justify-between gap-3 rounded-[18px] border px-4 py-3 text-left transition-all disabled:opacity-60"
+                                style={{
+                                  background: isSelected ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
+                                  borderColor: isSelected ? "color-mix(in srgb, var(--accent) 38%, transparent)" : "var(--border-subtle)",
+                                }}
+                              >
+                                <span className="min-w-0 truncate font-body text-sm" style={{ color: "var(--text-1)" }}>
+                                  {outcome.label}
+                                </span>
+                                <span className="font-mono text-sm font-semibold tabular-nums shrink-0" style={{ color: "var(--accent)" }}>
+                                  {outcome.probability.toFixed(1)}%
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {groupedOutcomes.length > 8 && (
+                            <p className="px-1 text-[11px]" style={{ color: "var(--text-3)" }}>
+                              +{groupedOutcomes.length - 8} more outcomes in this event
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="mt-5 grid grid-cols-2 gap-3">
                       <button

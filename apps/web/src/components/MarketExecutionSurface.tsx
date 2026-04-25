@@ -163,6 +163,7 @@ function formatTimestampLabel(value?: number | null): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    year: "numeric",
     hour: "numeric",
     minute: "2-digit",
   }).format(timestampMs);
@@ -191,8 +192,15 @@ function PredictionMarketFocusPanel({
   onDownloadCard: () => void;
   exportingCard: boolean;
 }) {
+  const { setSelectedMarketOutcome } = useSirenStore();
   const { data: marketActivity } = useMarketActivity(market.source === "kalshi" ? market.ticker : undefined);
   const canTradeInSiren = canTradeSelectedMarketInSiren(market);
+  const multiOutcome = !!(market.outcomes && market.outcomes.length > 1);
+  const sortedOutcomes = multiOutcome
+    ? [...market.outcomes!].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0))
+    : [];
+  const selectedOutcome =
+    sortedOutcomes.find((outcome) => outcome.label === market.selected_outcome_label) ?? sortedOutcomes[0] ?? null;
 
   return (
     <section
@@ -253,13 +261,67 @@ function PredictionMarketFocusPanel({
           </h2>
 
           <p className="mt-3 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Size YES or NO with execution-aware routing. Kalshi outcomes via DFlow; Polymarket via your linked wallet when
-            available.
+            {multiOutcome
+              ? "Choose the specific outcome you want to route, then Siren will keep the execution context tied to that selection."
+              : "Size YES or NO with execution-aware routing. Kalshi outcomes via DFlow; Polymarket via your linked wallet when available."}
           </p>
 
+          {multiOutcome && (
+            <div className="mt-4">
+              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                Outcomes
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {sortedOutcomes.slice(0, 8).map((outcome) => {
+                  const isSelected = outcome.label === market.selected_outcome_label;
+                  return (
+                    <button
+                      key={outcome.ticker ?? outcome.label}
+                      type="button"
+                      onClick={() => {
+                        hapticLight();
+                        if (outcome.ticker) setSelectedMarketOutcome(outcome.ticker);
+                      }}
+                      disabled={!outcome.ticker}
+                      className="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[11px] font-medium transition-colors disabled:opacity-60"
+                      style={{
+                        borderColor: isSelected ? "color-mix(in srgb, var(--accent) 42%, transparent)" : "var(--border-subtle)",
+                        background: isSelected ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
+                        color: isSelected ? "var(--text-1)" : "var(--text-2)",
+                      }}
+                    >
+                      <span className="truncate">{outcome.label}</span>
+                      <span className="font-mono tabular-nums" style={{ color: "var(--accent)" }}>
+                        {outcome.probability.toFixed(0)}%
+                      </span>
+                    </button>
+                  );
+                })}
+                {sortedOutcomes.length > 8 && (
+                  <span className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+                    +{sortedOutcomes.length - 8} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--accent)" />
-            <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
+            {multiOutcome ? (
+              <>
+                <CompactMarketStat label="Route target" value={selectedOutcome?.label ?? market.selected_outcome_label ?? "Outcome"} />
+                <CompactMarketStat
+                  label="Probability"
+                  value={selectedOutcome ? `${selectedOutcome.probability.toFixed(1)}%` : "—"}
+                  tone="var(--accent)"
+                />
+              </>
+            ) : (
+              <>
+                <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--accent)" />
+                <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
+              </>
+            )}
             <CompactMarketStat label="Closes" value={formatTimestampLabel(market.close_time)} />
             <CompactMarketStat
               label={market.source === "kalshi" ? "Trades 24h" : "Liquidity"}

@@ -21,8 +21,9 @@ function formatMetric(value?: number | null): string {
 
 function formatCloseLine(m: MarketWithVelocity): string {
   if (!m.close_time || m.close_time <= Date.now()) return "";
-  const d = new Date(m.close_time);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const timestampMs = m.close_time < 1_000_000_000_000 ? m.close_time * 1000 : m.close_time;
+  const d = new Date(timestampMs);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function SourceMini({ source }: { source?: string }) {

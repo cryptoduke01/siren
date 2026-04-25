@@ -22,7 +22,10 @@ export default function MarketSharePage() {
     }
   }, [market, setSelectedMarket]);
 
-  const hasLocalFallback = selectedMarket?.ticker === ticker;
+  const hasLocalFallback =
+    selectedMarket?.ticker === ticker ||
+    selectedMarket?.event_ticker === ticker ||
+    selectedMarket?.outcomes?.some((outcome) => outcome.ticker === ticker) === true;
   const showMarket = !!market || hasLocalFallback;
   const showNotFound = !isLoading && !isFetching && !showMarket && isError;
 

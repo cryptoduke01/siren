@@ -53,7 +53,11 @@ function formatCloseLabel(value?: number | null, multiOutcome = false): string {
   }
 
   const timestampMs = value < 1_000_000_000_000 ? value * 1000 : value;
-  return `Ends ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(timestampMs)}`;
+  return `Ends ${new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(timestampMs)}`;
 }
 
 function sourceTone(source?: string) {
@@ -258,7 +262,7 @@ export function TerminalMarketExplorer() {
   }, [markets, source, category, deferredQuery, liveSignals]);
 
   const visibleMarkets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const showWarmLoader = !isError && (isLoading || isFetching || markets.length === 0);
+  const showWarmLoader = !isError && markets.length === 0 && (isLoading || isFetching);
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE);
