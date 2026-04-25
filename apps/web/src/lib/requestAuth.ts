@@ -17,7 +17,7 @@ export function buildWalletAuthMessage({
   scope: WalletScope;
   timestamp: number;
 }) {
-  return `Siren API auth\nscope:${scope}\nwallet:${wallet.toLowerCase()}\ntimestamp:${timestamp}`;
+  return `Siren API auth\nscope:${scope}\nwallet:${wallet}\ntimestamp:${timestamp}`;
 }
 
 async function signWalletAuth({
@@ -33,17 +33,18 @@ async function signWalletAuth({
     throw new Error("Wallet signature is required for this action.");
   }
 
-  const cacheKey = `${wallet.toLowerCase()}:${scope}`;
+  const normalizedWallet = wallet.trim();
+  const cacheKey = `${normalizedWallet}:${scope}`;
   const cached = authCache.get(cacheKey);
   const now = Date.now();
   if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-    return { wallet: wallet.toLowerCase(), scope, timestamp: cached.timestamp, signature: cached.signature };
+    return { wallet: normalizedWallet, scope, timestamp: cached.timestamp, signature: cached.signature };
   }
 
-  const message = buildWalletAuthMessage({ wallet, scope, timestamp: now });
+  const message = buildWalletAuthMessage({ wallet: normalizedWallet, scope, timestamp: now });
   const signatureBytes = await signMessage(new TextEncoder().encode(message));
   const signature = bs58.encode(signatureBytes);
-  const signed = { wallet: wallet.toLowerCase(), scope, timestamp: now, signature };
+  const signed = { wallet: normalizedWallet, scope, timestamp: now, signature };
   authCache.set(cacheKey, { timestamp: now, signature });
   return signed;
 }

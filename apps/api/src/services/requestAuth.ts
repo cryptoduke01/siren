@@ -49,7 +49,7 @@ export function buildWalletAuthMessage({
   scope: WalletScope;
   timestamp: string | number;
 }): string {
-  return `Siren API auth\nscope:${scope}\nwallet:${wallet.toLowerCase()}\ntimestamp:${timestamp}`;
+  return `Siren API auth\nscope:${scope}\nwallet:${wallet}\ntimestamp:${timestamp}`;
 }
 
 export async function requireAdminPasscode(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
@@ -111,8 +111,8 @@ export async function requireWalletSignature(
   wallet: string,
   scope: WalletScope,
 ): Promise<boolean> {
-  const expectedWallet = wallet.trim().toLowerCase();
-  const providedWallet = (getHeader(req, WALLET_HEADER) ?? getQueryValue(req, "walletAuth"))?.toLowerCase();
+  const expectedWallet = wallet.trim();
+  const providedWallet = getHeader(req, WALLET_HEADER) ?? getQueryValue(req, "walletAuth");
   const signature = getHeader(req, SIGNATURE_HEADER) ?? getQueryValue(req, "signature");
   const timestamp = getHeader(req, TIMESTAMP_HEADER) ?? getQueryValue(req, "timestamp");
   const providedScope = (getHeader(req, SCOPE_HEADER) ?? getQueryValue(req, "scope")) as WalletScope | null;

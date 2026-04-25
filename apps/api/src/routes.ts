@@ -211,6 +211,27 @@ function isHexEvmAddress(value: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(value);
 }
 
+function getWalletCandidates(rawWallet: string | null | undefined): {
+  exact: string | null;
+  legacyLower: string | null;
+  all: string[];
+} {
+  const exact = typeof rawWallet === "string" ? rawWallet.trim() : "";
+  if (!exact) {
+    return { exact: null, legacyLower: null, all: [] };
+  }
+  const legacyLower = exact.toLowerCase();
+  return {
+    exact,
+    legacyLower,
+    all: legacyLower === exact ? [exact] : [exact, legacyLower],
+  };
+}
+
+function buildWalletOrFilter(wallets: string[]): string {
+  return wallets.map((wallet) => `wallet.eq.${wallet}`).join(",");
+}
+
 async function enrichDflowPositionsWithTradeStats(
   wallet: string,
   data: Awaited<ReturnType<typeof getDflowPositionsForWallet>>,
@@ -1418,12 +1439,11 @@ export function registerRoutes(app: FastifyInstance) {
     "/api/users/track",
     async (req, reply) => {
       const { wallet, authUserId, signupSource } = req.body || {};
-      if (!wallet && !authUserId) {
+      const walletCandidates = getWalletCandidates(wallet);
+      const exactWallet = walletCandidates.exact;
+      if (!exactWallet && !authUserId) {
         return reply.status(400).send({ success: false, error: "wallet or authUserId required" });
       }
-
-      const normalizedWallet =
-        typeof wallet === "string" && wallet.trim().length > 0 ? wallet.trim().toLowerCase() : null;
 
       // Auto-detect country from IP geo headers (no user permission needed)
       const country =
@@ -1437,7 +1457,7 @@ export function registerRoutes(app: FastifyInstance) {
         const supabase = getSupabaseAdminClient();
 
         const filters: string[] = [];
-        if (normalizedWallet) filters.push(`wallet.eq.${normalizedWallet}`);
+        if (walletCandidates.all.length > 0) filters.push(buildWalletOrFilter(walletCandidates.all));
         if (authUserId) filters.push(`auth_user_id.eq.${authUserId}`);
 
         const { data: existing, error: selectError } = await supabase
@@ -1460,7 +1480,7 @@ export function registerRoutes(app: FastifyInstance) {
             last_seen_at: now,
             signup_source: signupSource ?? (authUserId ? "auth" : "wallet"),
           };
-          if (normalizedWallet) insertPayload.wallet = normalizedWallet;
+          if (exactWallet) insertPayload.wallet = exactWallet;
           if (authUserId) insertPayload.auth_user_id = authUserId;
           if (countryCode) insertPayload.country = countryCode;
 
@@ -1481,7 +1501,7 @@ export function registerRoutes(app: FastifyInstance) {
         const updatePayload: Record<string, unknown> = {
           last_seen_at: now,
         };
-        if (!existing.wallet && normalizedWallet) updatePayload.wallet = normalizedWallet;
+        if (exactWallet && existing.wallet !== exactWallet) updatePayload.wallet = exactWallet;
         if (!existing.auth_user_id && authUserId) updatePayload.auth_user_id = authUserId;
         if (!existing.signup_source && signupSource) updatePayload.signup_source = signupSource;
         if (countryCode) updatePayload.country = countryCode;
@@ -1511,10 +1531,12 @@ export function registerRoutes(app: FastifyInstance) {
     "/api/users/username",
     async (req, reply) => {
       const { wallet, username } = req.body || {};
-      if (!wallet || typeof wallet !== "string" || wallet.trim().length < 20) {
+      const walletCandidates = getWalletCandidates(wallet);
+      const exactWallet = walletCandidates.exact;
+      if (!exactWallet || exactWallet.length < 20) {
         return reply.status(400).send({ success: false, error: "Valid wallet address required" });
       }
-      if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
+      if (!(await requireWalletSignature(req, reply, exactWallet, "write"))) return;
       if (!username || typeof username !== "string") {
         return reply.status(400).send({ success: false, error: "Username required" });
       }
@@ -1526,23 +1548,35 @@ export function registerRoutes(app: FastifyInstance) {
         const supabase = getSupabaseAdminClient();
         const { data: dup } = await supabase
           .from("users")
-          .select("id")
+          .select("id,wallet")
           .eq("username", clean.toLowerCase())
-          .neq("wallet", wallet.trim().toLowerCase())
           .maybeSingle();
-        if (dup) {
+        if (dup && !walletCandidates.all.includes(dup.wallet)) {
           return reply.status(409).send({ success: false, error: "Username already taken" });
         }
+
+        const { data: userRow, error: userLookupError } = await supabase
+          .from("users")
+          .select("id,wallet")
+          .in("wallet", walletCandidates.all)
+          .limit(1)
+          .maybeSingle();
+
+        if (userLookupError && userLookupError.code !== "PGRST116") {
+          req.log.error({ err: userLookupError }, "username user lookup failed");
+          return reply.status(503).send({ success: false, error: "Failed to update username" });
+        }
+        if (!userRow) {
+          return reply.status(404).send({ success: false, error: "Wallet not found. Connect your wallet first." });
+        }
+
         const { data, error } = await supabase
           .from("users")
-          .update({ username: clean.toLowerCase(), display_name: clean })
-          .eq("wallet", wallet.trim().toLowerCase())
+          .update({ wallet: exactWallet, username: clean.toLowerCase(), display_name: clean })
+          .eq("id", userRow.id)
           .select("id,wallet,username,display_name")
           .single();
         if (error) {
-          if (error.code === "PGRST116") {
-            return reply.status(404).send({ success: false, error: "Wallet not found. Connect your wallet first." });
-          }
           req.log.error({ err: error }, "username update failed");
           return reply.status(503).send({ success: false, error: "Failed to update username" });
         }
@@ -1557,8 +1591,8 @@ export function registerRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { wallet: string } }>(
     "/api/users/profile",
     async (req, reply) => {
-      const wallet = (req.query.wallet || "").trim().toLowerCase();
-      if (!wallet || wallet.length < 20) {
+      const walletCandidates = getWalletCandidates(req.query.wallet || "");
+      if (!walletCandidates.exact || walletCandidates.exact.length < 20) {
         return reply.status(400).send({ success: false, error: "wallet query param required" });
       }
       try {
@@ -1566,7 +1600,8 @@ export function registerRoutes(app: FastifyInstance) {
         const { data, error } = await supabase
           .from("users")
           .select("id,wallet,username,display_name,avatar_url,created_at,country")
-          .eq("wallet", wallet)
+          .in("wallet", walletCandidates.all)
+          .limit(1)
           .maybeSingle();
         if (error && error.code !== "PGRST116") {
           req.log.error({ err: error }, "profile lookup failed");
@@ -1585,10 +1620,12 @@ export function registerRoutes(app: FastifyInstance) {
     "/api/users/avatar",
     async (req, reply) => {
       const { wallet, imageBase64 } = req.body || {};
-      if (!wallet || typeof wallet !== "string" || wallet.trim().length < 20) {
+      const walletCandidates = getWalletCandidates(wallet);
+      const exactWallet = walletCandidates.exact;
+      if (!exactWallet || exactWallet.length < 20) {
         return reply.status(400).send({ success: false, error: "Valid wallet address required" });
       }
-      if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
+      if (!(await requireWalletSignature(req, reply, exactWallet, "write"))) return;
       if (!imageBase64 || typeof imageBase64 !== "string") {
         return reply.status(400).send({ success: false, error: "imageBase64 required" });
       }
@@ -1611,7 +1648,7 @@ export function registerRoutes(app: FastifyInstance) {
       if (buffer.length < 24 || buffer.length > 2_000_000) {
         return reply.status(400).send({ success: false, error: "Invalid image size" });
       }
-      const w = wallet.trim().toLowerCase();
+      const w = exactWallet;
       const ext = mime.includes("png") ? "png" : "jpg";
       const contentType = ext === "png" ? "image/png" : "image/jpeg";
       const objectPath = `${w.slice(0, 8)}-${w.slice(-6)}.${ext}`;
@@ -1635,10 +1672,26 @@ export function registerRoutes(app: FastifyInstance) {
         if (!publicUrl) {
           return reply.status(422).send({ success: false, error: "Could not resolve public URL for avatar" });
         }
+        const { data: userRow, error: userLookupError } = await supabase
+          .from("users")
+          .select("id,wallet")
+          .in("wallet", walletCandidates.all)
+          .limit(1)
+          .maybeSingle();
+        if (userLookupError && userLookupError.code !== "PGRST116") {
+          req.log.error({ err: userLookupError }, "avatar user lookup failed");
+          return reply.status(422).send({
+            success: false,
+            error: "Could not save avatar URL. User lookup failed.",
+          });
+        }
+        if (!userRow) {
+          return reply.status(404).send({ success: false, error: "Wallet not found. Connect your wallet first." });
+        }
         const { data, error } = await supabase
           .from("users")
-          .update({ avatar_url: publicUrl })
-          .eq("wallet", w)
+          .update({ wallet: w, avatar_url: publicUrl })
+          .eq("id", userRow.id)
           .select("id,wallet,avatar_url")
           .maybeSingle();
         if (error) {
