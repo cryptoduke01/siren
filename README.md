@@ -35,6 +35,7 @@ packages/
   shared/  Shared types and tag library
 docs/
   GETTING_STARTED.md   API keys and setup
+  HACKATHON_SUBMISSION_CHECKLIST.md  sponsor-track and deploy checklist
 ```
 
 ## Quick Start
