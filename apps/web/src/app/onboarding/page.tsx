@@ -108,25 +108,29 @@ export default function OnboardingPage() {
   const handleSaveUsernameAndContinue = useCallback(async () => {
     hapticLight();
     const clean = usernameDraft.trim().replace(/[^a-zA-Z0-9_.\-]/g, "");
-    if (clean.length >= 2 && walletKey) {
+    if (walletKey) {
       setUsernameSaving(true);
       try {
-        const res = await fetch(`${API_URL}/api/users/username`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" })),
-          },
-          body: JSON.stringify({ wallet: walletKey, username: clean }),
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setLoginError(typeof payload?.error === "string" ? payload.error : "Could not save username.");
-          setUsernameSaving(false);
-          return;
+        const authHeaders = await getWalletAuthHeaders({ wallet: walletKey, signMessage, scope: "write" });
+        if (clean.length >= 2) {
+          const res = await fetch(`${API_URL}/api/users/username`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeaders,
+            },
+            body: JSON.stringify({ wallet: walletKey, username: clean }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setLoginError(typeof payload?.error === "string" ? payload.error : "Could not save username.");
+            setUsernameSaving(false);
+            return;
+          }
         }
-      } catch {
-        setLoginError("Network error saving username.");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Wallet confirmation did not complete.";
+        setLoginError(message || "Wallet confirmation did not complete.");
         setUsernameSaving(false);
         return;
       }

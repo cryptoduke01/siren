@@ -7,10 +7,10 @@ import { useWalletTypeStore } from "@/store/useWalletTypeStore";
 import { hapticLight } from "@/lib/haptics";
 import { ChevronDown, Copy, LogOut, KeyRound, EyeOff } from "lucide-react";
 import { API_URL } from "@/lib/apiUrl";
-import { getWalletAuthHeaders } from "@/lib/requestAuth";
+import { clearWalletAuthCache } from "@/lib/requestAuth";
 
 export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
-  const { connected, publicKey, evmAddress, disconnect, canExportPrivateKey, exportPrivateKey, signMessage } = useSirenWallet();
+  const { connected, publicKey, evmAddress, disconnect, canExportPrivateKey, exportPrivateKey } = useSirenWallet();
   const { setWalletType } = useWalletTypeStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [privateKey, setPrivateKey] = useState<string | null>(null);
@@ -28,17 +28,16 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
     const wallet = publicKey.toBase58();
     void (async () => {
       try {
-        const authHeaders = await getWalletAuthHeaders({ wallet, signMessage, scope: "write" });
         await fetch(`${API_URL}/api/users/track`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...authHeaders },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ wallet, signupSource: "wallet" }),
         });
       } catch {
         /* ignore */
       }
     })();
-  }, [connected, publicKey, signMessage]);
+  }, [connected, publicKey]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -53,6 +52,7 @@ export function WalletButton({ fullWidth = false }: { fullWidth?: boolean }) {
     hapticLight();
     setDropdownOpen(false);
     setWalletType(null);
+    if (fullAddress) clearWalletAuthCache(fullAddress);
     disconnect();
   };
 

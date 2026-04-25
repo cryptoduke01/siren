@@ -10,7 +10,7 @@ const WALLET_HEADER = "x-siren-wallet";
 const SIGNATURE_HEADER = "x-siren-signature";
 const TIMESTAMP_HEADER = "x-siren-timestamp";
 const SCOPE_HEADER = "x-siren-scope";
-const MAX_AUTH_AGE_MS = 2 * 60 * 1000;
+const MAX_AUTH_AGE_MS = 12 * 60 * 60 * 1000;
 
 type WalletScope = "read" | "write";
 
@@ -50,6 +50,14 @@ export function buildWalletAuthMessage({
   timestamp: string | number;
 }): string {
   return `Siren API auth\nscope:${scope}\nwallet:${wallet}\ntimestamp:${timestamp}`;
+}
+
+function isValidWalletScope(scope: string | null): scope is WalletScope {
+  return scope === "read" || scope === "write";
+}
+
+function isScopeSufficient(providedScope: WalletScope, requiredScope: WalletScope): boolean {
+  return providedScope === requiredScope || (providedScope === "write" && requiredScope === "read");
 }
 
 export async function requireAdminPasscode(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
@@ -122,6 +130,11 @@ export async function requireWalletSignature(
     return false;
   }
 
+  if (!isValidWalletScope(providedScope)) {
+    reply.status(400).send({ success: false, error: "Signed wallet authorization has an invalid scope." });
+    return false;
+  }
+
   if (providedWallet !== expectedWallet) {
     reply
       .status(403)
@@ -129,7 +142,7 @@ export async function requireWalletSignature(
     return false;
   }
 
-  if (providedScope !== scope) {
+  if (!isScopeSufficient(providedScope, scope)) {
     reply.status(403).send({ success: false, error: "Signed wallet authorization has the wrong scope." });
     return false;
   }
@@ -150,7 +163,7 @@ export async function requireWalletSignature(
     return false;
   }
 
-  const message = buildWalletAuthMessage({ wallet: expectedWallet, scope, timestamp });
+  const message = buildWalletAuthMessage({ wallet: expectedWallet, scope: providedScope, timestamp });
   const verified = nacl.sign.detached.verify(
     new TextEncoder().encode(message),
     signatureBytes,
