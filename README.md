@@ -53,7 +53,7 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in API keys. See docs/G
 Backend (`apps/api/.env`):
 
 - `DFLOW_API_KEY` – DFlow (markets + trading). Request at pond.dflow.net.
-- `JUPITER_API_KEY` – Jupiter (swap routing). Get at portal.jup.ag.
+- `JUPITER_API_KEY` – Jupiter Developer Platform key for swap and prediction APIs. Get it at developers.jup.ag.
 - `GOLDRUSH_API_KEY` – GoldRush / Covalent (wallet intelligence on Solana balances).
 - `TORQUE_API_KEY` – Torque Event API key used to send Siren execution events to `https://ingest.torque.so/events`.
 - `DATABASE_URL` – PostgreSQL (optional for MVP)

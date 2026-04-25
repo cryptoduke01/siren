@@ -163,6 +163,18 @@ function logTradeFailure(context: Record<string, unknown>) {
   });
 }
 
+function logTradeAttemptTelemetry(context: Record<string, unknown>) {
+  void fetch(`${API_URL}/api/telemetry/trade-attempt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "omit",
+    keepalive: true,
+    body: JSON.stringify(context),
+  }).catch(() => {
+    // Telemetry should never block the trade flow.
+  });
+}
+
 type DflowAsyncStatus = {
   status?: "pending" | "expired" | "failed" | "open" | "pendingClose" | "closed";
   error?: string;
@@ -573,6 +585,7 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
     hideResultModal();
     setLoading(true);
+    const attemptId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `attempt-${Date.now()}`;
     const isSell = !!sellMode;
     try {
       if (!isSell) {
@@ -603,6 +616,24 @@ export function UnifiedBuyPanel() {
       const tokenPriceUsd = typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
       const tokenNameToLog = tokenDisplayName || selectedToken.name;
       const tokenSymbolToLog = tokenDisplaySymbol || selectedToken.symbol;
+
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: publicKey.toBase58(),
+        venue: tokenRouteLabel,
+        mode: "position-close",
+        market: selectedToken.marketTicker ?? selectedToken.marketTitle ?? selectedToken.symbol,
+        side: "sell",
+        inputAsset: tokenSymbolToLog,
+        outputAsset: "USDC",
+        amount: sellAmount,
+        status: "attempted",
+        metadata: {
+          attemptId,
+          tokenMint: selectedToken.mint,
+          marketTitle: selectedToken.marketTitle ?? null,
+        },
+      });
 
       const requestSwapOrder = async (amountAtomic: string): Promise<Record<string, unknown>> => {
         const res = await fetch(`${API_URL}/api/swap/order`, {
@@ -723,10 +754,45 @@ export function UnifiedBuyPanel() {
         }`,
         txSignature: sig,
       });
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: publicKey.toBase58(),
+        venue: tokenRouteLabel,
+        mode: "position-close",
+        market: selectedToken.marketTicker ?? selectedToken.marketTitle ?? selectedToken.symbol,
+        side: "sell",
+        inputAsset: tokenSymbolToLog,
+        outputAsset: "USDC",
+        amount: String(amountNum),
+        status: "success",
+        txSignature: sig,
+        metadata: {
+          attemptId,
+          partialSellFilled,
+          tokenMint: selectedToken.mint,
+        },
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Swap failed";
       const friendly = getFriendlyTradeError(msg, "Swap failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: publicKey?.toBase58(),
+        venue: tokenRouteLabel,
+        mode: "position-close",
+        market: selectedToken?.marketTicker ?? selectedToken?.marketTitle ?? selectedToken?.symbol,
+        side: "sell",
+        inputAsset: tokenDisplaySymbol,
+        outputAsset: "USDC",
+        amount: sellAmount,
+        status: "failed",
+        errorMessage: msg,
+        metadata: {
+          attemptId,
+          tokenMint: selectedToken?.mint ?? null,
+        },
+      });
       logTradeFailure({
         venue: tokenRouteLabel,
         mode: isSell ? "sell" : "buy",
@@ -853,6 +919,7 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
     hideResultModal();
     setLoading(true);
+    const attemptId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `attempt-${Date.now()}`;
 
     try {
       if (!switchEvmChain || !getEvmProvider) {
@@ -907,6 +974,24 @@ export function UnifiedBuyPanel() {
           `Not enough Polygon USDC in ${formatAddressShort(evmAddress)}. Fund the same EVM wallet on Polygon, then try again.`
         );
       }
+
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: evmAddress,
+        venue: "polymarket",
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "Polygon USDC",
+        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+        amount: solAmount,
+        status: "attempted",
+        metadata: {
+          attemptId,
+          tokenId: selectedPolymarketTokenId,
+          marketTitle: selectedMarket.title,
+        },
+      });
 
       const response = await client.createAndPostMarketOrder(
         {
@@ -970,10 +1055,44 @@ export function UnifiedBuyPanel() {
           valueUsd: amountNum,
         },
       });
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: evmAddress,
+        venue: "polymarket",
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "Polygon USDC",
+        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+        amount: solAmount,
+        status: "success",
+        txSignature,
+        metadata: {
+          attemptId,
+          tokenId: selectedPolymarketTokenId,
+        },
+      });
       setSolAmount("");
     } catch (e) {
       const msg = extractErrorMessage(e);
       const friendly = getFriendlyTradeError(msg, "Polymarket trade failed. Please try again.");
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: evmAddress,
+        venue: "polymarket",
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "Polygon USDC",
+        outputAsset: `${marketSide.toUpperCase()} ${selectedMarket.ticker}`,
+        amount: solAmount,
+        status: "failed",
+        errorMessage: msg,
+        metadata: {
+          attemptId,
+          tokenId: selectedPolymarketTokenId,
+        },
+      });
       logTradeFailure({
         venue: "polymarket",
         mode: "buy-market",
@@ -1042,11 +1161,30 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
     hideResultModal();
     setLoading(true);
+    const attemptId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `attempt-${Date.now()}`;
     try {
       const amount = parseUnitsToBigInt(solAmount.trim(), 6).toString();
       const outcomeLabel = marketSide.toUpperCase();
       const outcomeSymbol = `${outcomeLabel} ${selectedMarket.ticker}`;
       const outcomeName = `${selectedMarket.title} · ${outcomeLabel}`;
+
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: publicKey.toBase58(),
+        venue: selectedMarket.source,
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "USDC",
+        outputAsset: outcomeSymbol,
+        amount: solAmount,
+        status: "attempted",
+        metadata: {
+          attemptId,
+          outputMint: selectedMarketMint,
+          marketTitle: selectedMarket.title,
+        },
+      });
 
       const qs = new URLSearchParams({
         inputMint: SOLANA_USDC_MINT,
@@ -1123,11 +1261,45 @@ export function UnifiedBuyPanel() {
         txSignature: sig,
         sharePnL: sharePnLKalshi,
       });
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: publicKey.toBase58(),
+        venue: selectedMarket.source,
+        mode: "buy-market",
+        market: selectedMarket.ticker,
+        side: marketSide,
+        inputAsset: "USDC",
+        outputAsset: outcomeSymbol,
+        amount: solAmount,
+        status: "success",
+        txSignature: sig,
+        metadata: {
+          attemptId,
+          outputMint: selectedMarketMint,
+        },
+      });
       setSolAmount("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Prediction trade failed";
       const friendly = getFriendlyTradeError(msg, "Prediction market trade failed. Please try again.");
       const requiresVerification = isWalletVerificationError(msg);
+      logTradeAttemptTelemetry({
+        attemptId,
+        wallet: publicKey?.toBase58(),
+        venue: selectedMarket?.source,
+        mode: "buy-market",
+        market: selectedMarket?.ticker,
+        side: marketSide,
+        inputAsset: "USDC",
+        outputAsset: selectedMarket ? `${marketSide.toUpperCase()} ${selectedMarket.ticker}` : null,
+        amount: solAmount,
+        status: "failed",
+        errorMessage: msg,
+        metadata: {
+          attemptId,
+          outputMint: selectedMarketMint ?? null,
+        },
+      });
       logTradeFailure({
         venue: selectedMarket.source,
         mode: "buy-market",

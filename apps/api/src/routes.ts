@@ -8,7 +8,8 @@ import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
-import { getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
+import { buildAdminTractionDashboard, logMarketViewTelemetry, logTradeAttemptTelemetry } from "./services/adminTraction.js";
+import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
 import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
@@ -1006,6 +1007,57 @@ export function registerRoutes(app: FastifyInstance) {
     }
   );
 
+  app.post<{
+    Body: {
+      wallet?: string | null;
+      venue?: string | null;
+      mode?: string | null;
+      market?: string | null;
+      side?: string | null;
+      inputAsset?: string | null;
+      outputAsset?: string | null;
+      amount?: string | null;
+      status?: string | null;
+      txSignature?: string | null;
+      errorMessage?: string | null;
+      metadata?: Record<string, unknown> | null;
+    };
+  }>("/api/telemetry/trade-attempt", async (req, reply) => {
+    try {
+      const payload = await logTradeAttemptTelemetry(getSupabaseAdminClient(), req.body ?? {});
+      await emitTorqueTradeAttemptEvent(payload);
+      return reply.send({ success: true, persisted: true });
+    } catch (error) {
+      app.log.warn(error, "trade attempt telemetry skipped");
+      return reply.status(202).send({
+        success: true,
+        persisted: false,
+        warning: error instanceof Error ? error.message : "Trade attempt telemetry skipped",
+      });
+    }
+  });
+
+  app.post<{
+    Body: {
+      wallet?: string | null;
+      venue?: string | null;
+      market?: string | null;
+      title?: string | null;
+    };
+  }>("/api/telemetry/market-view", async (req, reply) => {
+    try {
+      await logMarketViewTelemetry(getSupabaseAdminClient(), req.body ?? {});
+      return reply.send({ success: true, persisted: true });
+    } catch (error) {
+      app.log.warn(error, "market view telemetry skipped");
+      return reply.status(202).send({
+        success: true,
+        persisted: false,
+        warning: error instanceof Error ? error.message : "Market view telemetry skipped",
+      });
+    }
+  });
+
   app.get<{ Querystring: { address?: string } }>("/api/dflow/proof-status", async (req, reply) => {
     const address = req.query.address?.trim();
     if (!address) {
@@ -1661,6 +1713,17 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(500).send({ success: false, error: "Failed to fetch user stats" });
+    }
+  });
+
+  app.get("/api/admin/traction", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    try {
+      const data = await buildAdminTractionDashboard(getSupabaseAdminClient());
+      return reply.send({ success: true, data });
+    } catch (error) {
+      app.log.error(error, "admin traction dashboard failed");
+      return reply.status(500).send({ success: false, error: "Failed to build traction dashboard" });
     }
   });
 

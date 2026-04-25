@@ -12,6 +12,7 @@ import { StarButton } from "./StarButton";
 import { MarketAlertButton } from "./AlertButton";
 import { hapticLight } from "@/lib/haptics";
 import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
+import { API_URL } from "@/lib/apiUrl";
 import type { PredictionSignal } from "@siren/shared";
 
 function SignalSourcePill({ source }: { source: PredictionSignal["source"] }) {
@@ -430,6 +431,7 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
   const fontEmbedCssRef = useRef<string | null>(null);
+  const marketViewLogRef = useRef<Map<string, number>>(new Map());
   const reduceMotion = useReducedMotion();
 
   const addToast = useToastStore((s) => s.addToast);
@@ -443,6 +445,30 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
     if (!selectedMarket?.ticker && !selectedSignal?.id) return;
     surfaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [selectedMarket?.ticker, selectedSignal?.id]);
+
+  useEffect(() => {
+    if (!selectedMarket) return;
+    const key = `${selectedMarket.source}:${selectedMarket.ticker}`;
+    const now = Date.now();
+    const previous = marketViewLogRef.current.get(key) ?? 0;
+    if (previous > now - 5 * 60 * 1000) return;
+    marketViewLogRef.current.set(key, now);
+
+    void fetch(`${API_URL}/api/telemetry/market-view`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "omit",
+      keepalive: true,
+      body: JSON.stringify({
+        wallet: publicKey?.toBase58() ?? evmAddress ?? null,
+        venue: selectedMarket.source,
+        market: selectedMarket.ticker,
+        title: selectedMarket.title,
+      }),
+    }).catch(() => {
+      // Ignore telemetry transport failures.
+    });
+  }, [selectedMarket?.source, selectedMarket?.ticker, selectedMarket?.title, publicKey?.toBase58(), evmAddress]);
 
   const exportSelectedMarket = async (mode: "share" | "download") => {
     if (!selectedMarket || typeof window === "undefined") return;

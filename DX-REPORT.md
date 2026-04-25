@@ -1,6 +1,6 @@
 # Siren DX Report
 
-This report captures the current builder experience integrating sponsor-track infrastructure into Siren as of April 17, 2026.
+This report captures the current builder experience integrating sponsor-track infrastructure into Siren as of April 25, 2026.
 
 ## Project
 
@@ -22,6 +22,12 @@ Siren is building an execution and risk intelligence layer for prediction market
   - `GET /prediction/v1/orderbook/{marketId}`
   - `GET /prediction/v1/trading-status`
 
+### Onboarding
+
+- Time from landing on `developers.jup.ag` to first successful API call was reasonable once the key existed, roughly 15 to 30 minutes for the first useful response.
+- Time from first call to product-grade output was longer because search alone was not enough. In practice we had to stitch search -> event detail -> orderbook -> trading status before Siren could make a real routing or execution-context decision.
+- The strongest part of the new Developer Platform story is the single-key model. The weakest part is that product teams still need to discover the best multi-endpoint path themselves.
+
 ### What worked well
 
 - The Prediction API is flexible enough to turn one Siren market thesis into a cross-venue read.
@@ -40,6 +46,8 @@ Siren is building an execution and risk intelligence layer for prediction market
 ### AI stack feedback
 
 - Docs were enough to get the integration working, but the strongest path came from combining multiple pages rather than following one obvious “build a product like this” guide.
+- We relied more on the docs surface than the broader AI stack. That is useful signal by itself: the path from landing on the platform to “here is the right context file or CLI flow for this use case” is still not obvious enough.
+- The main gap is not raw reference coverage. It is guided integration flow for real product builders who need to combine Swap, Prediction, and platform tooling without guessing.
 - The biggest lift would be a first-class example that shows:
   1. search for an event,
   2. fetch full event details,
@@ -52,6 +60,8 @@ Siren is building an execution and risk intelligence layer for prediction market
 - Make canonical venue URLs explicit in the response.
 - Add a richer “same thesis across venues” example for products doing comparison and routing.
 - Add clearer guidance around pricing units and which fields are safe to present directly to users.
+- Make the AI stack entry points much more explicit on the landing path: when to use Agent Skills, when to use CLI, when to use docs, and what “best practice” looks like for each.
+- If we were rebuilding `developers.jup.ag`, we would push developers into a first successful multi-endpoint workflow immediately instead of starting from static endpoint reference pages.
 
 ## GoldRush / Covalent
 
@@ -95,7 +105,9 @@ Siren is building an execution and risk intelligence layer for prediction market
 - Torque-ready custom event relay through:
   - `apps/api/src/services/torque.ts`
   - `GET /api/integrations/torque/readiness`
-  - trade-attempt emission inside `POST /api/trade-attempts/log`
+  - trade-attempt emission inside `POST /api/telemetry/trade-attempt`
+  - market-view tracking via `POST /api/telemetry/market-view`
+  - traction analytics via `GET /api/admin/traction`
 - Siren’s event model currently centers on:
   - `trade_attempt_logged`
   - `trade_attempt_success`
@@ -121,10 +133,23 @@ Siren is building an execution and risk intelligence layer for prediction market
 
 ## AI Stack Used
 
-- Official Jupiter Prediction docs
-- Official GoldRush docs
-- Official Torque MCP quickstart docs
+- Jupiter docs and endpoint reference
+- GoldRush docs
+- Torque MCP quickstart docs
 - Live endpoint testing from the terminal during implementation
+
+What we used heavily:
+
+- Docs and direct endpoint testing
+
+What we did not use deeply enough yet:
+
+- Jupiter Agent Skills
+- Jupiter CLI
+- Jupiter Docs MCP
+- `llms.txt`
+
+That is not a dodge. It is part of the DX signal. The “use the AI stack during build” path still needs to be surfaced more aggressively if it is meant to be the default builder workflow.
 
 What helped:
 
@@ -137,6 +162,7 @@ What did not help enough:
 - Cross-venue product examples for Jupiter
 - Behavior-driven reward examples for Torque
 - Solana-specific wallet readiness playbooks for GoldRush
+- A clearer “start here if you are building with an agent” path on Jupiter
 
 ## Summary
 
