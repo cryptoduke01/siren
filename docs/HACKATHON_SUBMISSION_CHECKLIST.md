@@ -112,6 +112,7 @@ This is the working checklist for Siren across Frontier and the current side tra
 - Torque event relay path
 - Admin traction dashboard
 - Torque friction log inside `DX-REPORT.md`
+- A Siren-specific Torque setup guide in `docs/TORQUE_MCP_PLAYBOOK.md`
 
 ### Siren still needs before a strong submission
 
@@ -121,15 +122,21 @@ This is the working checklist for Siren across Frontier and the current side tra
 
 ### Siren next actions
 
-- Ask Torque for the fastest path from custom events to one live campaign.
-- Configure one concrete campaign around execution behavior.
-- Drive real users through it and capture participant count.
-- Record the demo only after live activity exists.
+1. Register the Torque MCP client with `TORQUE_API_TOKEN`.
+2. Select the Siren project in Torque or create it if it does not exist.
+3. Create and attach the `siren_trade_execution` custom event schema.
+4. Generate a fresh `TORQUE_API_KEY` and set it in `apps/api/.env`.
+5. Push one live trade attempt through Siren so the custom event becomes query-ready.
+6. Preview a weekly successful-execution leaderboard query.
+7. Create one real recurring incentive with `confirmed: false` first, then confirm it.
+8. Drive real users through it and capture participant count or rewards distributed.
+9. Record the demo only after the incentive has live activity.
 
 ### Notes
 
 - This is the one track where “code is merged” is not enough.
 - Live measurable incentive usage is the bar.
+- Follow `docs/TORQUE_MCP_PLAYBOOK.md` so the repo, MCP flow, and runtime ingestion path stay aligned.
 
 ## Deploy Checklist
 

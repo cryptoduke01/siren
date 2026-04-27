@@ -108,27 +108,37 @@ Siren is building an execution and risk intelligence layer for prediction market
   - trade-attempt emission inside `POST /api/telemetry/trade-attempt`
   - market-view tracking via `POST /api/telemetry/market-view`
   - traction analytics via `GET /api/admin/traction`
-- Siren’s event model currently centers on:
-  - `trade_attempt_logged`
-  - `trade_attempt_success`
-  - `trade_attempt_failed`
-  - `partial_fill_recorded`
+- Siren’s event model now centers on one canonical custom event:
+  - `siren_trade_execution`
+- The compact queryable fields are:
+  - `route`
+  - `market`
+  - `side`
+  - `status`
+  - `reason`
+  - `amount`
+  - `filledFraction`
+  - `isPartialFill`
 
 ### What worked well
 
 - Siren’s execution log maps naturally onto campaign events like successful closes, failed attempts, and partial fills.
-- The mental model fits retention well: leaderboards, rebates, resolve-before-expiry campaigns, and execution-quality incentives.
+- One canonical event is much easier to reason about than several fragmented event names when you get to query generation and incentive design.
+- The mental model fits retention well: leaderboards, rebates, and execution-quality incentives are a much better fit than generic “trade more” loops.
 
 ### Friction log
 
 - The fastest route for custom event ingestion needs to be extremely obvious. Trading products want to wire product events fast, not reverse-engineer envelope shape.
 - Docs are good for installing the MCP quickly, but product teams also need a concrete “here is the minimum event contract to unlock campaigns” example.
+- The auth token path was not as self-explanatory as it should be during direct API debugging. An ambiguous “token was not provided” response slows down troubleshooting when a builder is clearly sending a Bearer token.
+- Torque’s typed event mapping rewards compact schemas. That is workable, but the limit matters a lot for trading products that instinctively want to send too many string fields.
 - “Reward volume” is easier to imagine than “reward better execution behavior”. The latter is where Siren lives, and it needs stronger examples.
 
 ### What we want improved
 
 - More end-to-end examples around custom events for trading products.
 - Clearer docs on the minimal event envelope for campaign eligibility.
+- More explicit guidance on token-vs-ingest credentials so builders do not conflate `TORQUE_API_TOKEN` and `TORQUE_API_KEY`.
 - More examples for behavior-based incentives rather than only volume-driven incentives.
 
 ## AI Stack Used

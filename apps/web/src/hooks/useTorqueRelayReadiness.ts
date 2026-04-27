@@ -17,6 +17,21 @@ export type TorqueRelayReadiness = {
     name: string;
     objective: string;
   }>;
+  mcpQuickstart: {
+    codexCommand: string;
+    cursorConfigPath: string;
+    toolSequence: string[];
+  };
+  campaignBlueprints: Array<{
+    name: string;
+    type: string;
+    interval: string;
+    eventName: string;
+    valueExpression: string;
+    filters: string[];
+    customFormula?: string;
+    rebatePercentage?: number;
+  }>;
   frictionLog: string[];
   summary: string;
 };

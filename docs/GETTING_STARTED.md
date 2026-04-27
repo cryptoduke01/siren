@@ -48,6 +48,59 @@ API keys, setup, and run instructions.
 
 ---
 
+### Torque (growth loops, leaderboards, rebates)
+
+- **What for:** Live retention campaigns based on real Siren execution behavior.
+- **Docs:** https://platform.torque.so/docs/mcp/quickstart
+- **Siren playbook:** `docs/TORQUE_MCP_PLAYBOOK.md`
+- **Important split:**
+  - `TORQUE_API_TOKEN` is for the Torque MCP client in Codex / Cursor.
+  - `TORQUE_API_KEY` is for the Siren API runtime to ingest custom events.
+
+#### Codex MCP setup
+
+```bash
+codex mcp add torque --env TORQUE_API_TOKEN=your-token -- npx @torque-labs/mcp@latest
+codex mcp get torque
+```
+
+#### Cursor MCP setup
+
+```json
+{
+  "mcpServers": {
+    "torque": {
+      "command": "npx",
+      "args": ["@torque-labs/mcp@latest"],
+      "env": {
+        "TORQUE_API_TOKEN": "your-auth-token"
+      }
+    }
+  }
+}
+```
+
+#### MCP workflow that matches Torque docs
+
+1. `check_auth_status`
+2. `authenticate`
+3. `list_projects`
+4. `set_active_project`
+5. `create_custom_event`
+6. `attach_custom_event`
+7. `create_api_key`
+8. `generate_incentive_query`
+9. `preview_incentive_query`
+10. `create_recurring_incentive`
+
+#### Siren event model
+
+- Siren emits one canonical custom event: `siren_trade_execution`
+- The recommended first campaign is a weekly successful-execution leaderboard
+- Custom events are only query-ready after the schema is attached and at least one live event has been ingested
+
+---
+
 ## 2. Set up environment
 
 ### Backend (`apps/api`)

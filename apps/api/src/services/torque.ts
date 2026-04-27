@@ -1,9 +1,4 @@
-const TORQUE_EVENT_NAMES = [
-  "trade_attempt_logged",
-  "trade_attempt_success",
-  "trade_attempt_failed",
-  "partial_fill_recorded",
-] as const;
+const TORQUE_EVENT_NAME = "siren_trade_execution" as const;
 const TORQUE_INGEST_URL = "https://ingest.torque.so/events";
 
 type LoggedTradeAttemptPayload = {
@@ -22,15 +17,15 @@ type LoggedTradeAttemptPayload = {
 };
 
 export type TorqueEmissionPreview = {
-  eventName: (typeof TORQUE_EVENT_NAMES)[number];
+  eventName: typeof TORQUE_EVENT_NAME;
   route: string;
   market: string;
   side: string;
   status: string;
   amount: number | null;
-  txSignature: string | null;
-  failureReason: string | null;
+  reason: string;
   filledFraction: number | null;
+  isPartialFill: boolean;
 };
 
 function parseNumericValue(value?: string | number | null): number | null {
@@ -44,13 +39,6 @@ function parseNumericValue(value?: string | number | null): number | null {
 
 function buildRouteLabel(payload: LoggedTradeAttemptPayload): string {
   return [payload.venue, payload.mode].filter(Boolean).join(":") || "unknown";
-}
-
-function buildAssetPair(payload: LoggedTradeAttemptPayload): string {
-  const input = payload.input_asset?.trim();
-  const output = payload.output_asset?.trim();
-  if (input && output) return `${input}->${output}`;
-  return input || output || "unknown";
 }
 
 function buildFailureReason(message?: string | null): string {
@@ -79,72 +67,102 @@ export function getTorqueRelayReadiness() {
     configured: Boolean(apiKey),
     relayMode: "torque_ingest" as const,
     ingestHost: safeHostname(TORQUE_INGEST_URL),
-    eventNames: [...TORQUE_EVENT_NAMES],
+    eventNames: [TORQUE_EVENT_NAME],
     requiredSchemas: [
       {
-        eventName: "trade_attempt_logged",
-        name: "Trade Attempt Logged",
-        fields: ["route", "market", "side", "assetPair", "status", "amount:number"],
-      },
-      {
-        eventName: "trade_attempt_success",
-        name: "Trade Attempt Success",
-        fields: ["route", "market", "side", "status", "txSignature", "amount:number"],
-      },
-      {
-        eventName: "trade_attempt_failed",
-        name: "Trade Attempt Failed",
-        fields: ["route", "market", "side", "status", "failureReason", "amount:number"],
-      },
-      {
-        eventName: "partial_fill_recorded",
-        name: "Partial Fill Recorded",
-        fields: ["route", "market", "side", "status", "amount:number", "filledFraction:number"],
+        eventName: TORQUE_EVENT_NAME,
+        name: "Siren Trade Execution",
+        fields: [
+          "route:string",
+          "market:string",
+          "side:string",
+          "status:string",
+          "reason:string",
+          "amount:number",
+          "filledFraction:number",
+          "isPartialFill:boolean",
+        ],
       },
     ],
     suggestedCampaigns: [
       {
+        name: "weekly_clean_execution",
+        objective: "Reward wallets that complete the most successful executions with fewer failures and partial fills.",
+      },
+      {
         name: "first_clean_close",
-        objective: "Reward users who complete their first successful close without repeated failed attempts.",
+        objective: "Reward the first successful close routed through Siren without repeated failed attempts.",
       },
       {
-        name: "resolve_before_expiry",
-        objective: "Nudge traders to reduce exposure before thin end-of-resolution liquidity windows.",
-      },
-      {
-        name: "execution_leaderboard",
-        objective: "Rank traders by successful execution quality instead of raw size alone.",
+        name: "partial_fill_rebate",
+        objective: "Offer a small make-good for thin-liquidity fills where only part of the requested size executes.",
       },
     ],
     frictionLog: [
-      "Event schemas must be created before ingestion becomes query-ready, so there is still a dashboard/setup dependency before incentives can be built.",
-      "Trading products need clearer examples for behavior-based rewards, not just volume-based incentives.",
+      "Torque custom-event schemas become query-ready only after the event is attached to a project and ingested at least once.",
+      "Torque's typed event mapping rewards compact schemas, so Siren now uses one canonical execution event instead of several fragmented event names.",
+      "Behavior-based execution rewards need more guided examples than pure volume campaigns, especially for trading products.",
+    ],
+    mcpQuickstart: {
+      codexCommand: "codex mcp add torque --env TORQUE_API_TOKEN=your-token -- npx @torque-labs/mcp@latest",
+      cursorConfigPath: "~/.cursor/mcp.json",
+      toolSequence: [
+        "check_auth_status",
+        "authenticate",
+        "list_projects",
+        "set_active_project",
+        "create_custom_event",
+        "attach_custom_event",
+        "create_api_key",
+        "generate_incentive_query",
+        "preview_incentive_query",
+        "create_recurring_incentive",
+      ],
+    },
+    campaignBlueprints: [
+      {
+        name: "Weekly Clean Execution Leaderboard",
+        type: "leaderboard",
+        interval: "WEEKLY",
+        eventName: TORQUE_EVENT_NAME,
+        valueExpression: "COUNT(*)",
+        filters: ["status = 'success'"],
+        customFormula: "RANK == 1 ? 300 : RANK == 2 ? 200 : RANK == 3 ? 100 : RANK <= 10 ? 50 : 0",
+      },
+      {
+        name: "Partial Fill Rebate",
+        type: "rebate",
+        interval: "WEEKLY",
+        eventName: TORQUE_EVENT_NAME,
+        valueExpression: "SUM(amount)",
+        filters: ["isPartialFill = true"],
+        rebatePercentage: 5,
+      },
     ],
     summary: apiKey
-      ? "Siren can relay execution outcome events directly into Torque's ingestion pipeline."
-      : "Set TORQUE_API_KEY to relay Siren execution events into Torque custom events.",
+      ? "Siren can relay one canonical execution event into Torque and is ready for custom-event incentives once the project schema is attached."
+      : "Set TORQUE_API_KEY to relay Siren execution events into Torque's custom-event ingestion pipeline.",
   };
 }
 
-function getTorqueEventName(payload: LoggedTradeAttemptPayload): (typeof TORQUE_EVENT_NAMES)[number] {
-  if (payload.metadata.partialSellFilled === true) return "partial_fill_recorded";
-  if (payload.status === "success") return "trade_attempt_success";
-  if (payload.status === "failed" || !!payload.error_message) return "trade_attempt_failed";
-  return "trade_attempt_logged";
+function buildReasonLabel(payload: LoggedTradeAttemptPayload): string {
+  if (payload.metadata.partialSellFilled === true) return "partial_fill";
+  if (payload.status === "failed" || payload.error_message) return buildFailureReason(payload.error_message);
+  if (payload.status === "success") return "filled";
+  return "attempted";
 }
 
 export function previewTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPayload): TorqueEmissionPreview {
-  const eventName = getTorqueEventName(payload);
   return {
-    eventName,
+    eventName: TORQUE_EVENT_NAME,
     route: buildRouteLabel(payload),
     market: payload.market ?? "unknown",
     side: payload.side ?? "unknown",
     status: payload.status,
     amount: parseNumericValue(payload.amount),
-    txSignature: payload.tx_signature ?? null,
-    failureReason: eventName === "trade_attempt_failed" ? buildFailureReason(payload.error_message) : null,
+    reason: buildReasonLabel(payload),
     filledFraction: parseNumericValue(payload.metadata.filledFraction as string | number | null | undefined),
+    isPartialFill: payload.metadata.partialSellFilled === true,
   };
 }
 
@@ -170,12 +188,11 @@ export async function emitTorqueTradeAttemptEvent(payload: LoggedTradeAttemptPay
           route: event.route,
           market: event.market,
           side: event.side,
-          assetPair: buildAssetPair(payload),
-          amount: event.amount,
           status: event.status,
-          txSignature: event.txSignature ?? undefined,
-          failureReason: event.failureReason ?? undefined,
+          reason: event.reason,
+          amount: event.amount,
           filledFraction: event.filledFraction ?? undefined,
+          isPartialFill: event.isPartialFill,
         },
       }),
       signal: controller.signal,

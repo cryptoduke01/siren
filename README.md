@@ -56,7 +56,8 @@ Backend (`apps/api/.env`):
 - `DFLOW_API_KEY` – DFlow (markets + trading). Request at pond.dflow.net.
 - `JUPITER_API_KEY` – Jupiter Developer Platform key for swap and prediction APIs. Get it at developers.jup.ag.
 - `GOLDRUSH_API_KEY` – GoldRush / Covalent (wallet intelligence on Solana balances).
-- `TORQUE_API_KEY` – Torque Event API key used to send Siren execution events to `https://ingest.torque.so/events`.
+- `TORQUE_API_KEY` – Torque ingestion key used by the API server to send Siren execution events to `https://ingest.torque.so/events`.
+- `TORQUE_API_TOKEN` – Torque MCP auth token for builder tooling such as Codex or Cursor. This is not used by the runtime API server.
 - `DATABASE_URL` – PostgreSQL (optional for MVP)
 
 Frontend (`apps/web/.env.local`):
@@ -75,6 +76,16 @@ Backend (Fastify): Render, Fly.io, or Railway. Set Root Directory to `apps/api`,
 Database: Supabase (free tier), Neon, or Railway Postgres.
 
 After deploying the API, set `NEXT_PUBLIC_API_URL` in Vercel to the API URL and redeploy the frontend.
+
+## Torque
+
+Siren now emits one canonical custom event for execution behavior: `siren_trade_execution`. That keeps the schema compact enough for Torque's query builder while still supporting:
+
+- weekly successful-execution leaderboards
+- first clean close campaigns
+- partial-fill rebates
+
+For the exact Codex MCP command, custom-event schema, and first live campaign path, use `docs/TORQUE_MCP_PLAYBOOK.md`.
 
 ## Build
 
