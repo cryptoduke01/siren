@@ -38,6 +38,8 @@ export default function OnboardingPage() {
   const finishAndGo = useCallback(() => {
     try {
       localStorage.setItem("siren-onboarding-complete", "true");
+      localStorage.setItem("siren-terminal-guide-pending", "true");
+      localStorage.removeItem("siren-terminal-guide-seen");
     } catch {
       /* ignore */
     }
@@ -162,7 +164,7 @@ export default function OnboardingPage() {
                   className="mt-8 h-9 w-auto md:h-10"
                   style={{ filter: theme === "light" ? "brightness(0.08)" : "none" }}
                 />
-                <p className="mt-8 font-body text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                <p className="mt-8 font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
                   Welcome To Siren
                 </p>
                 <h1
@@ -191,7 +193,7 @@ export default function OnboardingPage() {
                     {["Kalshi", "Polymarket", "Execution Clarity", "Risk Context"].map((item) => (
                       <span
                         key={item}
-                        className="rounded-full border px-3 py-1.5 font-body text-[11px] font-semibold uppercase tracking-[0.14em]"
+                        className="rounded-full border px-3 py-1.5 font-heading text-[11px] uppercase tracking-[0.12em]"
                         style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
                       >
                         {item}

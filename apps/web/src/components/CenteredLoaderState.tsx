@@ -30,7 +30,7 @@ export function CenteredLoaderState({
       aria-busy="true"
     >
       <div
-        className="w-full max-w-md rounded-[28px] border px-6 py-7 text-center"
+        className="w-full max-w-md rounded-[28px] border px-6 py-7 text-left"
         style={{
           borderColor: "var(--border-subtle)",
           background:
@@ -38,10 +38,13 @@ export function CenteredLoaderState({
           boxShadow: "0 24px 60px -44px rgba(0,0,0,0.45)",
         }}
       >
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border" style={{ borderColor: "color-mix(in srgb, var(--accent) 24%, var(--border-subtle))", background: "color-mix(in srgb, var(--accent) 8%, var(--bg-surface))" }}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-full border" style={{ borderColor: "color-mix(in srgb, var(--accent) 24%, var(--border-subtle))", background: "color-mix(in srgb, var(--accent) 8%, var(--bg-surface))" }}>
           <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--accent)" }} />
         </div>
-        <p className="mt-5 font-heading text-xl font-semibold tracking-[-0.05em]" style={{ color: "var(--text-1)" }}>
+        <p className="mt-5 font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+          Live feed
+        </p>
+        <p className="mt-2 font-heading text-[1.45rem] font-bold leading-[1.08]" style={{ color: "var(--text-1)" }}>
           {title}
         </p>
         {activePhrase && (
@@ -49,7 +52,7 @@ export function CenteredLoaderState({
             {activePhrase}
           </p>
         )}
-        <p className={`${activePhrase ? "mt-2" : "mt-3"} font-body text-sm leading-relaxed`} style={{ color: "var(--text-2)" }}>
+        <p className={`${activePhrase ? "mt-2" : "mt-3"} font-body text-sm leading-[1.6]`} style={{ color: "var(--text-2)" }}>
           {detail}
         </p>
       </div>

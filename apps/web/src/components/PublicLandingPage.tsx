@@ -11,6 +11,7 @@ import {
   ShieldAlert,
   Sun,
 } from "lucide-react";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useThemeStore } from "@/store/useThemeStore";
 import { hapticLight } from "@/lib/haptics";
 
@@ -32,7 +33,7 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function LandingHeader() {
+function LandingHeader({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: string }) {
   const { theme, toggleTheme } = useThemeStore();
 
   return (
@@ -97,12 +98,12 @@ function LandingHeader() {
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
           <Link
-            href="/onboarding"
+            href={ctaHref}
             onClick={() => hapticLight()}
             className="inline-flex min-h-11 items-center justify-center rounded-2xl px-4 font-heading text-xs font-semibold uppercase tracking-[0.12em] transition-all duration-150 hover:brightness-110"
             style={{ background: "var(--accent)", color: "var(--accent-text)" }}
           >
-            Sign Up
+            {ctaLabel}
           </Link>
         </div>
       </div>
@@ -113,7 +114,7 @@ function LandingHeader() {
 function SectionEyebrow({ children }: { children: ReactNode }) {
   return (
     <p
-      className="font-body text-[11px] font-semibold uppercase tracking-[0.3em]"
+      className="font-heading text-[11px] uppercase tracking-[0.12em]"
       style={{ color: "color-mix(in srgb, var(--text-3) 90%, transparent)" }}
     >
       {children}
@@ -142,23 +143,23 @@ function ProofPanel() {
       >
         <div className="flex items-start justify-between gap-3">
           <div className="max-w-[28rem]">
-            <SectionEyebrow>Execution Briefing</SectionEyebrow>
+            <SectionEyebrow>Illustrative Briefing</SectionEyebrow>
             <h3
-              className="mt-3 max-w-[18ch] font-heading text-[1.32rem] font-bold tracking-[-0.035em] md:text-[1.48rem]"
-              style={{ color: "var(--text-1)", lineHeight: 1.12 }}
+              className="mt-3 max-w-[18ch] font-heading text-[1.32rem] font-bold tracking-[-0.02em] md:text-[1.48rem]"
+              style={{ color: "var(--text-1)", lineHeight: 1.08 }}
             >
-              Will Gavin Newsom win the 2028 Democratic nomination?
+              Will SOL close above $250 this month?
             </h3>
           </div>
           <span
-            className="rounded-full px-3 py-1.5 font-body text-[11px] font-semibold uppercase tracking-[0.16em]"
+            className="rounded-full px-3 py-1.5 font-heading text-[11px] uppercase tracking-[0.12em]"
             style={{
               background: "color-mix(in srgb, var(--up) 12%, transparent)",
               color: "var(--up)",
             }}
-          >
-            Route Live
-          </span>
+            >
+              Route Live
+            </span>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -177,7 +178,7 @@ function ProofPanel() {
               }}
             >
               <p
-                className="font-body text-[11px] font-semibold uppercase tracking-[0.24em]"
+                className="font-heading text-[11px] uppercase tracking-[0.12em]"
                 style={{ color: "color-mix(in srgb, var(--text-3) 88%, transparent)" }}
               >
                 {label}
@@ -226,11 +227,11 @@ function FeatureCard({
       >
         <Icon className="h-5 w-5" />
       </div>
-      <h3 className="mt-5 font-body text-[1.2rem] font-semibold" style={{ color: "var(--text-1)" }}>
+      <h3 className="mt-5 font-heading text-[1.25rem] font-bold leading-[1.08]" style={{ color: "var(--text-1)" }}>
         {title}
       </h3>
       <p
-        className="mt-3 font-body text-[1rem] leading-[1.72]"
+        className="mt-3 font-body text-[1rem] leading-[1.65]"
         style={{ color: "color-mix(in srgb, var(--text-1) 90%, var(--text-2))" }}
       >
         {body}
@@ -240,6 +241,11 @@ function FeatureCard({
 }
 
 export function PublicLandingPage() {
+  const { isReady, walletSessionStatus } = useSirenWallet();
+  const returningUser = isReady && walletSessionStatus !== "needs-privy-login";
+  const landingCtaLabel = returningUser ? "Continue To Terminal" : "Sign Up";
+  const landingCtaHref = returningUser ? "/terminal" : "/onboarding";
+
   return (
     <div
       className="flex min-h-dvh flex-col"
@@ -248,7 +254,7 @@ export function PublicLandingPage() {
           "radial-gradient(circle at top, color-mix(in srgb, var(--accent) 9%, transparent), transparent 28%), var(--bg-void)",
       }}
     >
-      <LandingHeader />
+      <LandingHeader ctaHref={landingCtaHref} ctaLabel={landingCtaLabel} />
 
       <main className="flex-1">
         <section className="mx-auto grid w-full max-w-[1200px] gap-12 px-4 pb-12 pt-12 md:px-6 md:pb-16 md:pt-20 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,0.82fr)] lg:items-center lg:gap-16">
@@ -283,7 +289,7 @@ export function PublicLandingPage() {
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em] transition-all duration-150 hover:brightness-110 active:scale-[0.98]"
                 style={{ background: "#00FF85", color: "#060609" }}
               >
-                Open Terminal
+                {returningUser ? "Continue To Terminal" : "Open Terminal"}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <a
@@ -392,7 +398,7 @@ export function PublicLandingPage() {
                     style={{ borderColor: "var(--border-default)", background: "var(--bg-surface)" }}
                   >
                     <p
-                      className="font-body text-[12px] font-semibold uppercase tracking-[0.2em]"
+                      className="font-heading text-[11px] uppercase tracking-[0.12em]"
                       style={{ color: "#00FF85" }}
                     >
                       {title}
@@ -440,7 +446,7 @@ export function PublicLandingPage() {
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-5 font-heading text-sm font-semibold uppercase tracking-[0.12em] transition-all duration-150 hover:brightness-110"
                 style={{ background: "#00FF85", color: "#060609" }}
               >
-                Open Terminal
+                {returningUser ? "Continue To Terminal" : "Open Terminal"}
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
               <a

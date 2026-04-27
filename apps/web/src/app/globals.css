@@ -42,6 +42,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Departure Mono";
+  src: url("/fonts/departure-mono-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   --bg-void: #060609;
   --bg-base: #0A0A10;
@@ -135,6 +143,9 @@ html,
 body {
   background: var(--bg-void);
   color: var(--text-1);
+  font-family: "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
+  line-height: 1.6;
+  letter-spacing: normal;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
   min-height: 100dvh;
@@ -157,21 +168,35 @@ body {
 .font-label {
   font-kerning: normal;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "kern" 1, "liga" 1, "clig" 1;
+  font-feature-settings: "kern" 1;
 }
 
 .font-heading {
-  word-spacing: 0.08em;
+  font-family: "Clash Display", "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
+  font-variant-ligatures: normal;
 }
 
 .font-body,
 .font-sub {
-  word-spacing: 0.04em;
+  font-family: "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
 }
 
-/* Force mono utility to use the project body font. */
+.font-label {
+  font-family: "Clash Display", "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
+}
+
+.font-money,
 .font-mono {
-  font-family: Inter, sans-serif !important;
+  font-family: "Departure Mono", ui-monospace, SFMono-Regular, monospace !important;
+  font-variant-ligatures: none;
+  letter-spacing: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }
 
 /* Brighter placeholders for inputs */

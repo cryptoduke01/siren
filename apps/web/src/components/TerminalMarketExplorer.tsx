@@ -15,6 +15,7 @@ import {
   inferMarketCategory,
   marketCategoryBadgeStyle,
   marketCategoryLabel,
+  marketExplorerPriorityScore,
   marketHoursUntilClose,
   marketMatchesCategory,
   type MarketCategoryId,
@@ -38,6 +39,26 @@ const CATEGORY_TABS: Array<{ id: MarketCategoryId; label: string }> = [
 ];
 const INITIAL_VISIBLE = 18;
 const VISIBLE_STEP = 12;
+
+function shouldShowInDefaultExplorer(market: MarketWithVelocity): boolean {
+  const hoursUntilClose = marketHoursUntilClose(market);
+  const recentVolume = market.volume_24h ?? market.volume ?? 0;
+  const depth = market.source === "polymarket" ? market.liquidity ?? 0 : market.open_interest ?? 0;
+  const activeSignal = Math.abs(market.velocity_1h ?? 0) >= 0.5;
+
+  if (hoursUntilClose == null) {
+    return recentVolume >= 25_000 || activeSignal;
+  }
+  if (hoursUntilClose <= 0) return false;
+  if (hoursUntilClose > 24 * 365) return false;
+  if (hoursUntilClose > 24 * 180) {
+    return activeSignal && (recentVolume >= 75_000 || depth >= 150_000);
+  }
+  if (hoursUntilClose > 24 * 90) {
+    return activeSignal || recentVolume >= 50_000 || depth >= 100_000;
+  }
+  return true;
+}
 
 function formatCompactNumber(value?: number | null): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return "—";
@@ -112,21 +133,21 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
       <div className="flex flex-wrap items-center gap-2">
         {category && (
           <span
-            className="rounded-full px-2.5 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+            className="rounded-full px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.12em]"
             style={{ background: marketCategoryBadgeStyle(category).bg, color: marketCategoryBadgeStyle(category).color }}
           >
             {marketCategoryLabel(category)}
           </span>
         )}
         <span
-          className="rounded-full border px-2.5 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+          className="rounded-full border px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.12em]"
           style={{ background: source.bg, color: source.color, borderColor: source.border }}
         >
           {source.label}
         </span>
         {multiOutcome && (
           <span
-            className="rounded-full border px-2.5 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+            className="rounded-full border px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.12em]"
             style={{ background: "var(--bg-surface)", color: "var(--text-3)", borderColor: "var(--border-subtle)" }}
           >
             {market.outcomes?.length} outcomes
@@ -134,7 +155,11 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
         )}
       </div>
 
-      <h3 className="mt-3 max-w-[24ch] font-heading text-[1.08rem] font-semibold leading-[1.04] tracking-[-0.045em] md:text-[1.16rem]" style={{ color: "var(--text-1)" }}>
+      <h3
+        className="mt-3 line-clamp-2 max-w-[24ch] font-heading text-[1.08rem] font-bold leading-[1.08] tracking-[-0.02em] md:text-[1.16rem]"
+        style={{ color: "var(--text-1)" }}
+        title={market.title}
+      >
         {market.title}
       </h3>
 
@@ -163,7 +188,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-2.5">
           <div className="rounded-[16px] border px-3.5 py-3.5" style={{ borderColor: "color-mix(in srgb, var(--up) 22%, transparent)", background: "color-mix(in srgb, var(--up) 5%, var(--bg-surface))" }}>
-            <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
               Yes
             </p>
             <p className="mt-2 font-mono text-[1.25rem] font-semibold tabular-nums" style={{ color: "var(--up)" }}>
@@ -171,7 +196,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
             </p>
           </div>
           <div className="rounded-[16px] border px-3.5 py-3.5" style={{ borderColor: "color-mix(in srgb, var(--down) 22%, transparent)", background: "color-mix(in srgb, var(--down) 5%, var(--bg-surface))" }}>
-            <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+            <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
               No
             </p>
             <p className="mt-2 font-mono text-[1.25rem] font-semibold tabular-nums" style={{ color: "var(--down)" }}>
@@ -183,7 +208,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
 
       <div className="mt-4 grid grid-cols-2 gap-2.5">
         <div className="rounded-[16px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+          <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
             24h volume
           </p>
           <p className="mt-2 font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
@@ -191,7 +216,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
           </p>
         </div>
         <div className="rounded-[16px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+          <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
             {market.source === "polymarket" ? "Liquidity" : "Open interest"}
           </p>
           <p className="mt-2 font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
@@ -205,7 +230,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
           {formatCloseLabel(market.close_time, multiOutcome)}
         </p>
         <span
-          className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors group-hover:border-[var(--accent)]"
+          className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-heading text-[11px] uppercase tracking-[0.12em] transition-colors group-hover:border-[var(--accent)]"
           style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
         >
           Open market
@@ -234,16 +259,7 @@ export function TerminalMarketExplorer() {
     return markets
       .filter((market) => (source === "all" ? true : market.source === source))
       .filter((market) => marketMatchesCategory(market, category))
-      .filter((market) => {
-        if (normalizedQuery) return true;
-        const hoursUntilClose = marketHoursUntilClose(market);
-        if (hoursUntilClose == null) return true;
-        if (hoursUntilClose <= 0) return false;
-        const recentVolume = market.volume_24h ?? market.volume ?? 0;
-        const activeSignal = Math.abs(market.velocity_1h ?? 0) >= 0.5;
-        const isNearTerm = hoursUntilClose <= 24 * 90;
-        return isNearTerm || recentVolume >= 25_000 || activeSignal;
-      })
+      .filter((market) => (normalizedQuery ? true : shouldShowInDefaultExplorer(market)))
       .filter((market) => {
         if (!normalizedQuery) return true;
         return (
@@ -257,6 +273,10 @@ export function TerminalMarketExplorer() {
         const leftMoving = liveSignals.some((signal) => signal.marketId === (left.platform_id ?? left.ticker));
         const rightMoving = liveSignals.some((signal) => signal.marketId === (right.platform_id ?? right.ticker));
         if (leftMoving !== rightMoving) return rightMoving ? 1 : -1;
+        const scoreDiff = marketExplorerPriorityScore(right) - marketExplorerPriorityScore(left);
+        if (Math.abs(scoreDiff) > 0.01) return scoreDiff;
+        const closeDiff = (marketHoursUntilClose(left) ?? Number.POSITIVE_INFINITY) - (marketHoursUntilClose(right) ?? Number.POSITIVE_INFINITY);
+        if (Math.abs(closeDiff) > 1) return closeDiff;
         return compareMarketExplorerSecondaryPriority(left, right);
       });
   }, [markets, source, category, deferredQuery, liveSignals]);
@@ -280,11 +300,14 @@ export function TerminalMarketExplorer() {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-2xl">
-              <p className="font-heading text-[1.15rem] font-semibold tracking-[-0.05em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
-                Prediction Market Explorer
+              <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+                Market feed
               </p>
-              <p className="mt-2 font-body text-[13px] leading-relaxed md:text-sm" style={{ color: "var(--text-2)" }}>
-                Current, tradeable books first. Open the market page when you want routing, feasibility, and risk.
+              <p className="mt-2 font-heading text-[1.15rem] font-bold leading-[1.08] tracking-[-0.02em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
+                Current markets first
+              </p>
+              <p className="mt-3 font-body text-[13px] leading-[1.6] md:text-sm" style={{ color: "var(--text-2)" }}>
+                Nearer-term, tradeable books rise first here. Search if you want the long-dated fringe, but the default view now stays focused on markets people can actually work with.
               </p>
             </div>
 
@@ -295,10 +318,10 @@ export function TerminalMarketExplorer() {
                 { label: "Venues", value: "2", detail: "Kalshi + Polymarket" },
               ].map((item) => (
                 <div key={item.label} className="rounded-[18px] border px-2.5 py-2.5 md:px-3.5 md:py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                  <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                  <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
                     {item.label}
                   </p>
-                  <p className="mt-1.5 font-heading text-base font-semibold md:text-xl" style={{ color: "var(--text-1)" }}>
+                  <p className="mt-1.5 font-heading text-base font-bold leading-none md:text-xl" style={{ color: "var(--text-1)" }}>
                     {item.value}
                   </p>
                   <p className="mt-1 font-body text-[10px] leading-snug md:text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -320,7 +343,7 @@ export function TerminalMarketExplorer() {
                       hapticLight();
                       setSource(tab.id);
                     }}
-                    className="rounded-full border px-4 py-2 font-body text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors"
+                    className="rounded-full border px-4 py-2 font-heading text-[11px] uppercase tracking-[0.12em] transition-colors"
                     style={{
                       borderColor: active ? "var(--accent)" : "var(--border-subtle)",
                       background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
@@ -362,7 +385,7 @@ export function TerminalMarketExplorer() {
 
       {showWarmLoader ? (
         <CenteredLoaderState
-          title="Loading Current Markets"
+          title="Loading live markets"
           detail="Pulling the latest Kalshi and Polymarket books into Siren."
           phrases={[
             "Checking live Kalshi books",
@@ -393,7 +416,7 @@ export function TerminalMarketExplorer() {
         </div>
       ) : filtered.length === 0 && !(deferredQuery || source !== "all" || category !== "all") ? (
         <CenteredLoaderState
-          title="Loading Current Markets"
+          title="Loading live markets"
           detail="Siren is still warming the live feed. Stay here and the grid will fill in as soon as current books are ready."
           phrases={[
             "Checking live Kalshi books",
