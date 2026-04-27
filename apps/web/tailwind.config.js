@@ -8,11 +8,11 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        heading: ["Clash Display", "sans-serif"],
-        /** Primary UI copy (paired with Cabinet Grotesk from layout). */
-        body: ["Cabinet Grotesk", "Inter", "ui-sans-serif", "sans-serif"],
-        /** Balances, USD, PnL: Clash Display, not Inter. */
-        money: ["Clash Display", "sans-serif"],
+        heading: ["Cabinet Grotesk", "Clash Display", "Inter", "ui-sans-serif", "sans-serif"],
+        /** Primary UI copy favors a wider, more readable default across the product. */
+        body: ["Inter", "Cabinet Grotesk", "ui-sans-serif", "sans-serif"],
+        /** Balances, USD, PnL keep the sharper display face but fall back safely. */
+        money: ["Clash Display", "Cabinet Grotesk", "Inter", "sans-serif"],
         /** Secondary labels, meta, captions. */
         sub: ["Inter", "ui-sans-serif", "sans-serif"],
         label: ["Departure Mono", "ui-monospace", "monospace"],

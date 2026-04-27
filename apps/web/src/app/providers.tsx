@@ -2,7 +2,7 @@
 
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { TorusWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { clusterApiUrl } from "@solana/web3.js";
+import { clusterApiUrl, type ConnectionConfig } from "@solana/web3.js";
 import { useMemo } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
@@ -15,13 +15,42 @@ const rpcUrl =
   process.env.NEXT_PUBLIC_RPC_URL ||
   clusterApiUrl("mainnet-beta");
 
-const rpcWsUrl = rpcUrl
-  .replace("https://", "wss://")
-  .replace("http://", "ws://");
+const rpcWsUrl =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_WS_URL ||
+  rpcUrl
+    .replace("https://", "wss://")
+    .replace("http://", "ws://");
 const privyLogoUrl = "https://onsiren.xyz/brand/privy-wordmark.png";
+
+function stripSolanaClientHeader(headers?: HeadersInit): HeadersInit | undefined {
+  if (!headers) return headers;
+  if (headers instanceof Headers) {
+    const next = new Headers(headers);
+    next.delete("solana-client");
+    return next;
+  }
+  if (Array.isArray(headers)) {
+    return headers.filter(([key]) => key.toLowerCase() !== "solana-client");
+  }
+
+  const next = { ...headers };
+  delete next["solana-client"];
+  delete next["Solana-Client"];
+  return next;
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
+  const connectionConfig = useMemo<ConnectionConfig>(
+    () => ({
+      commitment: "confirmed",
+      wsEndpoint: rpcWsUrl,
+      fetchMiddleware: (info, init, next) => {
+        next(info, init ? { ...init, headers: stripSolanaClientHeader(init.headers) } : init);
+      },
+    }),
+    []
+  );
   const wallets = useMemo(
     () => [new TorusWalletAdapter()],
     []
@@ -38,7 +67,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   const content = (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider endpoint={endpoint} config={connectionConfig}>
       <WalletProvider wallets={wallets} autoConnect>
         {children}
       </WalletProvider>

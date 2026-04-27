@@ -150,6 +150,25 @@ body {
   -ms-overflow-style: none;
 }
 
+.font-heading,
+.font-body,
+.font-sub,
+.font-money,
+.font-label {
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "clig" 1;
+}
+
+.font-heading {
+  word-spacing: 0.08em;
+}
+
+.font-body,
+.font-sub {
+  word-spacing: 0.04em;
+}
+
 /* Force mono utility to use the project body font. */
 .font-mono {
   font-family: Inter, sans-serif !important;
