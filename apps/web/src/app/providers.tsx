@@ -53,7 +53,7 @@ function createBrowserSafeSolanaRpc(url: string) {
     return createSolanaRpc(url);
   }
 
-  const transport: BrowserSafeRpcTransport = async <TResponse>({ payload, signal }) => {
+  async function transport<TResponse>({ payload, signal }: { payload: unknown; signal?: AbortSignal }): Promise<TResponse> {
     const response = await fetch(url, {
       method: "POST",
       signal,
@@ -71,9 +71,9 @@ function createBrowserSafeSolanaRpc(url: string) {
     }
 
     return JSON.parse(rawResponse) as TResponse;
-  };
+  }
 
-  return createSolanaRpcFromTransport(transport);
+  return createSolanaRpcFromTransport(transport as BrowserSafeRpcTransport);
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
