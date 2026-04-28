@@ -6,6 +6,7 @@ import { clusterApiUrl, type ConnectionConfig } from "@solana/web3.js";
 import { useMemo } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import * as solanaKit from "@solana/kit";
 import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 import { PrivyWalletBridge } from "@/contexts/SirenWalletContext";
 
@@ -39,6 +40,42 @@ function stripSolanaClientHeader(headers?: HeadersInit): HeadersInit | undefined
   return next;
 }
 
+type BrowserSafeRpcTransport = <TResponse>(config: { payload: unknown; signal?: AbortSignal }) => Promise<TResponse>;
+
+const createSolanaRpcFromTransport = (
+  solanaKit as typeof solanaKit & {
+    createSolanaRpcFromTransport?: (transport: BrowserSafeRpcTransport) => ReturnType<typeof createSolanaRpc>;
+  }
+).createSolanaRpcFromTransport;
+
+function createBrowserSafeSolanaRpc(url: string) {
+  if (!createSolanaRpcFromTransport) {
+    return createSolanaRpc(url);
+  }
+
+  const transport: BrowserSafeRpcTransport = async <TResponse>({ payload, signal }) => {
+    const response = await fetch(url, {
+      method: "POST",
+      signal,
+      headers: stripSolanaClientHeader({
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(payload),
+    });
+
+    const rawResponse = await response.text();
+
+    if (!response.ok) {
+      throw new Error(rawResponse || `Solana RPC request failed (${response.status})`);
+    }
+
+    return JSON.parse(rawResponse) as TResponse;
+  };
+
+  return createSolanaRpcFromTransport(transport);
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
   const connectionConfig = useMemo<ConnectionConfig>(
@@ -46,7 +83,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       commitment: "confirmed",
       wsEndpoint: rpcWsUrl,
       fetchMiddleware: (info, init, next) => {
-        next(info, init ? { ...init, headers: stripSolanaClientHeader(init.headers) } : init);
+        return next(info, init ? { ...init, headers: stripSolanaClientHeader(init.headers) } : init);
       },
     }),
     []
@@ -59,7 +96,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const solanaRpcs = useMemo(
     () => ({
       "solana:mainnet": {
-        rpc: createSolanaRpc(rpcUrl),
+        rpc: createBrowserSafeSolanaRpc(rpcUrl),
         rpcSubscriptions: createSolanaRpcSubscriptions(rpcWsUrl),
       },
     }),

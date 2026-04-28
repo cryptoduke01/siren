@@ -124,7 +124,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
     <button
       type="button"
       onClick={() => onOpen(market)}
-      className="group w-full rounded-[20px] border p-3.5 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 md:p-4"
+      className="group min-w-0 w-full overflow-hidden rounded-[20px] border p-3 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 md:p-4"
       style={{
         borderColor: "var(--border-subtle)",
         background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), var(--bg-base))",
@@ -157,7 +157,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
       </div>
 
       <h3
-        className="mt-3 line-clamp-2 max-w-[24ch] font-heading text-[1.08rem] font-bold leading-[1.14] tracking-[-0.012em] md:text-[1.16rem]"
+        className="mt-3 max-w-full line-clamp-2 font-heading text-[1.02rem] font-bold leading-[1.14] tracking-[-0.01em] md:max-w-[24ch] md:text-[1.16rem]"
         style={{ color: "var(--text-1)" }}
         title={market.title}
       >
@@ -169,13 +169,13 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
           {outcomes.map((outcome) => (
             <div
               key={outcome.ticker ?? outcome.label}
-              className="flex items-center justify-between gap-3 rounded-[14px] border px-3 py-2.5"
+              className="flex min-w-0 items-center justify-between gap-3 rounded-[14px] border px-3 py-2.5"
               style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
             >
               <p className="min-w-0 truncate font-body text-sm" style={{ color: "var(--text-1)" }}>
                 {outcome.label}
               </p>
-              <span className="font-mono text-sm font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+              <span className="shrink-0 font-mono text-sm font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
                 {outcome.probability.toFixed(0)}%
               </span>
             </div>
@@ -226,12 +226,12 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="font-body text-[13px]" style={{ color: "var(--text-3)" }}>
+      <div className="mt-4 flex flex-col items-start gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+        <p className="max-w-full font-body text-[13px]" style={{ color: "var(--text-3)" }}>
           {formatCloseLabel(market.close_time, multiOutcome)}
         </p>
         <span
-          className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-label text-[11px] uppercase tracking-[0.12em] transition-colors group-hover:border-[var(--accent)]"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full border px-3 py-1.5 font-label text-[11px] uppercase tracking-[0.12em] transition-colors group-hover:border-[var(--accent)] min-[420px]:w-auto"
           style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
         >
           Open market
