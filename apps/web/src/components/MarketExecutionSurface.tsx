@@ -119,7 +119,7 @@ function MarketShareExportCard({
       </div>
 
       <h2
-        className="mt-8 max-w-[18ch] font-heading text-[58px] font-bold leading-[0.9] tracking-[-0.05em]"
+        className="mt-8 max-w-[18ch] font-heading text-[58px] font-bold leading-[0.98] tracking-[-0.03em]"
         style={{ color: "var(--text-1)", fontFamily: '"Clash Display", sans-serif' }}
       >
         {market.title}
@@ -545,7 +545,21 @@ function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
   }
 
   if (isError || !data) {
-    return null;
+    return (
+      <section
+        className="mb-5 overflow-hidden rounded-[22px] border"
+        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+      >
+        <div className="px-5 py-4">
+          <p className="font-label text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+            Jupiter prediction map
+          </p>
+          <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+            Jupiter comparison data is unavailable right now. The market itself is still live, but Siren could not load the cross-venue read for this thesis.
+          </p>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -870,7 +884,7 @@ function PredictionMarketFocusPanel({
           </div>
 
           <h2
-            className="mt-4 max-w-[24ch] break-words font-heading text-[clamp(1.55rem,2.6vw,2.75rem)] font-bold leading-[1.06] tracking-[-0.02em]"
+            className="mt-4 max-w-[24ch] break-words font-heading text-[clamp(1.55rem,2.6vw,2.75rem)] font-bold leading-[1.1] tracking-[-0.015em]"
             style={{ color: "var(--text-1)" }}
           >
             {market.title}
@@ -961,7 +975,7 @@ function PredictionMarketFocusPanel({
             Actions
           </p>
           <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Trade in-terminal or open the venue for research and context.
+            Trade in-terminal or open the source venue to verify the live listing, rules, and book context.
           </p>
 
           <div className="mt-4 space-y-2">

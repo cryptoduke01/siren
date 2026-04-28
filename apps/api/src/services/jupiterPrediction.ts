@@ -7,22 +7,54 @@ const JUPITER_SEARCH_STOPWORDS = new Set([
   "and",
   "are",
   "at",
+  "above",
+  "after",
   "be",
+  "before",
+  "below",
+  "by",
+  "close",
+  "closes",
+  "dec",
+  "december",
   "for",
   "from",
+  "feb",
+  "february",
   "how",
+  "hit",
   "in",
   "into",
+  "issue",
+  "issued",
+  "issues",
   "is",
+  "jan",
+  "january",
+  "jul",
+  "july",
+  "jun",
+  "june",
+  "least",
   "market",
+  "mar",
+  "march",
+  "may",
+  "more",
   "of",
   "on",
   "or",
+  "over",
+  "reach",
+  "rate",
+  "sep",
+  "september",
   "that",
   "the",
   "their",
   "this",
   "to",
+  "under",
   "was",
   "what",
   "when",
@@ -225,6 +257,25 @@ function buildKeywordSet(value: string): string[] {
     .filter(Boolean);
 }
 
+function buildMeaningfulKeywordSet(value: string): string[] {
+  return buildKeywordSet(value).filter((word) => word.length > 2 && !JUPITER_SEARCH_STOPWORDS.has(word));
+}
+
+function scoreTextOverlap(reference: string, candidate: string): number {
+  const referenceWords = buildMeaningfulKeywordSet(reference);
+  if (!referenceWords.length) return 0;
+
+  const candidateWords = new Set(buildMeaningfulKeywordSet(candidate));
+  let score = 0;
+
+  for (const word of referenceWords) {
+    if (!candidateWords.has(word)) continue;
+    score += word.length >= 5 ? 2 : 1;
+  }
+
+  return score;
+}
+
 function matchConfidence(score: number): "high" | "medium" | "low" {
   if (score >= 7) return "high";
   if (score >= 4) return "medium";
@@ -232,31 +283,33 @@ function matchConfidence(score: number): "high" | "medium" | "low" {
 }
 
 function scoreMarketCandidate({
-  eventTitle,
+  referenceTitle,
   marketTitle,
   outcomeLabel,
   targetProbability,
   yesPriceUsd,
 }: {
-  eventTitle: string;
+  referenceTitle: string;
   marketTitle: string;
   outcomeLabel?: string | null;
   targetProbability?: number | null;
   yesPriceUsd?: number | null;
 }): number {
-  const eventWords = new Set(buildKeywordSet(eventTitle));
-  const marketWords = buildKeywordSet(marketTitle);
-  const outcomeWords = buildKeywordSet(outcomeLabel ?? "");
+  const referenceWords = new Set(buildMeaningfulKeywordSet(referenceTitle));
+  const marketWords = buildMeaningfulKeywordSet(marketTitle);
+  const outcomeWords = buildMeaningfulKeywordSet(outcomeLabel ?? "");
 
   let score = 0;
+  let lexicalScore = 0;
 
   for (const word of marketWords) {
     if (outcomeWords.includes(word)) score += 3;
-    else if (eventWords.has(word)) score += 1;
+    else if (referenceWords.has(word)) score += 1;
   }
+  lexicalScore = score;
 
   const normalizedProbability = normalizeProbability(targetProbability);
-  if (normalizedProbability != null && yesPriceUsd != null) {
+  if (lexicalScore > 0 && normalizedProbability != null && yesPriceUsd != null) {
     const priceGap = Math.abs(normalizedProbability - yesPriceUsd * 100);
     if (priceGap <= 4) score += 4;
     else if (priceGap <= 10) score += 2;
@@ -487,17 +540,17 @@ export async function searchJupiterPredictionEvents({
       );
 
       const markets: JupiterPredictionComparableMarket[] = comparableMarkets.filter((market): market is JupiterPredictionComparableMarket => market != null);
-      const primaryMarket =
+          const primaryMarket =
         [...markets].sort((left, right) => {
           const leftScore = scoreMarketCandidate({
-            eventTitle: detail.metadata?.title?.trim() || title,
+            referenceTitle: title,
             marketTitle: left.title,
             outcomeLabel,
             targetProbability: target,
             yesPriceUsd: left.yesPriceUsd,
           });
           const rightScore = scoreMarketCandidate({
-            eventTitle: detail.metadata?.title?.trim() || title,
+            referenceTitle: title,
             marketTitle: right.title,
             outcomeLabel,
             targetProbability: target,
@@ -506,9 +559,26 @@ export async function searchJupiterPredictionEvents({
           return rightScore - leftScore;
         })[0] ?? null;
 
+      const eventTitle = detail.metadata?.title?.trim() || searchRow.metadata?.title?.trim() || "";
+      const eventSubtitle = detail.metadata?.subtitle?.trim() || searchRow.metadata?.subtitle?.trim() || "";
+      const eventTitleScore = scoreTextOverlap(title, `${eventTitle} ${eventSubtitle}`.trim());
+      const primaryMarketScore = primaryMarket
+        ? scoreMarketCandidate({
+            referenceTitle: title,
+            marketTitle: primaryMarket.title,
+            outcomeLabel,
+            targetProbability: target,
+            yesPriceUsd: primaryMarket.yesPriceUsd,
+          })
+        : 0;
+
+      if (eventTitleScore + primaryMarketScore < 4) {
+        return null;
+      }
+
       return {
         eventId,
-        title: detail.metadata?.title?.trim() || searchRow.metadata?.title?.trim() || "Untitled event",
+        title: eventTitle || "Untitled event",
         subtitle: detail.metadata?.subtitle?.trim() || searchRow.metadata?.subtitle?.trim() || null,
         slug,
         eventUrl,

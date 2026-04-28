@@ -101,12 +101,12 @@ export function OnboardingModal() {
           >
             <div className="flex items-start justify-between gap-4">
               <div className="max-w-[34rem]">
-                <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+                <p className="font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
                   First run guide
                 </p>
                 <h2
                   id="siren-guide-title"
-                  className="mt-2 font-heading text-[1.75rem] font-bold leading-[1.08] tracking-[-0.02em] md:text-[1.95rem]"
+                  className="mt-2 font-heading text-[1.75rem] font-bold leading-[1.12] tracking-[-0.012em] md:text-[1.95rem]"
                   style={{ color: "var(--text-1)" }}
                 >
                   How to use Siren
@@ -145,7 +145,7 @@ export function OnboardingModal() {
                       <current.icon className="h-5 w-5" />
                     </div>
                     <span
-                      className="rounded-full border px-3 py-1.5 font-heading text-[11px] uppercase tracking-[0.12em]"
+                      className="rounded-full border px-3 py-1.5 font-label text-[11px] uppercase tracking-[0.12em]"
                       style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-base)" }}
                     >
                       {step + 1} / {GUIDE_POINTS.length}
@@ -153,7 +153,7 @@ export function OnboardingModal() {
                   </div>
 
                   <div className="mt-5">
-                    <p className="font-heading text-[1.2rem] font-bold leading-[1.08] tracking-[-0.02em] md:text-[1.35rem]" style={{ color: "var(--text-1)" }}>
+                    <p className="font-heading text-[1.2rem] font-bold leading-[1.12] tracking-[-0.01em] md:text-[1.35rem]" style={{ color: "var(--text-1)" }}>
                       {current.title}
                     </p>
                     <p className="mt-3 max-w-[30rem] font-body text-sm leading-[1.7] md:text-[15px]" style={{ color: "var(--text-2)" }}>

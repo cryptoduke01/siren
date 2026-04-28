@@ -41,10 +41,10 @@ export function CenteredLoaderState({
         <div className="flex h-14 w-14 items-center justify-center rounded-full border" style={{ borderColor: "color-mix(in srgb, var(--accent) 24%, var(--border-subtle))", background: "color-mix(in srgb, var(--accent) 8%, var(--bg-surface))" }}>
           <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--accent)" }} />
         </div>
-        <p className="mt-5 font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+        <p className="mt-5 font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
           Live feed
         </p>
-        <p className="mt-2 font-heading text-[1.45rem] font-bold leading-[1.08]" style={{ color: "var(--text-1)" }}>
+        <p className="mt-2 font-heading text-[1.45rem] font-bold leading-[1.14] tracking-[-0.012em]" style={{ color: "var(--text-1)" }}>
           {title}
         </p>
         {activePhrase && (

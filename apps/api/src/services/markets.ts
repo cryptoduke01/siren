@@ -21,6 +21,8 @@ interface DFlowMarketResponse {
   marketType?: string;
   title: string;
   subtitle?: string;
+  yesSubTitle?: string;
+  noSubTitle?: string;
   yesBid?: string;
   yesAsk?: string;
   noBid?: string;
@@ -488,7 +490,96 @@ export async function getMarketByTicker(ticker: string): Promise<MarketWithVeloc
   if (!normalizedTicker) return null;
 
   const markets = await getMarketsWithVelocity();
+  return findMarketInList(markets, normalizedTicker);
+}
 
+export async function getMarketSnapshotByTicker(ticker: string): Promise<MarketWithVelocity | null> {
+  const normalizedTicker = normalizeTickerKey(ticker);
+  if (!normalizedTicker) return null;
+
+  if (marketsCache?.value?.length) {
+    return findMarketInList(marketsCache.value, normalizedTicker);
+  }
+
+  const [kalshiResult, polymarketResult] = await Promise.allSettled([
+    buildKalshiMarketsSnapshot(),
+    getPolymarketMarketsWithVelocity(),
+  ]);
+
+  const combined: MarketWithVelocity[] = [];
+  if (kalshiResult.status === "fulfilled") combined.push(...kalshiResult.value);
+  if (polymarketResult.status === "fulfilled") combined.push(...polymarketResult.value);
+  if (combined.length === 0) return null;
+
+  return findMarketInList(combined, normalizedTicker);
+}
+
+export async function getKalshiDirectMarketByTicker(ticker: string): Promise<MarketWithVelocity | null> {
+  const normalizedTicker = normalizeTickerKey(ticker);
+  if (!normalizedTicker) return null;
+
+  const res = await fetch(`${DFLOW_METADATA_URL}/api/v1/market/${encodeURIComponent(normalizedTicker)}`, {
+    headers,
+    signal: AbortSignal.timeout(DFLOW_TIMEOUT_MS),
+  });
+
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    if (res.status === 429) throw new Error("DFlow market metadata rate limited");
+    throw new Error(`DFlow market metadata error: ${res.status}`);
+  }
+
+  const market = (await res.json()) as DFlowMarketResponse;
+  if (!hasVisibleMarketSignal(market) || market.status !== "active") return null;
+
+  const accountValues = market.accounts ? Object.values(market.accounts) : [];
+  const firstAccount = accountValues.find((account) => account.yesMint && account.noMint);
+  const eventTitle = market.title?.trim() || normalizedTicker;
+  const label = normalizeKalshiOutcomeLabel(eventTitle, market.title || eventTitle, market.yesSubTitle, market.subtitle);
+  const probability = quoteToProbability(market.yesBid, market.yesAsk);
+  const seriesTicker = market.eventTicker?.split("-").slice(0, -1).join("-") || market.eventTicker || "";
+  const seriesSlug = seriesTicker.toLowerCase();
+  const marketTickerSlug = market.ticker.toLowerCase();
+  const titleSlug = (label || market.title || eventTitle)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 60);
+  const marketUrl = titleSlug
+    ? `https://kalshi.com/markets/${seriesSlug}/${titleSlug}/${marketTickerSlug}`
+    : `https://kalshi.com/markets/${seriesSlug}/${marketTickerSlug}`;
+
+  return {
+    source: "kalshi",
+    platform_id: market.ticker,
+    market_url: marketUrl,
+    ticker: market.ticker,
+    event_ticker: market.eventTicker,
+    series_ticker: seriesTicker,
+    title: eventTitle,
+    subtitle: market.subtitle || undefined,
+    status: "open",
+    yes_bid: parseFiniteNumber(market.yesBid),
+    yes_ask: parseFiniteNumber(market.yesAsk),
+    no_bid: parseFiniteNumber(market.noBid),
+    no_ask: parseFiniteNumber(market.noAsk),
+    volume: market.volume,
+    volume_24h: parseFiniteNumber(market.volume24hFp),
+    liquidity: undefined,
+    open_interest: market.openInterest,
+    close_time: market.closeTime,
+    open_time: market.openTime,
+    probability,
+    velocity_1h: 0,
+    yes_mint: firstAccount?.yesMint,
+    no_mint: firstAccount?.noMint,
+    kalshi_url: marketUrl,
+    selected_outcome_label: label,
+  };
+}
+
+function findMarketInList(markets: MarketWithVelocity[], normalizedTicker: string): MarketWithVelocity | null {
   const direct = markets.find((market) => {
     return [
       normalizeTickerKey(market.ticker),
@@ -511,7 +602,7 @@ export async function getMarketByTicker(ticker: string): Promise<MarketWithVeloc
   return null;
 }
 
-export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
+async function buildKalshiMarketsSnapshot(): Promise<MarketWithVelocity[]> {
   const events = await fetchAllActiveEvents();
   const markets: MarketWithVelocity[] = [];
 
@@ -669,6 +760,11 @@ export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity
     }
   }
 
+  return markets;
+}
+
+export async function getKalshiMarketsWithVelocity(): Promise<MarketWithVelocity[]> {
+  const markets = await buildKalshiMarketsSnapshot();
   const velocityCandidates = [...markets]
     .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
     .slice(0, VELOCITY_FETCH_LIMIT);

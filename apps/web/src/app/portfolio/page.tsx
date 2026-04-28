@@ -1286,7 +1286,7 @@ export default function PortfolioPage() {
               <p className="font-body text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
                 Portfolio Locked
               </p>
-              <h1 className="mt-3 font-heading text-[clamp(2rem,5vw,3rem)] font-bold tracking-[-0.06em]" style={{ color: "var(--text-1)", lineHeight: 0.95 }}>
+              <h1 className="mt-3 font-heading text-[clamp(2rem,5vw,3rem)] font-bold tracking-[-0.03em]" style={{ color: "var(--text-1)", lineHeight: 1.06 }}>
                 Sign Up To Track
                 <br />
                 Your Positions.

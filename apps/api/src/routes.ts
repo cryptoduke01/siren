@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { getMarketByTicker, getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
+import { getKalshiDirectMarketByTicker, getMarketByTicker, getMarketSnapshotByTicker, getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
 import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
 import { getDflowPositionsForWallet } from "./services/dflowPositions.js";
 import { getSwapOrder } from "./services/swapRouter.js";
@@ -8,6 +8,7 @@ import { createDepositAddresses } from "./lib/polymarket.js";
 import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
+import { getJupiterPredictionTradingStatus, searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
 import { getWalletPositionStats } from "./services/positionStats.js";
 import { buildAdminTractionDashboard, logMarketViewTelemetry, logTradeAttemptTelemetry } from "./services/adminTraction.js";
 import { getEmailCampaignDefinition, runEmailCampaign } from "./services/emailCampaigns.js";
@@ -24,14 +25,17 @@ import { requireAdminPasscode, requireWalletSignature } from "./services/request
 
 const JUPITER_BASE = "https://api.jup.ag";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const STABLE_QUOTE_SYMBOLS = new Set(["USD", "USDC", "USDT", "USDS", "USDE"]);
 const MARKET_ROUTE_TIMEOUT_MS = 10_000;
+const EXECUTION_PREVIEW_ROUTE_TIMEOUT_MS = 6_500;
 const SIGNAL_ROUTE_TIMEOUT_MS = 1_500;
 const SIGNAL_ROUTE_CACHE_MS = 5_000;
 const SOL_PRICE_ROUTE_TIMEOUT_MS = 4_500;
 const SOL_PRICE_CACHE_MS = 60_000;
 const DFLOW_PROOF_ROUTE_TIMEOUT_MS = 5_000;
 const DFLOW_PROOF_VERIFY_URL = process.env.DFLOW_PROOF_VERIFY_URL?.trim() || "https://proof.dflow.net/verify";
+const EXECUTION_PROBE_AMOUNTS_USD = [10, 25, 100];
 const RATE_BUCKETS = new Map<string, { count: number; resetAt: number }>();
 
 function getRequestClientIp(req: FastifyRequest): string {
@@ -98,6 +102,390 @@ function getTradeErrorStatus(error?: string | null): number {
     return 400;
   }
   return 422;
+}
+
+function normalizeTicker(value?: string | null): string {
+  return value?.trim().toUpperCase() ?? "";
+}
+
+function formatUsdWhole(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function getExecutionMarketByTicker(markets: Awaited<ReturnType<typeof getMarketsWithVelocity>>, ticker: string) {
+  const normalized = normalizeTicker(ticker);
+  return markets.find(
+    (market) =>
+      normalizeTicker(market.ticker) === normalized ||
+      normalizeTicker(market.event_ticker) === normalized ||
+      normalizeTicker(market.platform_id) === normalized,
+  );
+}
+
+function getSelectedExecutionOutcome(
+  market: NonNullable<ReturnType<typeof getExecutionMarketByTicker>>,
+  outcomeTicker?: string | null,
+) {
+  if (!market.outcomes?.length) return null;
+  const normalizedOutcomeTicker = normalizeTicker(outcomeTicker);
+  if (normalizedOutcomeTicker) {
+    const exact = market.outcomes.find((outcome) => normalizeTicker(outcome.ticker) === normalizedOutcomeTicker);
+    if (exact) return exact;
+  }
+
+  const current = market.outcomes.find((outcome) => normalizeTicker(outcome.ticker) === normalizeTicker(market.ticker));
+  if (current) return current;
+
+  const byLabel = market.selected_outcome_label
+    ? market.outcomes.find((outcome) => outcome.label === market.selected_outcome_label)
+    : null;
+  if (byLabel) return byLabel;
+
+  return [...market.outcomes].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0))[0] ?? null;
+}
+
+function getResolutionRisk(closeTime?: number | null) {
+  if (!closeTime || !Number.isFinite(closeTime)) {
+    return {
+      level: "open",
+      label: "Open window",
+      hoursLeft: null,
+      summary: "No immediate resolution deadline is visible, so execution risk depends more on route quality than time decay.",
+    };
+  }
+
+  const closeMs = closeTime < 1_000_000_000_000 ? closeTime * 1000 : closeTime;
+  const hoursLeft = (closeMs - Date.now()) / (1000 * 60 * 60);
+
+  if (hoursLeft <= 0) {
+    return {
+      level: "resolving",
+      label: "Resolving now",
+      hoursLeft,
+      summary: "This market is at or through its close window. Expect unstable books and weak exit certainty.",
+    };
+  }
+  if (hoursLeft <= 24) {
+    return {
+      level: "high",
+      label: "Last 24h",
+      hoursLeft,
+      summary: "The event is close to resolution. Books can thin fast and partial fills become more likely.",
+    };
+  }
+  if (hoursLeft <= 72) {
+    return {
+      level: "elevated",
+      label: "This week",
+      hoursLeft,
+      summary: "The market is entering its closing window. Size discipline matters more than usual.",
+    };
+  }
+  return {
+    level: "normal",
+    label: "Room to trade",
+    hoursLeft,
+    summary: "There is still runway before resolution, so route quality matters more than deadline pressure.",
+  };
+}
+
+function getFieldRisk(market: NonNullable<ReturnType<typeof getExecutionMarketByTicker>>, selectedProbability: number) {
+  const ranked = [...(market.outcomes ?? [])].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0));
+  if (!ranked.length) {
+    return {
+      rank: 1,
+      leaderGapPct: 0,
+      topThreeSharePct: selectedProbability,
+      label: "Binary market",
+      summary: "This is a straight YES/NO market, so field concentration does not apply.",
+    };
+  }
+
+  const selectedIndex = ranked.findIndex((outcome) => normalizeTicker(outcome.ticker) === normalizeTicker(market.ticker));
+  const selectedRank = selectedIndex >= 0 ? selectedIndex + 1 : 1;
+  const leaderProbability = ranked[0]?.probability ?? selectedProbability;
+  const nextProbability =
+    selectedRank === 1
+      ? ranked[1]?.probability ?? 0
+      : leaderProbability;
+  const topThreeShare = ranked.slice(0, 3).reduce((sum, outcome) => sum + (outcome.probability ?? 0), 0);
+  const leaderGap = selectedRank === 1 ? selectedProbability - nextProbability : leaderProbability - selectedProbability;
+
+  let label = "Open field";
+  let summary = "Several outcomes still matter, so expect price movement to stay sensitive to new information.";
+
+  if (selectedRank === 1 && leaderGap >= 15) {
+    label = "Dominant leader";
+    summary = "This outcome leads the field by a clear margin. Entry is more about protecting price than discovering value.";
+  } else if (selectedRank === 1 && leaderGap <= 5) {
+    label = "Crowded top";
+    summary = "The leader does not have much daylight. Small changes can reshuffle the top of the book quickly.";
+  } else if (selectedRank > 1 && leaderGap <= 8) {
+    label = "Live challenger";
+    summary = "This outcome is still within reach of the leader. Timing matters if you want exposure before the field reprices.";
+  } else if (topThreeShare >= 80) {
+    label = "Concentrated field";
+    summary = "Most of the implied probability sits in a few names, so the tail outcomes are unlikely to stay liquid.";
+  }
+
+  return {
+    rank: selectedRank,
+    leaderGapPct: Number(leaderGap.toFixed(1)),
+    topThreeSharePct: Number(topThreeShare.toFixed(1)),
+    label,
+    summary,
+  };
+}
+
+function parsePositiveFloat(value?: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildSellProbeContracts(balance?: number | null): number[] {
+  const safeBalance = balance && Number.isFinite(balance) && balance > 0 ? balance : null;
+  if (!safeBalance) return [5, 10, 25];
+
+  return Array.from(
+    new Set(
+      [
+        Math.min(safeBalance, 5),
+        Math.min(safeBalance, Math.max(1, Number((safeBalance * 0.25).toFixed(4)))),
+        Math.min(safeBalance, Math.max(1, Number((safeBalance * 0.5).toFixed(4)))),
+        safeBalance,
+      ]
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .map((value) => Number(value.toFixed(4))),
+    ),
+  ).sort((left, right) => left - right);
+}
+
+async function probePredictionSellRoute({
+  mint,
+  wallet,
+  balance,
+}: {
+  mint: string;
+  wallet?: string | null;
+  balance?: number | null;
+}) {
+  if (!wallet) {
+    return {
+      walletConnected: false,
+      available: false,
+      reason: "Connect a Solana wallet to run close-route probes.",
+      probes: [],
+      suggestedChunkContracts: null,
+      suggestedChunkUsd: null,
+      chunkPlan: null,
+    };
+  }
+
+  const probeContracts = buildSellProbeContracts(balance);
+  const probes: Array<{
+    contracts: number;
+    status: "routable" | "failed" | "skipped";
+    reason: string | null;
+  }> = [];
+
+  let largestSuccessContracts: number | null = null;
+  let encounteredBlockingFailure = false;
+
+  for (const contracts of probeContracts) {
+    if (encounteredBlockingFailure) {
+      probes.push({
+        contracts,
+        status: "skipped",
+        reason: "Skipped after an earlier probe failed cleanly.",
+      });
+      continue;
+    }
+
+    try {
+      const amountAtomic = String(Math.round(contracts * 1_000_000));
+      const result = await withTimeout(
+        getSwapOrder({
+          inputMint: mint,
+          outputMint: SOLANA_USDC_MINT,
+          amount: amountAtomic,
+          userPublicKey: wallet,
+          slippageBps: 200,
+          tryDflowFirst: true,
+          forcePredictionMarket: true,
+        }),
+        EXECUTION_PREVIEW_ROUTE_TIMEOUT_MS,
+        `sell-probe-${contracts}`,
+      );
+
+      if (result.transaction) {
+        largestSuccessContracts = contracts;
+        probes.push({
+          contracts,
+          status: "routable",
+          reason: null,
+        });
+        continue;
+      }
+
+      const reason = result.error || "Route probe failed.";
+      probes.push({
+        contracts,
+        status: "failed",
+        reason,
+      });
+      const lower = reason.toLowerCase();
+      if (
+        lower.includes("route") ||
+        lower.includes("verify") ||
+        lower.includes("proof") ||
+        lower.includes("jurisdiction") ||
+        lower.includes("not configured")
+      ) {
+        encounteredBlockingFailure = true;
+      }
+    } catch (error) {
+      probes.push({
+        contracts,
+        status: "failed",
+        reason: error instanceof Error ? error.message : "Route probe failed.",
+      });
+      encounteredBlockingFailure = true;
+    }
+  }
+
+  const chunkPlan =
+    balance && largestSuccessContracts && balance > largestSuccessContracts
+      ? {
+          totalContracts: Number(balance.toFixed(4)),
+          chunkContracts: largestSuccessContracts,
+          estimatedChunks: Math.ceil(balance / largestSuccessContracts),
+        }
+      : null;
+
+  return {
+    walletConnected: true,
+    available: largestSuccessContracts != null,
+    reason:
+      largestSuccessContracts != null
+        ? `Close route built successfully up to ${largestSuccessContracts.toLocaleString(undefined, {
+            maximumFractionDigits: 4,
+          })} contracts in preview.`
+        : probes.find((probe) => probe.status === "failed")?.reason || "No close route was confirmed in preview.",
+    probes,
+    suggestedChunkContracts: largestSuccessContracts,
+    suggestedChunkUsd: null,
+    chunkPlan,
+  };
+}
+
+async function probeKalshiExecutionRoute({
+  outputMint,
+  wallet,
+}: {
+  outputMint: string;
+  wallet?: string | null;
+}) {
+  if (!wallet) {
+    return {
+      walletConnected: false,
+      available: false,
+      reason: "Connect a Solana wallet to run live route probes.",
+      probes: [],
+      suggestedClipUsd: null,
+    };
+  }
+
+  if (!process.env.DFLOW_API_KEY?.trim()) {
+    return {
+      walletConnected: true,
+      available: false,
+      reason: "DFlow API key is not configured, so live route probes are unavailable.",
+      probes: [],
+      suggestedClipUsd: null,
+    };
+  }
+
+  const probes: Array<{
+    amountUsd: number;
+    status: "routable" | "failed" | "skipped";
+    reason: string | null;
+  }> = [];
+  let encounteredBlockingFailure = false;
+  let largestSuccessUsd: number | null = null;
+
+  for (const amountUsd of EXECUTION_PROBE_AMOUNTS_USD) {
+    if (encounteredBlockingFailure) {
+      probes.push({
+        amountUsd,
+        status: "skipped",
+        reason: "Skipped after an earlier probe failed cleanly.",
+      });
+      continue;
+    }
+
+    try {
+      const result = await withTimeout(
+        getDflowOrder({
+          inputMint: SOLANA_USDC_MINT,
+          outputMint,
+          amount: String(Math.round(amountUsd * 1_000_000)),
+          userPublicKey: wallet,
+          slippageBps: 200,
+          predictionMarketSlippageBps: 500,
+        }),
+        EXECUTION_PREVIEW_ROUTE_TIMEOUT_MS,
+        `execution-probe-${amountUsd}`,
+      );
+
+      if (result.transaction) {
+        largestSuccessUsd = amountUsd;
+        probes.push({ amountUsd, status: "routable", reason: null });
+        continue;
+      }
+
+      const reason = result.error || "Route probe failed.";
+      probes.push({
+        amountUsd,
+        status: "failed",
+        reason,
+      });
+
+      const lower = reason.toLowerCase();
+      if (
+        lower.includes("route") ||
+        lower.includes("verify") ||
+        lower.includes("proof") ||
+        lower.includes("jurisdiction") ||
+        lower.includes("not configured")
+      ) {
+        encounteredBlockingFailure = true;
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Route probe failed.";
+      probes.push({
+        amountUsd,
+        status: "failed",
+        reason,
+      });
+      encounteredBlockingFailure = true;
+    }
+  }
+
+  return {
+    walletConnected: true,
+    available: largestSuccessUsd != null,
+    reason:
+      largestSuccessUsd != null
+        ? `Route built successfully up to ${formatUsdWhole(largestSuccessUsd)} in this preview window.`
+        : probes.find((probe) => probe.status === "failed")?.reason || "No live route was confirmed in preview.",
+    probes,
+    suggestedClipUsd: largestSuccessUsd,
+  };
 }
 
 let signalRouteCache: { expiresAt: number; value: Awaited<ReturnType<typeof getSignalFeedSnapshot>> } | null = null;
@@ -1417,6 +1805,210 @@ export function registerRoutes(app: FastifyInstance) {
     } catch (e) {
       app.log.error(e);
       return reply.status(503).send({ success: false, error: (e as Error).message || "Failed to fetch market activity" });
+    }
+  });
+
+  app.get<{
+    Querystring: { title?: string; outcomeLabel?: string; probability?: string; limit?: string };
+  }>("/api/integrations/jupiter/prediction-map", async (req, reply) => {
+    const title = req.query.title?.trim();
+    if (!title) {
+      return reply.status(400).send({ success: false, error: "title required" });
+    }
+
+    const outcomeLabel = req.query.outcomeLabel?.trim() || null;
+    const probability = Number.parseFloat(req.query.probability || "");
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "3", 10) || 3, 1), 6);
+
+    try {
+      const normalizedProbability = Number.isFinite(probability) ? probability : null;
+      const [tradingActive, kalshi, polymarket] = await Promise.all([
+        getJupiterPredictionTradingStatus(),
+        searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "kalshi", limit }),
+        searchJupiterPredictionEvents({ title, outcomeLabel, targetProbability: normalizedProbability, provider: "polymarket", limit }),
+      ]);
+
+      return reply.send({
+        success: true,
+        data: {
+          query: kalshi.query || polymarket.query,
+          tradingActive,
+          providers: [
+            { provider: "kalshi", events: kalshi.events },
+            { provider: "polymarket", events: polymarket.events },
+          ],
+        },
+      });
+    } catch (error) {
+      req.log.warn(error, "Failed to build Jupiter prediction map");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "Jupiter prediction map unavailable",
+      });
+    }
+  });
+
+  app.get<{
+    Params: { ticker: string };
+    Querystring: { outcomeTicker?: string; wallet?: string; countryCode?: string };
+  }>("/api/markets/:ticker/execution-preview", async (req, reply) => {
+    const ticker = req.params.ticker?.trim();
+    if (!ticker) {
+      return reply.status(400).send({ success: false, error: "ticker required" });
+    }
+
+    const country =
+      (req.query.countryCode as string | undefined) ||
+      (req.headers["cf-ipcountry"] as string | undefined) ||
+      (req.headers["x-country-code"] as string | undefined);
+    const wallet = req.query.wallet?.trim() || null;
+
+    try {
+      const directKalshiTicker = req.query.outcomeTicker?.trim();
+      const market = await withTimeout(
+        (async () => {
+          if (directKalshiTicker && !directKalshiTicker.toUpperCase().startsWith("POLY-")) {
+            const direct = await getKalshiDirectMarketByTicker(directKalshiTicker);
+            if (direct) return direct;
+          }
+          return getMarketSnapshotByTicker(ticker);
+        })(),
+        EXECUTION_PREVIEW_ROUTE_TIMEOUT_MS,
+        "market-execution-preview",
+      );
+      if (!market) {
+        return reply.status(404).send({ success: false, error: "Market not found" });
+      }
+
+      const selectedOutcome = getSelectedExecutionOutcome(market, req.query.outcomeTicker);
+      const selectedProbability = selectedOutcome?.probability ?? market.probability ?? 50;
+      const routeTargetMint = selectedOutcome?.yes_mint ?? market.yes_mint ?? null;
+      const routeAvailable = market.source === "kalshi" ? !!routeTargetMint : !!(selectedOutcome?.yes_token_id ?? market.yes_token_id);
+      const countryBlocked = shouldBlockByCountry(country);
+      const resolutionRisk = getResolutionRisk(market.close_time);
+      const fieldRisk = getFieldRisk(
+        selectedOutcome
+          ? {
+              ...market,
+              ticker: selectedOutcome.ticker ?? market.ticker,
+            }
+          : market,
+        selectedProbability,
+      );
+
+      const executionProbe =
+        market.source === "kalshi" && routeAvailable && routeTargetMint && !countryBlocked
+          ? await probeKalshiExecutionRoute({
+              outputMint: routeTargetMint,
+              wallet,
+            })
+          : {
+              walletConnected: Boolean(wallet),
+              available: routeAvailable && !countryBlocked,
+              reason: countryBlocked
+                ? "Prediction market trading is not available in this jurisdiction."
+                : !routeAvailable
+                  ? "This outcome is visible in Siren, but no native route target is mapped yet."
+                  : market.source !== "kalshi"
+                    ? "Live route probes are Kalshi-first for now."
+                    : "Connect a wallet to run live route probes.",
+              probes: [] as Array<{ amountUsd: number; status: "routable" | "failed" | "skipped"; reason: string | null }>,
+              suggestedClipUsd: null as number | null,
+            };
+
+      const actionable =
+        executionProbe.available && executionProbe.suggestedClipUsd
+          ? `Start around ${formatUsdWhole(executionProbe.suggestedClipUsd)} or smaller if you want cleaner execution.`
+          : routeAvailable
+            ? "Use smaller clips first and expect to adjust if the route goes stale."
+            : "Open the venue book for now while Siren fills in the missing route.";
+
+      return reply.send({
+        success: true,
+        data: {
+          market: {
+            ticker: market.ticker,
+            eventTicker: market.event_ticker,
+            title: market.title,
+            source: market.source,
+            groupedEvent: Boolean(market.grouped_event),
+            outcomeCount: market.outcome_count ?? market.outcomes?.length ?? 0,
+            selectedOutcome: {
+              ticker: selectedOutcome?.ticker ?? market.ticker,
+              label: selectedOutcome?.label ?? market.selected_outcome_label ?? market.title,
+              probability: Number(selectedProbability.toFixed(1)),
+              priceUsd: Number((selectedProbability / 100).toFixed(4)),
+            },
+            stats: {
+              liquidity: market.liquidity ?? null,
+              volume24h: market.volume_24h ?? market.volume ?? null,
+              openInterest: market.open_interest ?? null,
+            },
+          },
+          route: {
+            available: routeAvailable && !countryBlocked,
+            mode: routeAvailable ? "siren" : "venue_only",
+            summary: executionProbe.reason,
+            suggestedClipUsd: executionProbe.suggestedClipUsd,
+            walletConnected: executionProbe.walletConnected,
+            probes: executionProbe.probes,
+            actionable,
+          },
+          risk: {
+            resolution: resolutionRisk,
+            field: fieldRisk,
+          },
+        },
+      });
+    } catch (error) {
+      req.log.warn(error, "Failed to build execution preview");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "Execution preview unavailable",
+      });
+    }
+  });
+
+  app.get<{
+    Querystring: { mint?: string; wallet?: string; balance?: string; marketTicker?: string };
+  }>("/api/positions/execution-preview", async (req, reply) => {
+    const mint = req.query.mint?.trim();
+    if (!mint) {
+      return reply.status(400).send({ success: false, error: "mint required" });
+    }
+
+    const wallet = req.query.wallet?.trim() || null;
+    const balance = parsePositiveFloat(req.query.balance);
+    const marketTicker = req.query.marketTicker?.trim() || null;
+
+    try {
+      const sellPreview = await probePredictionSellRoute({
+        mint,
+        wallet,
+        balance,
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          mint,
+          marketTicker,
+          route: {
+            available: sellPreview.available,
+            summary: sellPreview.reason,
+            walletConnected: sellPreview.walletConnected,
+            suggestedChunkContracts: sellPreview.suggestedChunkContracts,
+            chunkPlan: sellPreview.chunkPlan,
+            probes: sellPreview.probes,
+          },
+        },
+      });
+    } catch (error) {
+      req.log.warn(error, "Failed to build position execution preview");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "Position execution preview unavailable",
+      });
     }
   });
 

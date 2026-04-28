@@ -133,21 +133,21 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
       <div className="flex flex-wrap items-center gap-2">
         {category && (
           <span
-            className="rounded-full px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.12em]"
+            className="rounded-full px-2.5 py-1 font-label text-[11px] uppercase tracking-[0.12em]"
             style={{ background: marketCategoryBadgeStyle(category).bg, color: marketCategoryBadgeStyle(category).color }}
           >
             {marketCategoryLabel(category)}
           </span>
         )}
         <span
-          className="rounded-full border px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.12em]"
+          className="rounded-full border px-2.5 py-1 font-label text-[11px] uppercase tracking-[0.12em]"
           style={{ background: source.bg, color: source.color, borderColor: source.border }}
         >
           {source.label}
         </span>
         {multiOutcome && (
           <span
-            className="rounded-full border px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.12em]"
+            className="rounded-full border px-2.5 py-1 font-label text-[11px] uppercase tracking-[0.12em]"
             style={{ background: "var(--bg-surface)", color: "var(--text-3)", borderColor: "var(--border-subtle)" }}
           >
             {market.outcomes?.length} outcomes
@@ -156,7 +156,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
       </div>
 
       <h3
-        className="mt-3 line-clamp-2 max-w-[24ch] font-heading text-[1.08rem] font-bold leading-[1.08] tracking-[-0.02em] md:text-[1.16rem]"
+        className="mt-3 line-clamp-2 max-w-[24ch] font-heading text-[1.08rem] font-bold leading-[1.14] tracking-[-0.012em] md:text-[1.16rem]"
         style={{ color: "var(--text-1)" }}
         title={market.title}
       >
@@ -188,7 +188,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-2.5">
           <div className="rounded-[16px] border px-3.5 py-3.5" style={{ borderColor: "color-mix(in srgb, var(--up) 22%, transparent)", background: "color-mix(in srgb, var(--up) 5%, var(--bg-surface))" }}>
-            <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+            <p className="font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
               Yes
             </p>
             <p className="mt-2 font-mono text-[1.25rem] font-semibold tabular-nums" style={{ color: "var(--up)" }}>
@@ -196,7 +196,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
             </p>
           </div>
           <div className="rounded-[16px] border px-3.5 py-3.5" style={{ borderColor: "color-mix(in srgb, var(--down) 22%, transparent)", background: "color-mix(in srgb, var(--down) 5%, var(--bg-surface))" }}>
-            <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+            <p className="font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
               No
             </p>
             <p className="mt-2 font-mono text-[1.25rem] font-semibold tabular-nums" style={{ color: "var(--down)" }}>
@@ -208,7 +208,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
 
       <div className="mt-4 grid grid-cols-2 gap-2.5">
         <div className="rounded-[16px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+          <p className="font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
             24h volume
           </p>
           <p className="mt-2 font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
@@ -216,7 +216,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
           </p>
         </div>
         <div className="rounded-[16px] border px-3.5 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+          <p className="font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
             {market.source === "polymarket" ? "Liquidity" : "Open interest"}
           </p>
           <p className="mt-2 font-mono text-lg font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
@@ -230,7 +230,7 @@ const MarketExplorerCard = memo(function MarketExplorerCard({
           {formatCloseLabel(market.close_time, multiOutcome)}
         </p>
         <span
-          className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-heading text-[11px] uppercase tracking-[0.12em] transition-colors group-hover:border-[var(--accent)]"
+          className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-label text-[11px] uppercase tracking-[0.12em] transition-colors group-hover:border-[var(--accent)]"
           style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
         >
           Open market
@@ -300,10 +300,10 @@ export function TerminalMarketExplorer() {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-2xl">
-              <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+              <p className="font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
                 Market feed
               </p>
-              <p className="mt-2 font-heading text-[1.15rem] font-bold leading-[1.08] tracking-[-0.02em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
+              <p className="mt-2 font-heading text-[1.15rem] font-bold leading-[1.12] tracking-[-0.012em] md:text-[1.5rem]" style={{ color: "var(--text-1)" }}>
                 Current markets first
               </p>
               <p className="mt-3 font-body text-[13px] leading-[1.6] md:text-sm" style={{ color: "var(--text-2)" }}>
@@ -318,10 +318,10 @@ export function TerminalMarketExplorer() {
                 { label: "Venues", value: "2", detail: "Kalshi + Polymarket" },
               ].map((item) => (
                 <div key={item.label} className="rounded-[18px] border px-2.5 py-2.5 md:px-3.5 md:py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                  <p className="font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
+                  <p className="font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--text-3)" }}>
                     {item.label}
                   </p>
-                  <p className="mt-1.5 font-heading text-base font-bold leading-none md:text-xl" style={{ color: "var(--text-1)" }}>
+                  <p className="mt-1.5 font-heading text-base font-bold leading-[1.08] md:text-xl" style={{ color: "var(--text-1)" }}>
                     {item.value}
                   </p>
                   <p className="mt-1 font-body text-[10px] leading-snug md:text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -343,7 +343,7 @@ export function TerminalMarketExplorer() {
                       hapticLight();
                       setSource(tab.id);
                     }}
-                    className="rounded-full border px-4 py-2 font-heading text-[11px] uppercase tracking-[0.12em] transition-colors"
+                    className="rounded-full border px-4 py-2 font-label text-[11px] uppercase tracking-[0.12em] transition-colors"
                     style={{
                       borderColor: active ? "var(--accent)" : "var(--border-subtle)",
                       background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
@@ -396,7 +396,7 @@ export function TerminalMarketExplorer() {
         />
       ) : isError ? (
         <div className="rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>
+          <p className="font-heading text-xl font-semibold leading-[1.1] tracking-[-0.01em]" style={{ color: "var(--text-1)" }}>
             Market explorer is unavailable right now.
           </p>
           <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
@@ -427,7 +427,7 @@ export function TerminalMarketExplorer() {
         />
       ) : filtered.length === 0 ? (
         <div className="rounded-[28px] border p-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-          <p className="font-heading text-xl font-semibold" style={{ color: "var(--text-1)" }}>
+          <p className="font-heading text-xl font-semibold leading-[1.1] tracking-[-0.01em]" style={{ color: "var(--text-1)" }}>
             No markets match this view yet.
           </p>
           <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>

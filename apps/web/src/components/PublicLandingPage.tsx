@@ -20,7 +20,7 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
     <span className="inline-flex items-center gap-3">
       <img src="/brand/mark.svg" alt="" className={compact ? "h-7 w-7 flex-none" : "h-8 w-8 flex-none"} />
       <span
-        className="font-heading font-semibold uppercase tracking-[-0.04em]"
+        className="font-heading font-semibold uppercase tracking-[-0.02em]"
         style={{
           color: "var(--text-1)",
           fontSize: compact ? "1.55rem" : "1.8rem",
@@ -114,7 +114,7 @@ function LandingHeader({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: strin
 function SectionEyebrow({ children }: { children: ReactNode }) {
   return (
     <p
-      className="font-heading text-[11px] uppercase tracking-[0.12em]"
+      className="font-label text-[11px] uppercase tracking-[0.12em]"
       style={{ color: "color-mix(in srgb, var(--text-3) 90%, transparent)" }}
     >
       {children}
@@ -152,7 +152,7 @@ function ProofPanel() {
             </h3>
           </div>
           <span
-            className="rounded-full px-3 py-1.5 font-heading text-[11px] uppercase tracking-[0.12em]"
+            className="rounded-full px-3 py-1.5 font-label text-[11px] uppercase tracking-[0.12em]"
             style={{
               background: "color-mix(in srgb, var(--up) 12%, transparent)",
               color: "var(--up)",
@@ -178,7 +178,7 @@ function ProofPanel() {
               }}
             >
               <p
-                className="font-heading text-[11px] uppercase tracking-[0.12em]"
+                className="font-label text-[11px] uppercase tracking-[0.12em]"
                 style={{ color: "color-mix(in srgb, var(--text-3) 88%, transparent)" }}
               >
                 {label}
@@ -261,12 +261,12 @@ export function PublicLandingPage() {
           <div className="max-w-[31rem]">
             <SectionEyebrow>Execution And Risk Intelligence</SectionEyebrow>
             <h1
-              className="mt-4 font-heading font-bold tracking-[-0.052em]"
+              className="mt-4 font-heading font-bold tracking-[-0.03em]"
               style={{
                 color: "var(--text-1)",
                 fontSize: "clamp(3rem, 6vw, 4.95rem)",
-                lineHeight: 1.01,
-                letterSpacing: "-0.045em",
+                lineHeight: 1.07,
+                letterSpacing: "-0.03em",
               }}
             >
               Trade Prediction Markets
@@ -398,7 +398,7 @@ export function PublicLandingPage() {
                     style={{ borderColor: "var(--border-default)", background: "var(--bg-surface)" }}
                   >
                     <p
-                      className="font-heading text-[11px] uppercase tracking-[0.12em]"
+                      className="font-label text-[11px] uppercase tracking-[0.12em]"
                       style={{ color: "#00FF85" }}
                     >
                       {title}
@@ -424,11 +424,11 @@ export function PublicLandingPage() {
           >
             <SectionEyebrow>Browse First</SectionEyebrow>
             <h2
-              className="mx-auto mt-4 max-w-[58rem] font-heading font-bold tracking-[-0.06em]"
+              className="mx-auto mt-4 max-w-[58rem] font-heading font-bold tracking-[-0.03em]"
               style={{
                 color: "var(--text-1)",
                 fontSize: "clamp(2.1rem, 5vw, 4.1rem)",
-                lineHeight: 0.95,
+                lineHeight: 1.04,
               }}
             >
               See Siren before you hand over anything.

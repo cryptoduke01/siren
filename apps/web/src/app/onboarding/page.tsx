@@ -164,12 +164,12 @@ export default function OnboardingPage() {
                   className="mt-8 h-9 w-auto md:h-10"
                   style={{ filter: theme === "light" ? "brightness(0.08)" : "none" }}
                 />
-                <p className="mt-8 font-heading text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+                <p className="mt-8 font-label text-[11px] uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
                   Welcome To Siren
                 </p>
                 <h1
-                  className="mt-3 font-heading font-bold tracking-[-0.06em]"
-                  style={{ color: "var(--text-1)", fontSize: "clamp(2.2rem, 6vw, 4.3rem)", lineHeight: 0.92 }}
+                  className="mt-3 font-heading font-bold tracking-[-0.03em]"
+                  style={{ color: "var(--text-1)", fontSize: "clamp(2.2rem, 6vw, 4.3rem)", lineHeight: 1.04 }}
                 >
                   Get The Tools
                   <br />
@@ -193,7 +193,7 @@ export default function OnboardingPage() {
                     {["Kalshi", "Polymarket", "Execution Clarity", "Risk Context"].map((item) => (
                       <span
                         key={item}
-                        className="rounded-full border px-3 py-1.5 font-heading text-[11px] uppercase tracking-[0.12em]"
+                        className="rounded-full border px-3 py-1.5 font-label text-[11px] uppercase tracking-[0.12em]"
                         style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
                       >
                         {item}
@@ -229,7 +229,7 @@ export default function OnboardingPage() {
                         >
                           <item.icon className="h-4 w-4" />
                         </div>
-                        <p className="mt-4 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                        <p className="mt-4 font-heading text-base font-semibold leading-[1.1] tracking-[-0.01em]" style={{ color: "var(--text-1)" }}>
                           {item.title}
                         </p>
                         <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
@@ -272,7 +272,7 @@ export default function OnboardingPage() {
                       <CheckCircle2 className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="font-heading text-lg font-semibold" style={{ color: "var(--text-1)" }}>
+                      <p className="font-heading text-lg font-semibold leading-[1.1] tracking-[-0.01em]" style={{ color: "var(--text-1)" }}>
                         Create Your Siren Account
                       </p>
                       <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
@@ -334,7 +334,7 @@ export default function OnboardingPage() {
                         background: "color-mix(in srgb, var(--yellow) 8%, var(--bg-surface))",
                       }}
                     >
-                      <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                      <p className="font-heading text-sm font-semibold leading-[1.1] tracking-[-0.008em]" style={{ color: "var(--text-1)" }}>
                         Sign Up Is Taking Longer Than Normal.
                       </p>
                       <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
@@ -371,8 +371,8 @@ export default function OnboardingPage() {
                 style={{ filter: theme === "light" ? "brightness(0.08)" : "none" }}
               />
               <h1
-                className="mt-8 font-heading font-bold tracking-[-0.05em]"
-                style={{ color: "var(--text-1)", fontSize: "clamp(1.5rem, 4vw, 2rem)", lineHeight: 1.04 }}
+                className="mt-8 font-heading font-bold tracking-[-0.02em]"
+                style={{ color: "var(--text-1)", fontSize: "clamp(1.5rem, 4vw, 2rem)", lineHeight: 1.08 }}
               >
                 You Are In.
               </h1>
