@@ -9,6 +9,7 @@ import { useMarkets } from "@/hooks/useMarkets";
 import { useSignals } from "@/hooks/useSignals";
 import { useSirenStore } from "@/store/useSirenStore";
 import { useExplorerStore } from "@/store/useExplorerStore";
+import { buildMarketPath } from "@/lib/marketLinks";
 import { toSelectedMarket } from "@/lib/marketSelection";
 import {
   compareMarketExplorerSecondaryPriority,
@@ -291,7 +292,13 @@ export function TerminalMarketExplorer() {
   const openMarket = (market: MarketWithVelocity) => {
     hapticLight();
     setSelectedMarket(toSelectedMarket(market));
-    router.push(`/market/${encodeURIComponent(market.ticker)}`);
+    router.push(
+      buildMarketPath({
+        ticker: market.ticker,
+        title: market.title,
+        selectedOutcomeLabel: market.selected_outcome_label,
+      }),
+    );
   };
 
   return (

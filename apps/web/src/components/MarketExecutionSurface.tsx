@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { getFontEmbedCSS, toPng } from "html-to-image";
-import { ExternalLink, Share2, Download, Loader2 } from "lucide-react";
+import { ExternalLink, Share2, Download, Loader2, Link2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
 import { useMarketExecutionPreview } from "@/hooks/useMarketExecutionPreview";
@@ -15,6 +15,8 @@ import { MarketAlertButton } from "./AlertButton";
 import { hapticLight } from "@/lib/haptics";
 import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
 import { API_URL } from "@/lib/apiUrl";
+import { buildAbsoluteMarketUrl } from "@/lib/marketLinks";
+import { getSiteUrl } from "@/lib/siteUrl";
 import type { PredictionSignal } from "@siren/shared";
 
 function SignalSourcePill({ source }: { source: PredictionSignal["source"] }) {
@@ -54,6 +56,17 @@ function getSelectedMarketUrl(market: SelectedMarket): string {
 
 function getSelectedOutcomeLabel(market: SelectedMarket): string | null {
   return market.selected_outcome_label?.trim() || null;
+}
+
+function getShareableMarketUrl(market: SelectedMarket): string {
+  return buildAbsoluteMarketUrl(
+    {
+      ticker: market.ticker,
+      title: market.title,
+      selectedOutcomeLabel: market.selected_outcome_label,
+    },
+    getSiteUrl(),
+  );
 }
 
 function CompactMarketStat({
@@ -812,6 +825,7 @@ function PredictionMarketFocusPanel({
   onPrimaryAction,
   onOpenVenue,
   onShareCard,
+  onCopyLink,
   onDownloadCard,
   exportingCard,
 }: {
@@ -819,6 +833,7 @@ function PredictionMarketFocusPanel({
   onPrimaryAction: () => void;
   onOpenVenue: () => void;
   onShareCard: () => void;
+  onCopyLink: () => void;
   onDownloadCard: () => void;
   exportingCard: boolean;
 }) {
@@ -870,6 +885,15 @@ function PredictionMarketFocusPanel({
               >
                 {exportingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
                 Share
+              </button>
+              <button
+                type="button"
+                onClick={onCopyLink}
+                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-body text-[10px] font-medium"
+                style={{ borderColor: "var(--border-subtle)", background: "transparent", color: "var(--text-2)" }}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Copy link
               </button>
               <button
                 type="button"
@@ -1192,11 +1216,34 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
       const filename = `siren-market-${safeTicker || "card"}-${Date.now()}.png`;
       const blob = await fetch(dataUrl).then((response) => response.blob());
       const file = new File([blob], filename, { type: "image/png" });
-      if (mode === "share" && navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: selectedMarket.title, text: `${selectedMarket.title} • onsiren.xyz` });
-        addToast("Market image shared.", "success");
+      const marketUrl = getShareableMarketUrl(selectedMarket);
+      if (mode === "share" && navigator.share) {
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: selectedMarket.title,
+            text: `${selectedMarket.title} • onsiren.xyz`,
+            url: marketUrl,
+          });
+          addToast("Market link shared.", "success");
+          return;
+        }
+
+        await navigator.share({
+          title: selectedMarket.title,
+          text: `${selectedMarket.title} • onsiren.xyz`,
+          url: marketUrl,
+        });
+        addToast("Market link shared.", "success");
         return;
       }
+
+      if (mode === "share" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(marketUrl);
+        addToast("Market link copied.", "success");
+        return;
+      }
+
       const anchor = document.createElement("a");
       anchor.href = dataUrl;
       anchor.download = filename;
@@ -1210,6 +1257,22 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
       addToast("Could not save the market image right now.", "error");
     } finally {
       setExportingCard(false);
+    }
+  };
+
+  const copySelectedMarketLink = async () => {
+    if (!selectedMarket || typeof window === "undefined") return;
+    try {
+      hapticLight();
+      const marketUrl = getShareableMarketUrl(selectedMarket);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(marketUrl);
+        addToast("Market link copied.", "success");
+        return;
+      }
+      window.prompt("Copy market link", marketUrl);
+    } catch {
+      addToast("Could not copy the market link right now.", "error");
     }
   };
 
@@ -1251,6 +1314,7 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
                 window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
               }}
               onShareCard={() => exportSelectedMarket("share")}
+              onCopyLink={copySelectedMarketLink}
               onDownloadCard={() => exportSelectedMarket("download")}
               exportingCard={exportingCard}
             />
@@ -1281,6 +1345,7 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
                 window.open(getSelectedMarketUrl(selectedMarket), "_blank", "noopener,noreferrer");
               }}
               onShareCard={() => exportSelectedMarket("share")}
+              onCopyLink={copySelectedMarketLink}
               onDownloadCard={() => exportSelectedMarket("download")}
               exportingCard={exportingCard}
             />

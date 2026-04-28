@@ -55,13 +55,15 @@ function FooterIconLink({
 
 export function Footer() {
   const pathname = usePathname();
+  const isPrettyMarketPath = /^\/[^/]+--[^/]+$/.test(pathname);
   const compactAppFooter =
     pathname === "/terminal" ||
     pathname === "/portfolio" ||
     pathname === "/settings" ||
     pathname === "/leaderboard" ||
     pathname === "/watchlist" ||
-    pathname.startsWith("/market/");
+    pathname.startsWith("/market/") ||
+    isPrettyMarketPath;
 
   return (
     <footer
