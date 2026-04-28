@@ -8,11 +8,11 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        heading: ["Clash Display", "Cabinet Grotesk", "Inter", "ui-sans-serif", "sans-serif"],
-        body: ["Cabinet Grotesk", "Inter", "ui-sans-serif", "sans-serif"],
+        heading: ["Clash Display", "Inter", "ui-sans-serif", "sans-serif"],
+        body: ["Inter", "ui-sans-serif", "sans-serif"],
         money: ["Departure Mono", "ui-monospace", "SFMono-Regular", "monospace"],
-        sub: ["Cabinet Grotesk", "Inter", "ui-sans-serif", "sans-serif"],
-        label: ["Clash Display", "Cabinet Grotesk", "Inter", "ui-sans-serif", "sans-serif"],
+        sub: ["Inter", "ui-sans-serif", "sans-serif"],
+        label: ["Clash Display", "Inter", "ui-sans-serif", "sans-serif"],
         mono: ["Departure Mono", "ui-monospace", "SFMono-Regular", "monospace"],
       },
     },

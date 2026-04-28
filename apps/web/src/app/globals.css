@@ -143,7 +143,7 @@ html,
 body {
   background: var(--bg-void);
   color: var(--text-1);
-  font-family: "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
+  font-family: Inter, ui-sans-serif, sans-serif;
   line-height: 1.6;
   letter-spacing: normal;
   -webkit-font-smoothing: antialiased;
@@ -172,17 +172,17 @@ body {
 }
 
 .font-heading {
-  font-family: "Clash Display", "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
+  font-family: "Clash Display", Inter, ui-sans-serif, sans-serif;
   font-variant-ligatures: normal;
 }
 
 .font-body,
 .font-sub {
-  font-family: "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
+  font-family: Inter, ui-sans-serif, sans-serif;
 }
 
 .font-label {
-  font-family: "Clash Display", "Cabinet Grotesk", Inter, ui-sans-serif, sans-serif;
+  font-family: "Clash Display", Inter, ui-sans-serif, sans-serif;
 }
 
 .font-money,

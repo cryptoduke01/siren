@@ -6,6 +6,8 @@ import { getFontEmbedCSS, toPng } from "html-to-image";
 import { ExternalLink, Share2, Download, Loader2 } from "lucide-react";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useMarketActivity } from "@/hooks/useMarketActivity";
+import { useMarketExecutionPreview } from "@/hooks/useMarketExecutionPreview";
+import { useJupiterPredictionMap } from "@/hooks/useJupiterPredictionMap";
 import { useSirenStore, type SelectedMarket } from "@/store/useSirenStore";
 import { useToastStore } from "@/store/useToastStore";
 import { StarButton } from "./StarButton";
@@ -48,6 +50,10 @@ function canTradeSelectedMarketInSiren(market: SelectedMarket): boolean {
 
 function getSelectedMarketUrl(market: SelectedMarket): string {
   return market.market_url || market.kalshi_url || (market.source === "polymarket" ? "https://polymarket.com" : "https://kalshi.com");
+}
+
+function getSelectedOutcomeLabel(market: SelectedMarket): string | null {
+  return market.selected_outcome_label?.trim() || null;
 }
 
 function CompactMarketStat({
@@ -177,6 +183,616 @@ function formatCompactNumber(value?: number, digits = 1): string {
   }).format(value);
 }
 
+function formatTradeCount(value?: number | null): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return "—";
+  return formatCompactNumber(value, 0);
+}
+
+function getHoursUntilClose(value?: number | null): number | null {
+  if (!value || !Number.isFinite(value)) return null;
+  const timestampMs = value < 1_000_000_000_000 ? value * 1000 : value;
+  return (timestampMs - Date.now()) / (1000 * 60 * 60);
+}
+
+function formatResolutionWindow(value?: number | null): string {
+  const hours = getHoursUntilClose(value);
+  if (hours == null) return "Open-ended";
+  if (hours <= 0) return "Resolving now";
+  if (hours < 1) return "< 1h left";
+  if (hours < 24) return `${Math.round(hours)}h left`;
+  const days = hours / 24;
+  if (days < 7) return `${Math.round(days)}d left`;
+  return formatTimestampLabel(value);
+}
+
+function formatUsdCompact(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: value >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: value >= 100 ? 0 : 2,
+  }).format(value);
+}
+
+function formatEventCloseTime(value?: string | null): string {
+  if (!value) return "Open";
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Open";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(timestamp);
+}
+
+function formatPointGap(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)} pts`;
+}
+
+function ExecutionIntelligencePanel({ market }: { market: SelectedMarket }) {
+  const hasNativeRoute = canTradeSelectedMarketInSiren(market);
+  const closeHours = getHoursUntilClose(market.close_time);
+  const liquidity = typeof market.liquidity === "number" ? market.liquidity : null;
+  const fastMove = Math.abs(market.velocity_1h ?? 0) >= 4;
+  const selectedOutcomeLabel = getSelectedOutcomeLabel(market);
+
+  let routeLabel = "Routable now";
+  let routeTone = "var(--accent)";
+  let routeCopy = selectedOutcomeLabel
+    ? `Route exists inside Siren for ${selectedOutcomeLabel}. Normal-sized orders should have a cleaner path than research-only markets.`
+    : "Route exists inside Siren. Normal-sized orders should have a cleaner path than research-only markets.";
+
+  if (!hasNativeRoute) {
+    routeLabel = "Venue only";
+    routeTone = "var(--text-2)";
+    routeCopy = "This market is visible in Siren, but no native execution route is mapped here yet. Use the venue page for now.";
+  } else if (liquidity != null && liquidity < 50_000) {
+    routeLabel = "Thin size";
+    routeTone = "var(--yellow)";
+    routeCopy = "Route exists, but displayed liquidity looks light. Expect better outcomes with smaller clips or more patience.";
+  }
+
+  let riskLabel = "Standard watch";
+  let riskTone = "var(--text-2)";
+  let riskCopy = "Resolution is not immediate, so execution risk is more about size and timing than a closing window.";
+
+  if (closeHours != null && closeHours <= 24) {
+    riskLabel = "Resolution window";
+    riskTone = "var(--down)";
+    riskCopy = "This event is close to resolution. Books can thin quickly, so plan exits before the last-minute scramble.";
+  } else if (fastMove) {
+    riskLabel = "Fast tape";
+    riskTone = "var(--yellow)";
+    riskCopy = "Recent move is sharp enough to matter. Recheck odds and route quality before leaning into size.";
+  }
+
+  const failureCopy = !hasNativeRoute
+    ? "If the trade is blocked, the issue is route availability rather than your wallet. Open the venue and monitor for Siren support."
+    : liquidity != null && liquidity < 50_000
+      ? "If size fails, the most likely reason is thin depth. Reduce order size, retry later, or split execution."
+      : "If a trade fails here, it is more likely to be wallet, quote freshness, or venue-side availability than obvious market depth.";
+
+  return (
+    <section
+      className="mb-5 overflow-hidden rounded-[22px] border"
+      style={{
+        borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
+        background:
+          "radial-gradient(circle at bottom right, color-mix(in srgb, var(--kalshi) 8%, transparent), transparent 34%), linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 92%, transparent), var(--bg-base))",
+      }}
+    >
+      <div className="grid gap-3 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+          <p className="font-label text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+            Execution intelligence
+          </p>
+          <h3 className="mt-2 font-heading text-xl font-bold leading-[1.08] tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+            What Siren sees before you size this trade
+          </h3>
+          <p className="mt-3 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+            A derived read from route availability, venue metadata, velocity, and the resolution window. This is the product direction in miniature: feasibility first, then risk.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <CompactMarketStat label="Route" value={routeLabel} tone={routeTone} />
+            <CompactMarketStat label="Resolution" value={formatResolutionWindow(market.close_time)} tone={riskTone} />
+            <CompactMarketStat
+              label={market.source === "kalshi" ? "Velocity 1h" : "Liquidity"}
+              value={
+                market.source === "kalshi"
+                  ? `${market.velocity_1h >= 0 ? "+" : ""}${market.velocity_1h.toFixed(1)}%`
+                  : formatCompactNumber(liquidity ?? undefined, 1)
+              }
+              tone={fastMove ? "var(--yellow)" : "var(--text-1)"}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Feasibility read
+            </p>
+            <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+              {routeCopy}
+            </p>
+          </div>
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Risk watch
+            </p>
+            <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+              {riskCopy}
+            </p>
+          </div>
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              If it fails
+            </p>
+            <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+              {failureCopy}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ExecutionPreviewPanel({
+  market,
+  walletKey,
+}: {
+  market: SelectedMarket;
+  walletKey?: string | null;
+}) {
+  const { data, isLoading, isError } = useMarketExecutionPreview({
+    ticker: market.event_ticker || market.ticker,
+    outcomeTicker: market.ticker,
+    wallet: market.source === "kalshi" ? walletKey : null,
+  });
+
+  if (isLoading) {
+    return (
+      <section
+        className="mb-5 overflow-hidden rounded-[22px] border"
+        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+      >
+        <div className="flex items-center gap-3 px-5 py-4">
+          <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
+          <p className="font-body text-sm leading-[1.6]" style={{ color: "var(--text-2)" }}>
+            Building live execution preview...
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <section
+        className="mb-5 overflow-hidden rounded-[22px] border"
+        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+      >
+        <div className="px-5 py-4">
+          <p className="font-label text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+            Live route preview
+          </p>
+          <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+            Siren could not build a fresh execution preview right now. The market structure is still loaded, but live route probes need another try.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="mb-5 overflow-hidden rounded-[22px] border"
+      style={{
+        borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
+        background:
+          "radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 10%, transparent), transparent 36%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+      }}
+    >
+      <div className="grid gap-3 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+          <p className="font-label text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+            Route preview
+          </p>
+          <h3 className="mt-2 font-heading text-xl font-bold leading-[1.08] tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+            Route confidence for {data.market.selectedOutcome.label}
+          </h3>
+          <p className="mt-3 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+            {data.route.summary}
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <CompactMarketStat
+              label="Route mode"
+              value={data.route.available ? "Siren route" : "Venue only"}
+              tone={data.route.available ? "var(--accent)" : "var(--text-2)"}
+            />
+            <CompactMarketStat
+              label="Suggested clip"
+              value={data.route.suggestedClipUsd != null ? `$${data.route.suggestedClipUsd}` : "Start small"}
+              tone={data.route.suggestedClipUsd != null ? "var(--up)" : "var(--text-1)"}
+            />
+            <CompactMarketStat
+              label="Outcome rank"
+              value={`#${data.risk.field.rank}`}
+              tone={data.risk.field.rank === 1 ? "var(--accent)" : "var(--text-1)"}
+            />
+          </div>
+
+          <div className="mt-4 rounded-[18px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Probe ladder
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {(data.route.probes.length > 0
+                ? data.route.probes
+                : [
+                    {
+                      amountUsd: data.route.suggestedClipUsd ?? 10,
+                      status: data.route.walletConnected ? "skipped" : "failed",
+                      reason: data.route.walletConnected
+                        ? "No live probes were needed for this preview."
+                        : "Connect a wallet to run live route probes.",
+                    },
+                  ]).map((probe) => (
+                <div
+                  key={`${probe.amountUsd}-${probe.status}`}
+                  className="rounded-2xl border px-3 py-3"
+                  style={{
+                    borderColor:
+                      probe.status === "routable"
+                        ? "color-mix(in srgb, var(--accent) 38%, transparent)"
+                        : probe.status === "failed"
+                          ? "color-mix(in srgb, var(--down) 28%, transparent)"
+                          : "var(--border-subtle)",
+                    background: "var(--bg-base)",
+                  }}
+                >
+                  <p className="font-mono text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    ${probe.amountUsd}
+                  </p>
+                  <p
+                    className="mt-1 font-body text-[10px] uppercase tracking-[0.14em]"
+                    style={{
+                      color:
+                        probe.status === "routable"
+                          ? "var(--up)"
+                          : probe.status === "failed"
+                            ? "var(--down)"
+                            : "var(--text-3)",
+                    }}
+                  >
+                    {probe.status}
+                  </p>
+                  <p className="mt-2 font-body text-[11px] leading-[1.5]" style={{ color: "var(--text-3)" }}>
+                    {probe.reason ?? "Route built cleanly in preview."}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Resolution risk
+            </p>
+            <p className="mt-2 font-heading text-lg font-bold leading-[1.08] tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+              {data.risk.resolution.label}
+            </p>
+            <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+              {data.risk.resolution.summary}
+            </p>
+          </div>
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Field risk
+            </p>
+            <p className="mt-2 font-heading text-lg font-bold leading-[1.08] tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+              {data.risk.field.label}
+            </p>
+            <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+              {data.risk.field.summary}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <CompactMarketStat label="Leader gap" value={`${data.risk.field.leaderGapPct.toFixed(1)}%`} />
+              <CompactMarketStat label="Top 3 share" value={`${data.risk.field.topThreeSharePct.toFixed(1)}%`} />
+            </div>
+          </div>
+          <div className="rounded-[20px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+              Siren take
+            </p>
+            <p className="mt-2 font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+              {data.route.actionable}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function JupiterPredictionMapPanel({ market }: { market: SelectedMarket }) {
+  const { data, isLoading, isError } = useJupiterPredictionMap({
+    title: market.title,
+    outcomeLabel: market.selected_outcome_label ?? null,
+    probability: market.probability,
+  });
+
+  if (isLoading) {
+    return (
+      <section
+        className="mb-5 overflow-hidden rounded-[22px] border"
+        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+      >
+        <div className="flex items-center gap-3 px-5 py-4">
+          <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
+          <p className="font-body text-sm leading-[1.6]" style={{ color: "var(--text-2)" }}>
+            Mapping related Jupiter prediction markets...
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  if (isError || !data) {
+    return null;
+  }
+
+  return (
+    <section
+      className="mb-5 overflow-hidden rounded-[22px] border"
+      style={{
+        borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
+        background:
+          "radial-gradient(circle at top left, color-mix(in srgb, var(--polymarket) 10%, transparent), transparent 36%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
+      }}
+    >
+      <div className="px-4 py-4 sm:px-5 sm:py-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-label text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+              Jupiter prediction map
+            </p>
+            <h3 className="mt-2 font-heading text-xl font-bold leading-[1.08] tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+              Cross-venue read for this market thesis
+            </h3>
+          </div>
+          <span
+            className="rounded-full border px-3 py-1 font-body text-[10px] uppercase tracking-[0.14em]"
+            style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)", background: "var(--bg-base)" }}
+          >
+            {data.tradingActive ? "Trading active" : "Trading paused"} · {data.query || market.title}
+          </span>
+        </div>
+
+        <p className="mt-3 max-w-3xl font-body text-sm leading-[1.65]" style={{ color: "var(--text-2)" }}>
+          Siren is now reading Jupiter’s live prediction directory, event details, and orderbook depth so this panel can compare the same thesis across venues before you trust a price or route.
+        </p>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          {data.providers.map((provider) => (
+            <div
+              key={provider.provider}
+              className="rounded-[20px] border p-4"
+              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                    {provider.provider}
+                  </p>
+                  <p className="mt-1 font-heading text-lg font-bold leading-[1.08]" style={{ color: "var(--text-1)" }}>
+                    {provider.events.length > 0 ? `${provider.events.length} related events` : "No obvious matches"}
+                  </p>
+                </div>
+                <div className="grid min-w-[132px] gap-2">
+                  <CompactMarketStat
+                    label="Mapped"
+                    value={String(provider.events.reduce((sum, event) => sum + event.marketCount, 0))}
+                  />
+                  <CompactMarketStat
+                    label="Depth read"
+                    value={provider.events.some((event) => event.primaryMarket?.orderbook) ? "Live" : "Thin"}
+                    tone={provider.events.some((event) => event.primaryMarket?.orderbook) ? "var(--up)" : "var(--text-2)"}
+                  />
+                </div>
+              </div>
+
+              {provider.events.length === 0 ? (
+                <p className="mt-4 font-body text-sm leading-[1.65]" style={{ color: "var(--text-3)" }}>
+                  Jupiter did not surface a strong match yet for this exact query, which usually means the thesis is still venue-specific or phrased differently elsewhere.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {provider.events.slice(0, 2).map((event) => (
+                    <div
+                      key={event.eventId}
+                      className="rounded-2xl border px-4 py-3"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-body text-sm leading-[1.45]" style={{ color: "var(--text-1)" }}>
+                            {event.title}
+                          </p>
+                          {event.subtitle && (
+                            <p className="mt-1 font-body text-[11px] leading-[1.5]" style={{ color: "var(--text-3)" }}>
+                              {event.subtitle}
+                            </p>
+                          )}
+                          {event.eventUrl && (
+                            <a
+                              href={event.eventUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center gap-1 font-body text-[11px] underline decoration-transparent transition-colors hover:decoration-current"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              Open venue
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono text-xs tabular-nums" style={{ color: "var(--text-2)" }}>
+                            {formatUsdCompact(event.volumeUsd)}
+                          </p>
+                          <p className="mt-1 font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: event.isLive ? "var(--up)" : "var(--text-3)" }}>
+                            {event.isLive ? "Live" : "Watching"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <CompactMarketStat label="Markets" value={String(event.marketCount)} />
+                        <CompactMarketStat label="Closes" value={formatEventCloseTime(event.closeTime)} />
+                        <CompactMarketStat label="Series" value={event.series || provider.provider} />
+                      </div>
+
+                      {event.primaryMarket ? (
+                        <div className="mt-3 rounded-2xl border p-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-body text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                Best matched market
+                              </p>
+                              <p className="mt-1 font-body text-sm leading-[1.45]" style={{ color: "var(--text-1)" }}>
+                                {event.primaryMarket.title}
+                              </p>
+                              <p className="mt-2 font-body text-[11px] leading-[1.5]" style={{ color: "var(--text-3)" }}>
+                                {event.primaryMarket.comparison.summary}
+                              </p>
+                            </div>
+                            <span
+                              className="rounded-full border px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.14em]"
+                              style={{
+                                borderColor: "var(--border-subtle)",
+                                background: "var(--bg-surface)",
+                                color:
+                                  event.primaryMarket.comparison.confidence === "high"
+                                    ? "var(--up)"
+                                    : event.primaryMarket.comparison.confidence === "medium"
+                                      ? "var(--yellow)"
+                                      : "var(--text-3)",
+                              }}
+                            >
+                              {event.primaryMarket.comparison.confidence} confidence
+                            </span>
+                          </div>
+
+                          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                            <CompactMarketStat label="Buy YES" value={formatUsdCompact(event.primaryMarket.yesPriceUsd)} tone="var(--accent)" />
+                            <CompactMarketStat label="Buy NO" value={formatUsdCompact(event.primaryMarket.noPriceUsd)} tone="var(--down)" />
+                            <CompactMarketStat label="Gap vs Siren" value={formatPointGap(event.primaryMarket.comparison.yesPriceGapPct)} tone={event.primaryMarket.comparison.yesPriceGapPct != null && Math.abs(event.primaryMarket.comparison.yesPriceGapPct) >= 10 ? "var(--yellow)" : "var(--text-1)"} />
+                            <CompactMarketStat label="Market vol" value={formatUsdCompact(event.primaryMarket.volume)} />
+                          </div>
+
+                          {event.primaryMarket.orderbook && (
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              <div className="rounded-xl border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                  YES depth
+                                </p>
+                                <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                                  Best bid {formatUsdCompact(event.primaryMarket.orderbook.bestYesBidUsd)} · {event.primaryMarket.orderbook.yesTopDepthContracts.toLocaleString()} contracts
+                                </p>
+                                <div className="mt-2 space-y-1.5">
+                                  {event.primaryMarket.orderbook.yesDepth.map((level) => (
+                                    <div key={`yes-${level.priceUsd}-${level.quantity}`} className="flex items-center justify-between gap-3 font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                                      <span>{formatUsdCompact(level.priceUsd)}</span>
+                                      <span>{level.quantity.toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="rounded-xl border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                                <p className="font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                  NO depth
+                                </p>
+                                <p className="mt-1 font-mono text-xs tabular-nums" style={{ color: "var(--text-1)" }}>
+                                  Best bid {formatUsdCompact(event.primaryMarket.orderbook.bestNoBidUsd)} · {event.primaryMarket.orderbook.noTopDepthContracts.toLocaleString()} contracts
+                                </p>
+                                <div className="mt-2 space-y-1.5">
+                                  {event.primaryMarket.orderbook.noDepth.map((level) => (
+                                    <div key={`no-${level.priceUsd}-${level.quantity}`} className="flex items-center justify-between gap-3 font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                                      <span>{formatUsdCompact(level.priceUsd)}</span>
+                                      <span>{level.quantity.toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <p className="font-body text-[11px] leading-[1.5]" style={{ color: "var(--text-2)" }}>
+                              {event.primaryMarket.recommendation}
+                            </p>
+                            {event.primaryMarket.marketUrl && (
+                              <a
+                                href={event.primaryMarket.marketUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+                                style={{ borderColor: "var(--border-subtle)", color: "var(--accent)", background: "var(--bg-surface)" }}
+                              >
+                                Open matched market
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ) : event.markets.length > 0 ? (
+                        <div className="mt-3 grid gap-2">
+                          {event.markets.slice(0, 2).map((child) => (
+                            <div
+                              key={child.marketId}
+                              className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3"
+                              style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+                            >
+                              <div className="min-w-0">
+                                <p className="font-body text-[11px] leading-snug" style={{ color: "var(--text-1)" }}>
+                                  {child.title}
+                                </p>
+                                <p className="mt-1 font-body text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                                  {child.status}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-mono text-xs tabular-nums" style={{ color: "var(--accent)" }}>
+                                  YES {formatUsdCompact(child.yesPriceUsd)}
+                                </p>
+                                <p className="mt-1 font-mono text-[11px] tabular-nums" style={{ color: "var(--text-3)" }}>
+                                  Vol {formatUsdCompact(child.volume)}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PredictionMarketFocusPanel({
   market,
   onPrimaryAction,
@@ -254,7 +870,7 @@ function PredictionMarketFocusPanel({
           </div>
 
           <h2
-            className="mt-4 max-w-[17ch] break-words font-heading text-[clamp(1.05rem,1.8vw,1.55rem)] font-bold leading-[0.95] tracking-[-0.045em]"
+            className="mt-4 max-w-[24ch] break-words font-heading text-[clamp(1.55rem,2.6vw,2.75rem)] font-bold leading-[1.06] tracking-[-0.02em]"
             style={{ color: "var(--text-1)" }}
           >
             {market.title}
@@ -327,7 +943,7 @@ function PredictionMarketFocusPanel({
               label={market.source === "kalshi" ? "Trades 24h" : "Liquidity"}
               value={
                 market.source === "kalshi"
-                  ? formatCompactNumber(marketActivity?.recentTrades?.length, 0)
+                  ? formatTradeCount(marketActivity?.tradeCount24h)
                   : formatCompactNumber(market.liquidity, 1)
               }
             />
@@ -624,6 +1240,9 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
               onDownloadCard={() => exportSelectedMarket("download")}
               exportingCard={exportingCard}
             />
+            <ExecutionIntelligencePanel market={selectedMarket} />
+            <ExecutionPreviewPanel market={selectedMarket} walletKey={publicKey?.toBase58() ?? null} />
+            <JupiterPredictionMapPanel market={selectedMarket} />
           </motion.div>
         ) : selectedMarket && compactMode ? (
           <motion.div
