@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
@@ -14,6 +14,7 @@ import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
   ChevronDown, ArrowUp, CreditCard, Pencil, ArrowRightLeft, RefreshCw, Share2, Settings,
+  QrCode, ScanLine, X,
 } from "lucide-react";
 import { Footer } from "@/components/Footer";
 import { TopBar } from "@/components/TopBar";
@@ -46,11 +47,15 @@ import {
   type LocalPositionStat,
   type LocalTradeLedgerRow,
 } from "@/lib/localTradeLedger";
+import { toDataURL } from "qrcode";
+import type { GoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
 
 const LAMPORTS_PER_SOL = 1e9;
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOLANA_USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 const SOL_TRANSFER_RESERVE_SOL = 0.005;
+const COVALENT_LOGO_URL = "https://res.cloudinary.com/dgvnuwspr/image/upload/v1775164758/earn-sponsor/y6xef0r0sn6mnhsdfql7.webp";
+const TORQUE_LOGO_URL = "https://res.cloudinary.com/dgvnuwspr/image/upload/v1740506157/rsp3uxahzczpcbr78gaz.png";
 
 type TransferAssetOption = {
   key: string;
@@ -63,6 +68,81 @@ type TransferAssetOption = {
   usdValue?: number | null;
   hint?: string | null;
 };
+
+type PortfolioActivityItem = {
+  id: string;
+  ts: number;
+  title: string;
+  detail: string;
+  amountLabel?: string | null;
+  tone?: "neutral" | "up" | "down";
+  kind: "send" | "receive" | "swap" | "prediction" | "close";
+};
+
+function formatCompactUsd(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: value >= 100 ? 0 : 2,
+    maximumFractionDigits: value >= 100 ? 0 : 2,
+  }).format(value);
+}
+
+function formatAddressShort(value?: string | null, chars = 4): string {
+  if (!value) return "Unknown";
+  if (value.length <= chars * 2 + 3) return value;
+  return `${value.slice(0, chars)}...${value.slice(-chars)}`;
+}
+
+function getActivityToneColor(tone?: PortfolioActivityItem["tone"]): string {
+  if (tone === "up") return "var(--up)";
+  if (tone === "down") return "var(--down)";
+  return "var(--text-1)";
+}
+
+function buildReceiveQrValue(walletKey: string): string {
+  return `solana:${walletKey}`;
+}
+
+function extractRecipientFromQrPayload(payload: string): string | null {
+  const trimmed = payload.trim();
+  if (!trimmed) return null;
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/u.test(trimmed)) return trimmed;
+  const sanitized = trimmed.replace(/^solana:/iu, "").replace(/^\/\//u, "");
+  const address = sanitized.split(/[?&#]/u)[0]?.trim();
+  if (address && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/u.test(address)) return address;
+  return null;
+}
+
+function ProviderBadge({
+  src,
+  alt,
+  eyebrow,
+  status,
+}: {
+  src: string;
+  alt: string;
+  eyebrow: string;
+  status: string;
+}) {
+  return (
+    <div
+      className="inline-flex items-center gap-3 rounded-full border px-3 py-2"
+      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+    >
+      <img src={src} alt={alt} className="h-6 w-auto rounded-full bg-white/95 object-contain px-1 py-0.5" />
+      <div className="min-w-0">
+        <p className="font-sub text-[9px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+          {eyebrow}
+        </p>
+        <p className="font-heading text-[11px] font-semibold" style={{ color: "var(--text-1)" }}>
+          {status}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 interface Position {
   ticker: string;
@@ -201,7 +281,7 @@ function WithdrawModal({
   solPrice: number;
   onClose: () => void;
 }) {
-  const { publicKey, signTransaction } = useSirenWallet();
+  const { publicKey, signTransaction, signMessage } = useSirenWallet();
   const { connection } = useConnection();
   const queryClient = useQueryClient();
   const showResultModal = useResultModalStore((s) => s.show);
@@ -210,6 +290,8 @@ function WithdrawModal({
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [sending, setSending] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const activeList = spendableAssets.length > 0 ? spendableAssets : assets;
@@ -240,6 +322,48 @@ function WithdrawModal({
     if (!selectedAsset) return;
     setAmount(formatPresetAmount(spendableBalance * fraction, selectedAsset.decimals));
   };
+
+  const handlePasteRecipient = useCallback(async () => {
+    try {
+      const pasted = await navigator.clipboard.readText();
+      if (!pasted.trim()) return;
+      const normalized = extractRecipientFromQrPayload(pasted) ?? pasted.trim();
+      setRecipient(normalized);
+    } catch {
+      showResultModal({
+        type: "error",
+        title: "Clipboard unavailable",
+        message: "Paste the recipient address manually on this device.",
+      });
+    }
+  }, [showResultModal]);
+
+  const handleScanRecipient = useCallback(async (file?: File | null) => {
+    if (!file) return;
+    setScanLoading(true);
+    try {
+      const QrScanner = (await import("qr-scanner")).default;
+      const decoded = await QrScanner.scanImage(file, {
+        alsoTryWithoutScanRegion: true,
+        returnDetailedScanResult: true,
+      });
+      const payload = typeof decoded === "string" ? decoded : decoded.data;
+      const normalized = extractRecipientFromQrPayload(payload);
+      if (!normalized) {
+        throw new Error("The QR code did not contain a valid Solana address.");
+      }
+      setRecipient(normalized);
+    } catch (err) {
+      showResultModal({
+        type: "error",
+        title: "QR scan failed",
+        message: err instanceof Error ? err.message : "We could not read a Solana address from that QR code.",
+      });
+    } finally {
+      setScanLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [showResultModal]);
 
   const handleSend = async () => {
     if (!publicKey || !signTransaction || !selectedAsset) return;
@@ -350,6 +474,43 @@ function WithdrawModal({
         message: `Sent ${formatPresetAmount(amountNum, selectedAsset.decimals)} ${selectedAsset.symbol} from your wallet.`,
         txSignature: sig,
       });
+      pushLocalTrade(publicKey.toBase58(), {
+        ts: Date.now(),
+        mint: selectedAsset.mint ?? selectedAsset.key,
+        side: "sell",
+        solAmount: selectedAsset.kind === "native" ? amountNum : 0,
+        tokenAmount: amountNum,
+        priceUsd: unitUsd ?? 0,
+        amountUsd: usdEst ?? undefined,
+        tokenName: selectedAsset.name,
+        tokenSymbol: selectedAsset.symbol,
+        txSignature: sig,
+        counterparty: toPubkey.toBase58(),
+        note: selectedAsset.kind === "native" ? "Native transfer" : "Token transfer",
+        activityKind: "send",
+        fromSymbol: selectedAsset.symbol,
+        toSymbol: selectedAsset.symbol,
+      });
+      const approxVolumeSol =
+        selectedAsset.kind === "native"
+          ? amountNum
+          : usdEst != null && solPrice > 0
+            ? usdEst / solPrice
+            : null;
+      if (approxVolumeSol != null && Number.isFinite(approxVolumeSol) && approxVolumeSol > 0) {
+        void (async () => {
+          try {
+            const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
+            await fetch(`${API_URL}/api/volume/log`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...authHeaders },
+              body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: approxVolumeSol }),
+            });
+          } catch {
+            /* ignore volume telemetry failures */
+          }
+        })();
+      }
       queryClient.invalidateQueries({ queryKey: ["portfolio-balances"] });
       queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
       queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
@@ -373,40 +534,47 @@ function WithdrawModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 md:items-center md:p-4"
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(10px)" }}
     >
       <div
-        className="w-full max-w-3xl rounded-[28px] border p-5 md:p-6"
-        style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-[30px] border bg-[var(--bg-surface)] md:max-h-[92vh] md:max-w-5xl md:rounded-[32px]"
+        style={{ borderColor: "var(--border-subtle)" }}
       >
-        <div className="flex flex-col gap-2 border-b pb-4 md:flex-row md:items-end md:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
-          <div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(event) => void handleScanRecipient(event.target.files?.[0])}
+        />
+
+        <div className="flex items-start justify-between gap-4 border-b px-4 py-4 md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="min-w-0">
             <p className="font-sub text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
               Send
             </p>
-            <h3 className="mt-1 font-heading text-2xl font-semibold" style={{ color: "var(--text-1)" }}>
+            <h3 className="mt-1 font-heading text-[1.85rem] font-semibold tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
               Move assets from this wallet
             </h3>
             <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Pick any funded wallet asset, paste a Solana recipient, then size it quickly with 25%, 50%, 75%, or Max.
+              Enter the amount, confirm what is available, see the live USD estimate, then paste or scan the recipient before sending.
             </p>
           </div>
-          <div
-            className="rounded-2xl border px-4 py-3"
-            style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)", color: "var(--text-2)" }}
+            aria-label="Close send modal"
           >
-            <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-              Network
-            </p>
-            <p className="mt-1 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Solana
-            </p>
-          </div>
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         {spendableAssets.length === 0 ? (
-          <div className="mt-6 rounded-2xl border px-5 py-8 text-center" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+          <div className="m-4 rounded-2xl border px-5 py-8 text-center md:m-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
             <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
               No transferable balance yet
             </p>
@@ -415,35 +583,36 @@ function WithdrawModal({
             </p>
           </div>
         ) : (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="space-y-4">
-              <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                      Asset
-                    </p>
-                    <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
-                      Choose what you want to send.
-                    </p>
+          <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_360px]">
+              <div className="space-y-4">
+                <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        Asset
+                      </p>
+                      <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                        Choose the balance you want to move out.
+                      </p>
+                    </div>
+                    <span className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+                      {spendableAssets.length} live
+                    </span>
                   </div>
-                  <span className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
-                    {spendableAssets.length} available
-                  </span>
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {spendableAssets.map((asset) => {
-                    const active = asset.key === selectedAssetKey;
-                    return (
-                      <button
-                        key={asset.key}
-                        type="button"
+                  <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-1">
+                    {spendableAssets.map((asset) => {
+                      const active = asset.key === selectedAssetKey;
+                      return (
+                        <button
+                          key={asset.key}
+                          type="button"
                         onClick={() => {
                           hapticLight();
                           setSelectedAssetKey(asset.key);
                           setAmount("");
                         }}
-                        className="rounded-2xl border p-3 text-left transition-all"
+                        className="min-w-[180px] snap-start rounded-[22px] border p-4 text-left transition-all"
                         style={{
                           borderColor: active ? "color-mix(in srgb, var(--accent) 44%, transparent)" : "var(--border-subtle)",
                           background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
@@ -464,12 +633,12 @@ function WithdrawModal({
                             )}
                           </div>
                           <div className="text-right">
-                            <p className="font-money text-sm font-semibold tabular-nums" style={{ color: active ? "var(--accent)" : "var(--text-1)" }}>
+                            <p className="font-money text-base font-semibold tabular-nums" style={{ color: active ? "var(--accent)" : "var(--text-1)" }}>
                               {fmtToken(asset.balance, asset.decimals === 9 ? 4 : 2)}
                             </p>
                             {asset.usdValue != null && (
                               <p className="mt-1 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
-                                ${fmtUsd(asset.usdValue)}
+                                {formatCompactUsd(asset.usdValue)}
                               </p>
                             )}
                           </div>
@@ -477,105 +646,181 @@ function WithdrawModal({
                       </button>
                     );
                   })}
+                  </div>
+                </div>
+
+                <div className="rounded-[26px] border p-4 md:p-5" style={amountPanelStyle}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        Amount
+                      </p>
+                      <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                        Available: {selectedAsset ? fmtToken(spendableBalance, selectedAsset.decimals === 9 ? 4 : 2) : "0"} {selectedAsset?.symbol ?? ""}
+                      </p>
+                    </div>
+                    {usdEst != null && (
+                      <span className="rounded-full border px-3 py-1 font-money text-xs tabular-nums" style={{ borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)", color: "var(--accent)" }}>
+                        {formatCompactUsd(usdEst)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-5 flex items-end gap-3">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      spellCheck={false}
+                      className="min-w-0 flex-1 bg-transparent font-money text-[clamp(2rem,8vw,3.75rem)] font-bold tabular-nums outline-none placeholder:text-[var(--text-3)]"
+                      style={{ color: "var(--text-1)" }}
+                    />
+                    <span className="mb-1 shrink-0 font-heading text-xl font-semibold" style={{ color: "var(--text-2)" }}>
+                      {selectedAsset?.symbol ?? "Asset"}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-4 gap-2">
+                    {[0.25, 0.5, 0.75, 1].map((fraction) => (
+                      <button
+                        key={fraction}
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          handlePreset(fraction);
+                        }}
+                        className="min-h-11 rounded-2xl border px-3 py-2 font-heading text-xs font-semibold transition-all"
+                        style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
+                      >
+                        {fraction === 1 ? "Max" : `${Math.round(fraction * 100)}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <label htmlFor="send-recipient" className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        Recipient
+                      </label>
+                      <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                        Paste a Solana wallet address or scan a QR code from another wallet.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handlePasteRecipient()}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-2xl border px-3 py-2 font-heading text-xs font-semibold"
+                        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                      >
+                        <Copy className="h-4 w-4" />
+                        Paste
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={scanLoading}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-2xl border px-3 py-2 font-heading text-xs font-semibold disabled:opacity-60"
+                        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                      >
+                        {scanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
+                        Scan QR
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    id="send-recipient"
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder="Paste wallet address"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="mt-4 min-h-14 w-full rounded-[20px] border px-4 py-3 font-label text-sm outline-none"
+                    style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                  />
                 </div>
               </div>
 
-              <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                <label className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                  Recipient
-                </label>
-                <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
-                  Paste a Solana wallet address.
-                </p>
-                <textarea
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="Paste wallet address"
-                  rows={3}
-                  className="mt-3 w-full rounded-2xl border px-4 py-3 font-label text-sm outline-none resize-none"
-                  style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="rounded-2xl border p-4" style={amountPanelStyle}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                      Amount
-                    </p>
-                    <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
-                      Available: {selectedAsset ? fmtToken(spendableBalance, selectedAsset.decimals === 9 ? 4 : 2) : "0"} {selectedAsset?.symbol ?? ""}
-                    </p>
-                  </div>
-                  {usdEst != null && (
-                    <span className="rounded-full border px-2.5 py-1 font-money text-xs tabular-nums" style={{ borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)", color: "var(--accent)" }}>
-                      ≈ ${fmtUsd(usdEst)}
+              <div className="space-y-4">
+                <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        Send preview
+                      </p>
+                      <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                        A quick read before you sign.
+                      </p>
+                    </div>
+                    <span
+                      className="rounded-full border px-3 py-1.5 font-heading text-[10px] uppercase tracking-[0.14em]"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-3)" }}
+                    >
+                      Solana mainnet
                     </span>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                        Asset
+                      </p>
+                      <p className="mt-1 font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                        {selectedAsset?.name ?? "Asset"}
+                      </p>
+                      <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                        {selectedAsset?.symbol} · {selectedAsset?.hint || "Transfer on Solana"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                        Recipient
+                      </p>
+                      <p className="mt-1 font-label text-sm" style={{ color: "var(--text-1)" }}>
+                        {recipient.trim() ? formatAddressShort(recipient.trim(), 6) : "Not set yet"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                        Network + fee note
+                      </p>
+                      <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {selectedAsset?.kind === "native"
+                          ? `SOL transfers keep ${SOL_TRANSFER_RESERVE_SOL.toFixed(3)} SOL back for network fees.`
+                          : `SPL transfers still need a little SOL for fees and may create the recipient's token account on first receive.`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                    Transfer note
+                  </p>
+                  <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    Siren shows the live balance you can safely move right now. For SOL, the app keeps a fee buffer so you do not strand the wallet.
+                  </p>
+                  {selectedAsset?.hint && (
+                    <p className="mt-3 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                      {selectedAsset.hint}
+                    </p>
                   )}
                 </div>
-
-                <div className="mt-4 flex items-end justify-between gap-3">
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0.00"
-                    min={0}
-                    step="any"
-                    className="min-w-0 flex-1 bg-transparent font-money text-4xl font-bold tabular-nums outline-none placeholder:text-[var(--text-3)]"
-                    style={{ color: "var(--text-1)" }}
-                  />
-                  <span className="shrink-0 font-heading text-lg font-semibold" style={{ color: "var(--text-2)" }}>
-                    {selectedAsset?.symbol ?? "Asset"}
-                  </span>
-                </div>
-
-                <div className="mt-5 grid grid-cols-4 gap-2">
-                  {[0.25, 0.5, 0.75, 1].map((fraction) => (
-                    <button
-                      key={fraction}
-                      type="button"
-                      onClick={() => {
-                        hapticLight();
-                        handlePreset(fraction);
-                      }}
-                      className="rounded-xl border px-3 py-2 font-heading text-xs font-semibold transition-all"
-                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
-                    >
-                      {fraction === 1 ? "Max" : `${Math.round(fraction * 100)}%`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                  Transfer note
-                </p>
-                <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                  {selectedAsset?.kind === "native"
-                    ? `SOL transfers keep ${SOL_TRANSFER_RESERVE_SOL.toFixed(3)} SOL back for network fees.`
-                    : `SPL transfers still need a little SOL for fees and may create the recipient's token account on first receive.`}
-                </p>
-                {selectedAsset?.hint && (
-                  <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    {selectedAsset.hint}
-                  </p>
-                )}
               </div>
             </div>
           </div>
         )}
 
-        <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="flex flex-col gap-3 border-t px-4 py-4 sm:flex-row md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
           <button
             type="button"
             onClick={handleSend}
             disabled={sending || spendableAssets.length === 0 || !selectedAsset}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 font-heading text-sm font-semibold disabled:opacity-50"
+            className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 font-heading text-sm font-semibold disabled:opacity-50"
             style={{ background: "var(--accent)", color: "var(--bg-base)" }}
           >
             {sending && <Loader2 className="h-4 w-4 animate-spin" />} Send {selectedAsset?.symbol ?? "asset"}
@@ -583,7 +828,7 @@ function WithdrawModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl border px-5 py-3.5 font-body text-sm"
+            className="min-h-12 rounded-2xl border px-5 py-3.5 font-body text-sm"
             style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
           >
             Cancel
@@ -613,12 +858,34 @@ function DepositModal({
 }) {
   const defaultReceiveKey = assets.find((asset) => asset.symbol === "USDC")?.key ?? assets[0]?.key ?? "USDC";
   const [selectedAssetKey, setSelectedAssetKey] = useState(defaultReceiveKey);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!assets.some((asset) => asset.key === selectedAssetKey)) {
       setSelectedAssetKey(defaultReceiveKey);
     }
   }, [assets, defaultReceiveKey, selectedAssetKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void toDataURL(buildReceiveQrValue(walletKey), {
+      margin: 1,
+      width: 320,
+      color: {
+        dark: "#11131a",
+        light: "#f7f3e7",
+      },
+    })
+      .then((value: string) => {
+        if (!cancelled) setQrDataUrl(value);
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [walletKey]);
 
   const selectedAsset = useMemo(
     () => assets.find((asset) => asset.key === selectedAssetKey) ?? assets[0] ?? null,
@@ -627,163 +894,188 @@ function DepositModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 md:items-center md:p-4"
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(10px)" }}
     >
       <div
-        className="w-full max-w-3xl rounded-[28px] border p-5 md:p-6"
-        style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-[30px] border bg-[var(--bg-surface)] md:max-h-[92vh] md:max-w-5xl md:rounded-[32px]"
+        style={{ borderColor: "var(--border-subtle)" }}
       >
-        <div className="flex flex-col gap-2 border-b pb-4 md:flex-row md:items-end md:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
-          <div>
+        <div className="flex items-start justify-between gap-4 border-b px-4 py-4 md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="min-w-0">
             <p className="font-sub text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
               Receive
             </p>
-            <h3 className="mt-1 font-heading text-2xl font-semibold" style={{ color: "var(--text-1)" }}>
+            <h3 className="mt-1 font-heading text-[1.85rem] font-semibold tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
               Top up this trading wallet
             </h3>
             <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Buy USDC with card, or copy the wallet address and receive the exact Solana asset you want.
+              Buy USDC with card, or share this wallet address and QR code so someone can send the exact Solana asset you want.
             </p>
           </div>
-          <div
-            className="rounded-2xl border px-4 py-3"
-            style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
-          >
-            <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-              Wallet rail
-            </p>
-            <p className="mt-1 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Solana mainnet
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="space-y-4">
-            <button
-              type="button"
-              onClick={onFund}
-              disabled={loading}
-              className="w-full rounded-[24px] border p-5 text-left transition-colors disabled:opacity-50"
-              style={{
-                borderColor: "color-mix(in srgb, var(--accent) 38%, transparent)",
-                background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 11%, var(--bg-surface)), var(--bg-base))",
-              }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-                    Buy USDC with card
-                  </p>
-                  <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                    Apple Pay may appear when supported by Privy. This is still the fastest way to fund the trading wallet.
-                  </p>
-                </div>
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--accent)" }} /> : <CreditCard className="h-5 w-5" style={{ color: "var(--accent)" }} />}
-              </div>
-            </button>
-
-            <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Asset to receive
-              </p>
-              <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
-                Same wallet address, different Solana assets.
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {assets.map((asset) => {
-                  const active = asset.key === selectedAssetKey;
-                  return (
-                    <button
-                      key={asset.key}
-                      type="button"
-                      onClick={() => {
-                        hapticLight();
-                        setSelectedAssetKey(asset.key);
-                      }}
-                      className="rounded-2xl border p-3 text-left transition-all"
-                      style={{
-                        borderColor: active ? "color-mix(in srgb, var(--accent) 44%, transparent)" : "var(--border-subtle)",
-                        background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
-                      }}
-                    >
-                      <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                        {asset.symbol}
-                      </p>
-                      <p className="mt-1 truncate font-body text-xs" style={{ color: "var(--text-2)" }}>
-                        {asset.name}
-                      </p>
-                      {asset.hint && (
-                        <p className="mt-1 truncate font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
-                          {asset.hint}
-                        </p>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div
-              className="rounded-[24px] border p-5"
-              style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--bg-base)), var(--bg-base))", borderColor: "color-mix(in srgb, var(--accent) 20%, var(--border-subtle))" }}
-            >
-              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Receive {selectedAsset?.symbol ?? "asset"}
-              </p>
-              <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                {selectedAsset?.kind === "native"
-                  ? "Send native SOL on Solana to this wallet address."
-                  : `Send ${selectedAsset?.symbol} on Solana to this same wallet address.`}
-              </p>
-              {selectedAsset?.hint && (
-                <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-                  {selectedAsset.hint}
-                </p>
-              )}
-
-              <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                      Wallet address
-                    </p>
-                    <code className="mt-2 block select-all break-all font-label text-xs leading-relaxed" style={{ color: "var(--text-1)" }}>
-                      {walletKey}
-                    </code>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onCopyAddress}
-                    className="shrink-0 rounded-xl border p-2.5 transition-colors hover:bg-[var(--bg-elevated)]"
-                    style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
-                    aria-label="Copy wallet address"
-                  >
-                    {addressCopied ? <Check className="h-4 w-4" style={{ color: "var(--up)" }} /> : <Copy className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Funding hint
-              </p>
-              <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                Use this address for SOL, USDC, USDT, or open outcome tokens on Solana. The address stays the same across the selected assets above.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row" style={{ borderColor: "var(--border-subtle)" }}>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl border px-5 py-3.5 font-body text-sm"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)", color: "var(--text-2)" }}
+            aria-label="Close receive modal"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_360px]">
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={onFund}
+                disabled={loading}
+                className="w-full rounded-[26px] border p-5 text-left transition-colors disabled:opacity-50"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--accent) 38%, transparent)",
+                  background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 11%, var(--bg-surface)), var(--bg-base))",
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                      Buy USDC with card
+                    </p>
+                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      Apple Pay may appear when supported by Privy. This is still the fastest way to fund the trading wallet from inside Siren.
+                    </p>
+                  </div>
+                  {loading ? <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--accent)" }} /> : <CreditCard className="h-5 w-5" style={{ color: "var(--accent)" }} />}
+                </div>
+              </button>
+
+              <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                      Asset to receive
+                    </p>
+                    <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                      One Solana wallet address, multiple supported assets.
+                    </p>
+                  </div>
+                  <span
+                    className="rounded-full border px-3 py-1.5 font-heading text-[10px] uppercase tracking-[0.14em]"
+                    style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-3)" }}
+                  >
+                    Solana mainnet
+                  </span>
+                </div>
+                <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-1">
+                  {assets.map((asset) => {
+                    const active = asset.key === selectedAssetKey;
+                    return (
+                      <button
+                        key={asset.key}
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          setSelectedAssetKey(asset.key);
+                        }}
+                        className="min-w-[180px] snap-start rounded-[22px] border p-4 text-left transition-all"
+                        style={{
+                          borderColor: active ? "color-mix(in srgb, var(--accent) 44%, transparent)" : "var(--border-subtle)",
+                          background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
+                        }}
+                      >
+                        <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                          {asset.symbol}
+                        </p>
+                        <p className="mt-1 truncate font-body text-xs" style={{ color: "var(--text-2)" }}>
+                          {asset.name}
+                        </p>
+                        {asset.hint && (
+                          <p className="mt-1 truncate font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                            {asset.hint}
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div
+                className="rounded-[26px] border p-4 md:p-5"
+                style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--bg-base)), var(--bg-base))", borderColor: "color-mix(in srgb, var(--accent) 20%, var(--border-subtle))" }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                      Receive {selectedAsset?.symbol ?? "asset"}
+                    </p>
+                    <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      {selectedAsset?.kind === "native"
+                        ? "Send native SOL on Solana to this wallet address."
+                        : `Send ${selectedAsset?.symbol} on Solana to this same wallet address.`}
+                    </p>
+                  </div>
+                  <QrCode className="h-5 w-5" style={{ color: "var(--accent)" }} />
+                </div>
+
+                <div className="mt-4 flex items-center justify-center rounded-[24px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                  {qrDataUrl ? (
+                    <img src={qrDataUrl} alt={`QR code for ${walletKey}`} className="h-52 w-52 rounded-[20px]" />
+                  ) : (
+                    <div className="flex h-52 w-52 items-center justify-center rounded-[20px] border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                      <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                        Wallet address
+                      </p>
+                      <code className="mt-2 block select-all break-all font-label text-xs leading-relaxed" style={{ color: "var(--text-1)" }}>
+                        {walletKey}
+                      </code>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onCopyAddress}
+                      className="shrink-0 rounded-xl border p-2.5 transition-colors hover:bg-[var(--bg-elevated)]"
+                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+                      aria-label="Copy wallet address"
+                    >
+                      {addressCopied ? <Check className="h-4 w-4" style={{ color: "var(--up)" }} /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                  Funding hint
+                </p>
+                <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  Use this address for SOL, USDC, USDT, or open outcome tokens on Solana. The address stays the same even when you switch the selected asset above.
+                </p>
+                {selectedAsset?.hint && (
+                  <p className="mt-3 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    {selectedAsset.hint}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t px-4 py-4 sm:flex-row md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-12 rounded-2xl border px-5 py-3.5 font-body text-sm"
             style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
           >
             Close
@@ -808,18 +1100,84 @@ function symbolForMint(mint: string): string {
   return MINT_SYMBOL[mint] ?? `${mint.slice(0, 4)}…`;
 }
 
-function formatActivitySummary(row: LocalTradeLedgerRow): string {
-  const sym = symbolForMint(row.mint);
-  if (row.side === "sell") {
-    return `Sold · ${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${sym}`;
+function buildLocalActivityItem(row: LocalTradeLedgerRow): PortfolioActivityItem {
+  const symbol = row.tokenSymbol?.trim() || symbolForMint(row.mint);
+  const label = row.tokenName?.trim() || symbol;
+  const amountUsd = row.amountUsd ?? row.stakeUsd ?? (row.priceUsd > 0 && row.tokenAmount > 0 ? row.priceUsd * row.tokenAmount : null);
+
+  if (row.activityKind === "send") {
+    return {
+      id: row.txSignature || `${row.ts}-${row.mint}-send`,
+      ts: row.ts,
+      kind: "send",
+      title: `Sent ${symbol}`,
+      detail: row.counterparty ? `To ${formatAddressShort(row.counterparty, 6)}` : row.note || "Outgoing transfer",
+      amountLabel: `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`,
+      tone: "down",
+    };
   }
-  if (row.stakeUsd != null && row.stakeUsd > 0) {
-    return `Prediction · $${fmtUsd(row.stakeUsd)} → ~${fmtToken(row.tokenAmount, 2)} shares (${sym})`;
+
+  if (row.activityKind === "close" || row.side === "sell") {
+    return {
+      id: row.txSignature || `${row.ts}-${row.mint}-close`,
+      ts: row.ts,
+      kind: "close",
+      title: "Closed position",
+      detail: label,
+      amountLabel: amountUsd != null ? formatCompactUsd(amountUsd) : `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} shares`,
+      tone: amountUsd != null && amountUsd > 0 ? "up" : "neutral",
+    };
   }
-  if (row.solAmount > 0) {
-    return `Swapped · ${fmtToken(row.solAmount, 4)} SOL → ~${fmtToken(row.tokenAmount, 2)} ${sym}`;
+
+  if (row.activityKind === "swap") {
+    return {
+      id: row.txSignature || `${row.ts}-${row.mint}-swap`,
+      ts: row.ts,
+      kind: "swap",
+      title: `Swapped ${row.fromSymbol || "asset"} to ${row.toSymbol || symbol}`,
+      detail: row.note || `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol} received`,
+      amountLabel: amountUsd != null ? formatCompactUsd(amountUsd) : null,
+      tone: "neutral",
+    };
   }
-  return `Bought · ~${fmtToken(row.tokenAmount, 4)} ${sym}`;
+
+  return {
+    id: row.txSignature || `${row.ts}-${row.mint}-prediction`,
+    ts: row.ts,
+    kind: "prediction",
+    title: row.activityKind === "prediction" ? "Opened prediction position" : `Bought ${symbol}`,
+    detail: label,
+    amountLabel:
+      row.stakeUsd != null && row.stakeUsd > 0
+        ? `${formatCompactUsd(row.stakeUsd)} for ~${fmtToken(row.tokenAmount, 2)} shares`
+        : `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`,
+    tone: "up",
+  };
+}
+
+function buildWalletFlowActivityItem(
+  item: GoldRushWalletIntelligence["activity"][number],
+): PortfolioActivityItem {
+  const parsedTs = item.timestamp ? Date.parse(item.timestamp) : Number.NaN;
+  const tone = item.direction === "in" ? "up" : item.direction === "out" ? "down" : "neutral";
+  const title =
+    item.direction === "in"
+      ? "Received funds"
+      : item.direction === "out"
+        ? "Sent funds"
+        : item.direction === "self"
+          ? "Moved funds"
+          : "Wallet movement";
+
+  return {
+    id: item.txHash,
+    ts: Number.isFinite(parsedTs) ? parsedTs : Date.now(),
+    kind: item.direction === "in" ? "receive" : "send",
+    title,
+    detail: item.explorerUrl ? `Tracked on-chain via Covalent · ${formatAddressShort(item.txHash, 6)}` : "Tracked on-chain via Covalent",
+    amountLabel: item.prettyValueUsd || formatCompactUsd(item.valueUsd),
+    tone,
+  };
 }
 
 function formatActivityTime(ts: number): string {
@@ -940,6 +1298,14 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
         solAmount: fromToken.symbol === "SOL" ? amtNum : 0,
         tokenAmount: outUi,
         priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : 0,
+        amountUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? amtNum : undefined,
+        tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
+        tokenSymbol: toToken.symbol,
+        fromSymbol: fromToken.symbol,
+        toSymbol: toToken.symbol,
+        note: `${fmtToken(amtNum, 4)} ${fromToken.symbol} routed into ${toToken.symbol}`,
+        activityKind: "swap",
+        txSignature: typeof result.signature === "string" ? result.signature : `swap-${Date.now()}`,
       });
       void (async () => {
         try {
@@ -1495,7 +1861,7 @@ export default function PortfolioPage() {
 
   const walletKey = publicKey?.toBase58() ?? null;
 
-  const localActivity = useMemo(() => {
+  const localTradeRows = useMemo(() => {
     if (!walletKey) return [];
     return [...readLocalTrades(walletKey)].sort((a, b) => b.ts - a.ts).slice(0, 40);
   }, [walletKey, activityEpoch]);
@@ -1603,6 +1969,23 @@ export default function PortfolioPage() {
   const totalUsd = solUsd + usdc + usdt;
   const { data: goldRushIntelligence, isLoading: goldRushLoading } = useGoldRushWalletIntelligence(walletKey, signMessage);
   const { data: torqueReadiness } = useTorqueRelayReadiness();
+  const portfolioActivity = useMemo(() => {
+    const localItems = localTradeRows.map(buildLocalActivityItem);
+    const walletFlowItems = (goldRushIntelligence?.activity ?? [])
+      .filter((item) => item.direction === "in" || item.direction === "out")
+      .map(buildWalletFlowActivityItem);
+    const combined = [...localItems, ...walletFlowItems].sort((left, right) => right.ts - left.ts);
+    const deduped: PortfolioActivityItem[] = [];
+    const seen = new Set<string>();
+    for (const item of combined) {
+      const key = item.id || `${item.kind}-${item.ts}-${item.title}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(item);
+      if (deduped.length >= 40) break;
+    }
+    return deduped;
+  }, [goldRushIntelligence?.activity, localTradeRows]);
 
   // ── Positions ─────────────────────────────────────────────────
 
@@ -2069,19 +2452,17 @@ export default function PortfolioPage() {
 
         {connected && (
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <div className="flex items-center justify-between gap-3">
+            <div className="rounded-[26px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
                     Wallet readiness
                   </p>
                   <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Live GoldRush context that affects how aggressively Siren should route your next trade.
+                    Covalent GoldRush is powering the wallet-health read Siren uses before routing size or warning about thin reserves.
                   </p>
                 </div>
-                <span className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
-                  Covalent
-                </span>
+                <ProviderBadge src={COVALENT_LOGO_URL} alt="Covalent GoldRush" eyebrow="Powered by" status="Covalent GoldRush" />
               </div>
               {goldRushLoading ? (
                 <div className="mt-4 flex items-center gap-2" style={{ color: "var(--text-3)" }}>
@@ -2090,33 +2471,62 @@ export default function PortfolioPage() {
                 </div>
               ) : goldRushIntelligence ? (
                 <>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Visible</p>
-                      <p className="mt-1 font-money text-lg font-semibold" style={{ color: "var(--text-1)" }}>
-                        ${fmtUsd(goldRushIntelligence.summary.totalQuotedUsd)}
+                      <p className="mt-2 font-money text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
+                        {formatCompactUsd(goldRushIntelligence.summary.totalQuotedUsd)}
                       </p>
                     </div>
-                    <div className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Risk</p>
-                      <p className="mt-1 font-heading text-lg font-semibold" style={{ color: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : "var(--accent)" }}>
+                      <p className="mt-2 font-heading text-xl font-semibold" style={{ color: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : "var(--accent)" }}>
                         {goldRushIntelligence.summary.riskScore}/100
                       </p>
                     </div>
+                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Inbound</p>
+                      <p className="mt-2 font-money text-xl font-semibold tabular-nums" style={{ color: "var(--up)" }}>
+                        {formatCompactUsd(goldRushIntelligence.summary.inboundUsd)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Outbound</p>
+                      <p className="mt-2 font-money text-xl font-semibold tabular-nums" style={{ color: "var(--down)" }}>
+                        {formatCompactUsd(goldRushIntelligence.summary.outboundUsd)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="mt-3 space-y-2">
-                    {(goldRushIntelligence.alerts.slice(0, 2) || []).map((alert) => (
-                      <div key={alert.label} className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-body text-xs font-medium" style={{ color: "var(--text-1)" }}>{alert.label}</p>
-                          <span className="font-heading text-[10px] uppercase tracking-[0.14em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "#fbbf24" : "var(--accent)" }}>
-                            {alert.level}
-                          </span>
+                  <div className="mt-4 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+                    <div className="space-y-3">
+                      {(goldRushIntelligence.alerts.slice(0, 2) || []).map((alert) => (
+                        <div key={alert.label} className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-body text-sm font-medium" style={{ color: "var(--text-1)" }}>{alert.label}</p>
+                            <span className="font-heading text-[10px] uppercase tracking-[0.14em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "#fbbf24" : "var(--accent)" }}>
+                              {alert.level}
+                            </span>
+                          </div>
+                          <p className="mt-1 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>{alert.summary}</p>
                         </div>
-                        <p className="mt-1 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>{alert.summary}</p>
-                      </div>
-                    ))}
-                    <p className="font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                      ))}
+                    </div>
+                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                      <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                        What it powers in Siren
+                      </p>
+                      <ul className="mt-3 space-y-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        <li>Reserve checks before execution starts.</li>
+                        <li>Inbound and outbound flow context for wallet readiness.</li>
+                        <li>Recent wallet activity that now appears in your activity feed.</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                      Siren read
+                    </p>
+                    <p className="mt-2 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
                       {goldRushIntelligence.narrative.readiness}
                     </p>
                   </div>
@@ -2128,31 +2538,83 @@ export default function PortfolioPage() {
               )}
             </div>
 
-            <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-              <div className="flex items-center justify-between gap-3">
+            <div className="rounded-[26px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
                     Reward layer
                   </p>
                   <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Torque is now wired so Siren can turn real execution outcomes into nudges and rewards.
+                    Torque is the relay Siren uses to turn execution events into campaigns, nudges, and trader-reward logic.
                   </p>
                 </div>
-                <span className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]" style={{ borderColor: "var(--border-subtle)", color: torqueReadiness?.configured ? "var(--accent)" : "var(--text-3)" }}>
-                  {torqueReadiness?.configured ? "Relay live" : "Pending"}
-                </span>
+                <ProviderBadge
+                  src={TORQUE_LOGO_URL}
+                  alt="Torque"
+                  eyebrow="Powered by"
+                  status={torqueReadiness?.configured ? "Torque relay live" : "Torque pending"}
+                />
               </div>
-              <div className="mt-4 space-y-2">
-                {[
-                  "Clean-close rewards for traders who exit without repeated failed attempts.",
-                  "Resolve-before-expiry nudges when liquidity windows start to thin.",
-                  "An execution-quality leaderboard based on outcomes, not just size.",
-                ].map((line) => (
-                  <div key={line} className="rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>{line}</p>
+              <div className="mt-4 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+                <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                    What Torque is doing
+                  </p>
+                  <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    {torqueReadiness?.summary || "Siren is preparing execution events for Torque-based campaigns and relay actions."}
+                  </p>
+                  {!!torqueReadiness?.eventNames?.length && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {torqueReadiness.eventNames.slice(0, 4).map((eventName) => (
+                        <span
+                          key={eventName}
+                          className="rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                          style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}
+                        >
+                          {eventName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                    What it powers in Siren
+                  </p>
+                  <ul className="mt-3 space-y-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    <li>Clean-close rewards after successful exits.</li>
+                    <li>Resolve-before-expiry nudges when timing risk rises.</li>
+                    <li>Execution-quality ranking logic beyond raw trade size.</li>
+                  </ul>
+                </div>
+              </div>
+              {(torqueReadiness?.frictionLog?.length || torqueReadiness?.suggestedCampaigns?.length) && (
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                      Relay watchpoints
+                    </p>
+                    <ul className="mt-3 space-y-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      {(torqueReadiness?.frictionLog?.slice(0, 3) || ["No relay friction logged right now."]).map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
                   </div>
-                ))}
-              </div>
+                  <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                      Suggested campaigns
+                    </p>
+                    <ul className="mt-3 space-y-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      {(torqueReadiness?.suggestedCampaigns?.slice(0, 3) || []).map((campaign) => (
+                        <li key={campaign.name}>
+                          <span className="font-heading text-[11px]" style={{ color: "var(--text-1)" }}>{campaign.name}</span>
+                          <span>{` · ${campaign.objective}`}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2178,40 +2640,57 @@ export default function PortfolioPage() {
           )}
         </div>
 
-        {/* ── Recent activity (on-device) ───────────────────── */}
+        {/* ── Recent activity ──────────────────────────────── */}
         {connected && walletKey && (
           <div
-            className="mt-4 rounded-xl border p-5"
+            className="mt-4 rounded-[26px] border p-5"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
-            <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Recent activity
-            </h2>
-            <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Your recent swaps and market trades. Saved on this device only.
-            </p>
-            {localActivity.length === 0 ? (
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                  Recent activity
+                </h2>
+                <p className="mt-2 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  Trades, closes, sends, swaps, and wallet inflows or outflows that Siren can currently observe.
+                </p>
+              </div>
+              <ProviderBadge src={COVALENT_LOGO_URL} alt="Covalent GoldRush" eyebrow="Flow tracking" status="On-chain activity live" />
+            </div>
+            {portfolioActivity.length === 0 ? (
               <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
                 Nothing here yet. Make a trade to get started.
               </p>
             ) : (
               <ul className="mt-5 space-y-3">
-                {localActivity.map((row, idx) => (
+                {portfolioActivity.map((item) => (
                   <li
-                    key={`${row.ts}-${row.mint}-${idx}`}
-                    className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
+                    key={item.id}
+                    className="flex items-start justify-between gap-4 rounded-[22px] border px-4 py-3.5"
                     style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
                   >
-                    <p className="font-body text-sm leading-snug min-w-0" style={{ color: "var(--text-1)" }}>
-                      {formatActivitySummary(row)}
-                    </p>
-                    <time
-                      className="font-sub text-[11px] shrink-0 tabular-nums pt-0.5"
-                      style={{ color: "var(--text-3)" }}
-                      dateTime={new Date(row.ts).toISOString()}
-                    >
-                      {formatActivityTime(row.ts)}
-                    </time>
+                    <div className="min-w-0">
+                      <p className="font-body text-sm font-medium leading-snug" style={{ color: getActivityToneColor(item.tone) }}>
+                        {item.title}
+                      </p>
+                      <p className="mt-1 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                        {item.detail}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {item.amountLabel && (
+                        <p className="font-money text-sm font-semibold tabular-nums" style={{ color: getActivityToneColor(item.tone) }}>
+                          {item.amountLabel}
+                        </p>
+                      )}
+                      <time
+                        className="mt-1 block font-sub text-[11px] tabular-nums"
+                        style={{ color: "var(--text-3)" }}
+                        dateTime={new Date(item.ts).toISOString()}
+                      >
+                        {formatActivityTime(item.ts)}
+                      </time>
+                    </div>
                   </li>
                 ))}
               </ul>

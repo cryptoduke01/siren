@@ -13,7 +13,13 @@ export interface LocalTradeLedgerRow {
   stakeUsd?: number;
   tokenName?: string;
   tokenSymbol?: string;
-  activityKind?: "prediction" | "swap" | "token";
+  txSignature?: string;
+  amountUsd?: number;
+  fromSymbol?: string;
+  toSymbol?: string;
+  counterparty?: string;
+  note?: string;
+  activityKind?: "prediction" | "swap" | "token" | "send" | "receive" | "close";
 }
 
 const MAX_ROWS = 500;
@@ -48,7 +54,8 @@ export function readLocalTrades(wallet: string): LocalTradeLedgerRow[] {
         r &&
         typeof r === "object" &&
         typeof (r as LocalTradeLedgerRow).ts === "number" &&
-        typeof (r as LocalTradeLedgerRow).mint === "string",
+        typeof (r as LocalTradeLedgerRow).mint === "string" &&
+        typeof (r as LocalTradeLedgerRow).side === "string",
     ) as LocalTradeLedgerRow[];
   } catch {
     return [];
@@ -61,12 +68,15 @@ export function pushLocalTrade(wallet: string, row: LocalTradeLedgerRow): void {
   prev.push(row);
   const next = prev.length > MAX_ROWS ? prev.slice(prev.length - MAX_ROWS) : prev;
   window.localStorage.setItem(keyForWallet(wallet), JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent("siren-activity-logged"));
 }
 
 export function buildLocalPositionStatsMap(wallet: string): Map<string, LocalPositionStat> {
   const rows = readLocalTrades(wallet)
     .filter((row) => {
       return (
+        row.activityKind !== "send" &&
+        row.activityKind !== "receive" &&
         typeof row.mint === "string" &&
         row.mint.trim().length > 0 &&
         (row.side === "buy" || row.side === "sell") &&

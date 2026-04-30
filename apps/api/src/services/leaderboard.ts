@@ -454,19 +454,28 @@ export async function enrichUsersWithProfiles(
   const wallets = [...new Set(entries.map((e) => walletKey(e.id)))];
   if (wallets.length === 0) return entries;
 
-  const { data, error } = await client.from("users").select("wallet,username,avatar_url").in("wallet", wallets);
+  const { data, error } = await client.from("users").select("wallet,username,display_name,avatar_url").in("wallet", wallets);
   if (error || !data?.length) return entries;
 
-  const map = new Map<string, { username: string | null; avatar_url: string | null }>();
-  for (const row of data as { wallet: string; username: string | null; avatar_url: string | null }[]) {
-    map.set(walletKey(row.wallet), { username: row.username, avatar_url: row.avatar_url });
+  const map = new Map<string, { username: string | null; display_name: string | null; avatar_url: string | null }>();
+  for (const row of data as { wallet: string; username: string | null; display_name: string | null; avatar_url: string | null }[]) {
+    map.set(walletKey(row.wallet), {
+      username: row.username,
+      display_name: row.display_name,
+      avatar_url: row.avatar_url,
+    });
   }
 
   return entries.map((e) => {
     const prof = map.get(walletKey(e.id));
     if (!prof) return e;
     const next = { ...e, avatarUrl: prof.avatar_url ?? null };
-    if (prof.username) {
+    if (prof.display_name?.trim()) {
+      next.label = prof.display_name.trim();
+      if (prof.username?.trim()) {
+        next.subtitle = prof.username.startsWith("@") ? prof.username : `@${prof.username}`;
+      }
+    } else if (prof.username?.trim()) {
       next.label = prof.username.startsWith("@") ? prof.username : `@${prof.username}`;
     }
     return next;

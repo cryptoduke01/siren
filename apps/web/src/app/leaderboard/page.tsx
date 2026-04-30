@@ -42,13 +42,13 @@ function PodiumCard({
 }) {
   const border =
     place === 1 ? "#d4a20d" : place === 2 ? "#9ca3af" : "#b45309";
-  const scale = place === 1 ? "scale-105" : "scale-100";
-  const order = place === 1 ? "order-2" : place === 2 ? "order-1" : "order-3";
+  const glow =
+    place === 1 ? "0 24px 60px rgba(212,162,13,0.14)" : place === 2 ? "0 18px 42px rgba(156,163,175,0.10)" : "0 18px 42px rgba(180,83,9,0.10)";
 
   if (!entry) {
     return (
       <div
-        className={`flex-1 min-w-[100px] max-w-[140px] rounded-xl border border-dashed p-4 ${order} ${scale}`}
+        className="rounded-[28px] border border-dashed p-5"
         style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
       />
     );
@@ -74,36 +74,66 @@ function PodiumCard({
       : entry.winRate != null
         ? `${entry.winRate.toFixed(0)}% win rate`
         : "Win rate —";
-  const sub = `${subSecondary} · ${entry.attemptCount ?? entry.tradeCount} attempts`;
 
   return (
     <div
-      className={`flex-1 min-w-[100px] max-w-[160px] rounded-xl border-2 p-4 flex flex-col items-center text-center ${order} ${scale} transition-transform`}
-      style={{ borderColor: border, background: "var(--bg-surface)" }}
+      className="rounded-[30px] border p-5 text-left transition-transform"
+      style={{
+        borderColor: border,
+        background:
+          place === 1
+            ? "linear-gradient(180deg, color-mix(in srgb, #d4a20d 12%, var(--bg-surface)), var(--bg-surface))"
+            : "linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, var(--bg-surface)), var(--bg-surface))",
+        boxShadow: glow,
+      }}
     >
-      {entry.avatarUrl ? (
-        <img
-          src={entry.avatarUrl}
-          alt=""
-          className="h-14 w-14 rounded-full object-cover mb-2"
-          style={{ boxShadow: `0 0 0 2px ${border}` }}
-        />
-      ) : (
-        <div
-          className="h-14 w-14 rounded-full mb-2 flex items-center justify-center font-heading text-lg font-bold"
-          style={{ background: "var(--bg-elevated)", boxShadow: `0 0 0 2px ${border}`, color: "var(--text-2)" }}
-        >
-          {entry.label.slice(0, 2).toUpperCase()}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          {entry.avatarUrl ? (
+            <img
+              src={entry.avatarUrl}
+              alt=""
+              className="h-14 w-14 rounded-full object-cover shrink-0"
+              style={{ boxShadow: `0 0 0 2px ${border}` }}
+            />
+          ) : (
+            <div
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full font-heading text-lg font-bold"
+              style={{ background: "var(--bg-elevated)", boxShadow: `0 0 0 2px ${border}`, color: "var(--text-2)" }}
+            >
+              {entry.label.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+              Rank #{entry.rank}
+            </p>
+            <p className="mt-1 truncate font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+              {entry.label}
+            </p>
+            {entry.subtitle && (
+              <p className="mt-1 truncate font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                {entry.subtitle}
+              </p>
+            )}
+          </div>
         </div>
-      )}
-      <p className="font-heading text-xs font-semibold truncate w-full" style={{ color: "var(--text-1)" }}>
-        {entry.label}
-      </p>
-      <p className="font-money text-lg font-bold mt-1 tabular-nums" style={{ color: "var(--accent)" }}>
+        <div
+          className="inline-flex h-9 min-w-9 items-center justify-center rounded-full border px-3 font-heading text-sm font-semibold"
+          style={{ borderColor: border, color: border }}
+        >
+          {place}
+        </div>
+      </div>
+
+      <p className="mt-6 font-money text-[2rem] font-bold tabular-nums leading-none" style={{ color: place === 1 ? "#d4a20d" : "var(--accent)" }}>
         {main}
       </p>
-      <p className="font-sub text-[10px] mt-0.5" style={{ color: "var(--text-3)" }}>
-        {sub}
+      <p className="mt-2 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+        {subSecondary}
+      </p>
+      <p className="mt-3 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+        {entry.attemptCount ?? entry.tradeCount} attempts · {entry.tradeCount} trades
       </p>
     </div>
   );
@@ -152,7 +182,7 @@ export default function LeaderboardPage() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-16 pt-4 md:pt-6">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-4 md:px-6 md:pt-6">
         <Link
           href="/terminal"
           className="inline-flex items-center gap-1.5 font-sub text-xs mb-5"
@@ -164,93 +194,77 @@ export default function LeaderboardPage() {
 
         <div className="flex items-center gap-2 mb-1">
           <Trophy className="h-6 w-6" style={{ color: "#d4a20d" }} />
-          <h1 className="font-heading text-xl font-bold tracking-tight" style={{ color: "var(--text-1)" }}>
+          <h1 className="font-heading text-2xl font-bold tracking-tight md:text-3xl" style={{ color: "var(--text-1)" }}>
             Leaderboard
           </h1>
         </div>
-        <p className="font-sub text-sm mb-6 leading-relaxed" style={{ color: "var(--text-3)" }}>
-          See who is actually executing well in Siren. This board now favors clean fills, close discipline, and real prediction-market trading quality.
+        <p className="max-w-3xl font-sub text-sm mb-6 leading-relaxed md:text-base" style={{ color: "var(--text-3)" }}>
+          See who is actually executing well in Siren. This board now favors clean fills, close discipline, and real prediction-market trading quality over vanity size.
         </p>
 
-        <div className="flex flex-wrap gap-2 mb-3">
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              setWindowKey("7d");
-            }}
-            className="rounded-md px-3 py-1.5 font-sub text-xs font-medium"
-            style={{
-              background: windowKey === "7d" ? "var(--accent)" : "var(--bg-elevated)",
-              color: windowKey === "7d" ? "var(--accent-text)" : "var(--text-3)",
-            }}
+        <div className="mb-6 grid gap-3 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <div
+            className="grid grid-cols-3 gap-2 rounded-[24px] border p-2"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
           >
-            7 days
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              setWindowKey("30d");
-            }}
-            className="rounded-md px-3 py-1.5 font-sub text-xs font-medium"
-            style={{
-              background: windowKey === "30d" ? "var(--accent)" : "var(--bg-elevated)",
-              color: windowKey === "30d" ? "var(--accent-text)" : "var(--text-3)",
-            }}
-          >
-            30 days
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              setWindowKey("all");
-            }}
-            className="rounded-md px-3 py-1.5 font-sub text-xs font-medium"
-            style={{
-              background: windowKey === "all" ? "var(--accent)" : "var(--bg-elevated)",
-              color: windowKey === "all" ? "var(--accent-text)" : "var(--text-3)",
-            }}
-          >
-            All time
-          </button>
-        </div>
+            {([
+              ["7d", "7 days"],
+              ["30d", "30 days"],
+              ["all", "All time"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  hapticLight();
+                  setWindowKey(value);
+                }}
+                className="min-h-12 rounded-2xl px-3 py-2 font-sub text-xs font-semibold"
+                style={{
+                  background: windowKey === value ? "var(--accent)" : "transparent",
+                  color: windowKey === value ? "var(--accent-text)" : "var(--text-3)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-        <div
-          className="flex rounded-lg border p-0.5 mb-6"
-          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              setMetric("execution");
-            }}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 font-heading text-[11px] font-semibold"
-            style={{
-              background: metric === "execution" ? "var(--bg-surface)" : "transparent",
-              color: metric === "execution" ? "var(--accent)" : "var(--text-3)",
-            }}
+          <div
+            className="grid gap-2 rounded-[24px] border p-2 sm:grid-cols-2"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
           >
-            <Target className="h-3.5 w-3.5" />
-            Sort by execution
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              hapticLight();
-              setMetric("volume");
-            }}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 font-heading text-[11px] font-semibold"
-            style={{
-              background: metric === "volume" ? "var(--bg-surface)" : "transparent",
-              color: metric === "volume" ? "var(--accent)" : "var(--text-3)",
-            }}
-          >
-            <DollarSign className="h-3.5 w-3.5" />
-            Sort by volume
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                hapticLight();
+                setMetric("execution");
+              }}
+              className="flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-2 font-heading text-[12px] font-semibold"
+              style={{
+                background: metric === "execution" ? "var(--bg-surface)" : "transparent",
+                color: metric === "execution" ? "var(--accent)" : "var(--text-3)",
+              }}
+            >
+              <Target className="h-4 w-4" />
+              Sort by execution
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                hapticLight();
+                setMetric("volume");
+              }}
+              className="flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-2 font-heading text-[12px] font-semibold"
+              style={{
+                background: metric === "volume" ? "var(--bg-surface)" : "transparent",
+                color: metric === "volume" ? "var(--accent)" : "var(--text-3)",
+              }}
+            >
+              <DollarSign className="h-4 w-4" />
+              Sort by volume
+            </button>
+          </div>
         </div>
 
         {isLoading && (
@@ -282,7 +296,7 @@ export default function LeaderboardPage() {
             <p className="font-sub text-[10px] uppercase tracking-widest mb-3" style={{ color: "var(--text-3)" }}>
               Top 3
             </p>
-            <div className="flex items-end justify-center gap-2 md:gap-4 mb-8 px-1">
+            <div className="grid gap-4 mb-8 md:grid-cols-3">
               <PodiumCard entry={podium.second} place={2} metric={metric} />
               <PodiumCard entry={podium.first} place={1} metric={metric} />
               <PodiumCard entry={podium.third} place={3} metric={metric} />
@@ -297,7 +311,7 @@ export default function LeaderboardPage() {
                   {podium.rest.map((e) => (
                     <li
                       key={e.id}
-                      className="flex items-center gap-3 rounded-xl border px-3 py-3"
+                      className="flex items-center gap-4 rounded-[24px] border px-4 py-4"
                       style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
                     >
                       <span className="font-money text-sm tabular-nums w-6 shrink-0" style={{ color: "var(--text-3)" }}>
@@ -317,7 +331,12 @@ export default function LeaderboardPage() {
                         <p className="font-heading text-sm font-semibold truncate" style={{ color: "var(--text-1)" }}>
                           {e.label}
                         </p>
-                        <p className="font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                        {e.subtitle && (
+                          <p className="mt-1 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                            {e.subtitle}
+                          </p>
+                        )}
+                        <p className="mt-1 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
                           {fmtVol(e.volumeUsd)} volume
                           {e.successRate != null && (
                             <span>

@@ -24,6 +24,7 @@ import { getPositionEntry } from "@/lib/positionEntryStorage";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 import { API_URL } from "@/lib/apiUrl";
 import { appendWalletAuthQuery, getWalletAuthHeaders } from "@/lib/requestAuth";
+import { pushLocalTrade } from "@/lib/localTradeLedger";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
@@ -243,6 +244,7 @@ export function UnifiedBuyPanel() {
   const [slippageBps, setSlippageBps] = useState(200);
   const [tokenPriceFetchState, setTokenPriceFetchState] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [tokenPriceFetchReason, setTokenPriceFetchReason] = useState<string | null>(null);
+  const [showAllOutcomes, setShowAllOutcomes] = useState(false);
 
   const [cardDisplayName, setCardDisplayName] = useState("@siren");
   const isPredictionToken = selectedToken?.assetType === "prediction";
@@ -355,6 +357,10 @@ export function UnifiedBuyPanel() {
     }
   }, [selectedMarket?.ticker, selectedMarket?.yes_mint, selectedMarket?.no_mint]);
 
+  useEffect(() => {
+    setShowAllOutcomes(false);
+  }, [selectedMarket?.event_ticker, selectedMarket?.ticker]);
+
   const tokenDisplayName =
     selectedToken?.name && selectedToken.name !== "-" && selectedToken.name !== "Unknown" ? selectedToken.name : selectedToken?.symbol ?? "";
   const tokenDisplaySymbol =
@@ -364,6 +370,7 @@ export function UnifiedBuyPanel() {
   const groupedOutcomes = selectedMarket?.outcomes && selectedMarket.outcomes.length > 1
     ? [...selectedMarket.outcomes].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0))
     : [];
+  const selectedOutcomeLabel = selectedMarket?.selected_outcome_label?.trim() || selectedMarket?.title || "Selected outcome";
   const selectedMarketPriceUsd = marketSide === "yes" ? marketYesPriceUsd : marketNoPriceUsd;
   const selectedMarketMint = marketSide === "yes" ? selectedMarket?.yes_mint : selectedMarket?.no_mint;
   const selectedPolymarketTokenId = marketSide === "yes" ? selectedMarket?.yes_token_id : selectedMarket?.no_token_id;
@@ -541,26 +548,7 @@ export function UnifiedBuyPanel() {
     const stake = stakeUsd != null && Number.isFinite(stakeUsd) && stakeUsd > 0 ? stakeUsd : null;
     const vol = volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0 ? volumeSol : null;
     if (tokenAmount != null && tokenAmount > 0 && priceUsd != null && priceUsd > 0 && (vol != null || stake != null)) {
-      const tradesKey = `siren-trades-${publicKey.toBase58()}`;
-      const rawTrades = window.localStorage.getItem(tradesKey);
-      let trades: Array<{
-        ts: number;
-        mint: string;
-        side: "buy" | "sell";
-        solAmount: number;
-        tokenAmount: number;
-        priceUsd: number;
-        stakeUsd?: number;
-      }> = [];
-      if (rawTrades) {
-        try {
-          trades = JSON.parse(rawTrades);
-          if (!Array.isArray(trades)) trades = [];
-        } catch {
-          trades = [];
-        }
-      }
-      trades.push({
+      pushLocalTrade(publicKey.toBase58(), {
         ts: Date.now(),
         mint,
         side,
@@ -568,12 +556,12 @@ export function UnifiedBuyPanel() {
         tokenAmount,
         priceUsd,
         ...(stake != null ? { stakeUsd: stake } : {}),
+        tokenName,
+        tokenSymbol,
+        txSignature,
+        activityKind: side === "sell" ? "close" : stake != null ? "prediction" : "token",
+        amountUsd: stake ?? tokenAmount * priceUsd,
       });
-      if (trades.length > 1000) {
-        trades = trades.slice(trades.length - 1000);
-      }
-      window.localStorage.setItem(tradesKey, JSON.stringify(trades));
-      window.dispatchEvent(new CustomEvent("siren-activity-logged"));
     }
 
     void (async () => {
@@ -1411,11 +1399,28 @@ export function UnifiedBuyPanel() {
 
                     {groupedOutcomes.length > 0 && (
                       <div className="mt-5">
-                        <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                          Outcomes
-                        </p>
-                        <div className="mt-2 grid gap-2">
-                          {groupedOutcomes.slice(0, 8).map((outcome) => {
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                              Step 1 · Pick outcome
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                              You are choosing the person or scenario first. The YES / NO cards below will apply to that selection.
+                            </p>
+                          </div>
+                          {groupedOutcomes.length > 6 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllOutcomes((current) => !current)}
+                              className="shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold"
+                              style={{ borderColor: "var(--border-subtle)", color: "var(--text-1)", background: "var(--bg-surface)" }}
+                            >
+                              {showAllOutcomes ? "Show less" : `View all ${groupedOutcomes.length}`}
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-3 grid max-h-[260px] gap-2 overflow-y-auto pr-1">
+                          {(showAllOutcomes ? groupedOutcomes : groupedOutcomes.slice(0, 6)).map((outcome) => {
                             const isSelected = outcome.label === selectedMarket.selected_outcome_label;
                             return (
                               <button
@@ -1441,11 +1446,6 @@ export function UnifiedBuyPanel() {
                               </button>
                             );
                           })}
-                          {groupedOutcomes.length > 8 && (
-                            <p className="px-1 text-[11px]" style={{ color: "var(--text-3)" }}>
-                              +{groupedOutcomes.length - 8} more outcomes in this event
-                            </p>
-                          )}
                         </div>
                       </div>
                     )}
@@ -1467,6 +1467,11 @@ export function UnifiedBuyPanel() {
                         <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "yes" ? "var(--up)" : "var(--text-2)" }}>
                           YES
                         </p>
+                        {groupedOutcomes.length > 0 && (
+                          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            {selectedOutcomeLabel} wins
+                          </p>
+                        )}
                         <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketYesPriceUsd != null ? `${(marketYesPriceUsd * 100).toFixed(1)}c` : "—"}
                         </p>
@@ -1487,6 +1492,11 @@ export function UnifiedBuyPanel() {
                         <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: marketSide === "no" ? "var(--down)" : "var(--text-2)" }}>
                           NO
                         </p>
+                        {groupedOutcomes.length > 0 && (
+                          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                            Any other outcome wins
+                          </p>
+                        )}
                         <p className="mt-2 font-mono text-[1.65rem] font-semibold tabular-nums leading-none" style={{ color: "var(--text-1)" }}>
                           {marketNoPriceUsd != null ? `${(marketNoPriceUsd * 100).toFixed(1)}c` : "—"}
                         </p>

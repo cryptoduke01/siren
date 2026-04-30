@@ -840,12 +840,17 @@ function PredictionMarketFocusPanel({
   const { setSelectedMarketOutcome } = useSirenStore();
   const { data: marketActivity } = useMarketActivity(market.source === "kalshi" ? market.ticker : undefined);
   const canTradeInSiren = canTradeSelectedMarketInSiren(market);
+  const [showAllOutcomes, setShowAllOutcomes] = useState(false);
   const multiOutcome = !!(market.outcomes && market.outcomes.length > 1);
   const sortedOutcomes = multiOutcome
     ? [...market.outcomes!].sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0))
     : [];
   const selectedOutcome =
     sortedOutcomes.find((outcome) => outcome.label === market.selected_outcome_label) ?? sortedOutcomes[0] ?? null;
+
+  useEffect(() => {
+    setShowAllOutcomes(false);
+  }, [market.event_ticker, market.ticker]);
 
   return (
     <section
@@ -922,11 +927,28 @@ function PredictionMarketFocusPanel({
 
           {multiOutcome && (
             <div className="mt-4">
-              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-                Outcomes
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {sortedOutcomes.slice(0, 8).map((outcome) => {
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                    Step 1 · Pick outcome
+                  </p>
+                  <p className="mt-1 max-w-xl font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    For multi-option markets, first choose the person or scenario you care about. The trade panel then lets you take YES or NO on that exact outcome.
+                  </p>
+                </div>
+                {sortedOutcomes.length > 6 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllOutcomes((current) => !current)}
+                    className="shrink-0 rounded-full border px-3 py-1.5 font-body text-[11px] font-semibold"
+                    style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-1)" }}
+                  >
+                    {showAllOutcomes ? "Show less" : `View all ${sortedOutcomes.length}`}
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 flex max-h-[280px] flex-wrap gap-2 overflow-y-auto pr-1">
+                {(showAllOutcomes ? sortedOutcomes : sortedOutcomes.slice(0, 6)).map((outcome) => {
                   const isSelected = outcome.label === market.selected_outcome_label;
                   return (
                     <button
@@ -951,11 +973,6 @@ function PredictionMarketFocusPanel({
                     </button>
                   );
                 })}
-                {sortedOutcomes.length > 8 && (
-                  <span className="inline-flex items-center rounded-full border px-3 py-1.5 font-body text-[11px]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
-                    +{sortedOutcomes.length - 8} more
-                  </span>
-                )}
               </div>
             </div>
           )}
@@ -963,10 +980,10 @@ function PredictionMarketFocusPanel({
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {multiOutcome ? (
               <>
-                <CompactMarketStat label="Route target" value={selectedOutcome?.label ?? market.selected_outcome_label ?? "Outcome"} />
+                <CompactMarketStat label="Selected outcome" value={selectedOutcome?.label ?? market.selected_outcome_label ?? "Outcome"} />
                 <CompactMarketStat
-                  label="Probability"
-                  value={selectedOutcome ? `${selectedOutcome.probability.toFixed(1)}%` : "—"}
+                  label="Trade side"
+                  value="YES or NO"
                   tone="var(--accent)"
                 />
               </>
