@@ -24,7 +24,7 @@ import { getPositionEntry } from "@/lib/positionEntryStorage";
 import { fetchSolPriceUsd } from "@/lib/pricing";
 import { API_URL } from "@/lib/apiUrl";
 import { appendWalletAuthQuery, getWalletAuthHeaders } from "@/lib/requestAuth";
-import { pushLocalTrade } from "@/lib/localTradeLedger";
+import { logWalletActivity } from "@/lib/activityLedger";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
@@ -484,7 +484,7 @@ export function UnifiedBuyPanel() {
     setSuccess(null);
   };
 
-  const recordLocalTrade = ({
+  const recordActivityAndTrade = async ({
     mint,
     side,
     volumeSol,
@@ -506,62 +506,35 @@ export function UnifiedBuyPanel() {
     tokenSymbol: string;
     txSignature: string;
   }) => {
-    if (typeof window === "undefined" || !publicKey) return;
-
-    if (volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0) {
-      const key = `siren-volume-${publicKey.toBase58()}`;
-      const raw = window.localStorage.getItem(key);
-      let entries: Array<{ ts: number; mint: string; side: "buy" | "sell"; volumeSol: number }> = [];
-      if (raw) {
-        try {
-          entries = JSON.parse(raw);
-          if (!Array.isArray(entries)) entries = [];
-        } catch {
-          entries = [];
-        }
-      }
-      entries.push({
-        ts: Date.now(),
-        mint,
-        side,
-        volumeSol,
-      });
-      if (entries.length > 500) {
-        entries = entries.slice(entries.length - 500);
-      }
-      window.localStorage.setItem(key, JSON.stringify(entries));
-
-      void (async () => {
-        try {
-          const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
-          await fetch(`${API_URL}/api/volume/log`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders },
-            body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol }),
-          });
-        } catch {
-          /* ignore telemetry auth failures */
-        }
-      })();
-    }
-
+    if (!publicKey) return;
     const stake = stakeUsd != null && Number.isFinite(stakeUsd) && stakeUsd > 0 ? stakeUsd : null;
     const vol = volumeSol != null && Number.isFinite(volumeSol) && volumeSol > 0 ? volumeSol : null;
-    if (tokenAmount != null && tokenAmount > 0 && priceUsd != null && priceUsd > 0 && (vol != null || stake != null)) {
-      pushLocalTrade(publicKey.toBase58(), {
-        ts: Date.now(),
-        mint,
-        side,
-        solAmount: vol ?? 0,
-        tokenAmount,
-        priceUsd,
-        ...(stake != null ? { stakeUsd: stake } : {}),
-        tokenName,
-        tokenSymbol,
-        txSignature,
-        activityKind: side === "sell" ? "close" : stake != null ? "prediction" : "token",
-        amountUsd: stake ?? tokenAmount * priceUsd,
+    const amountUsd =
+      stake ?? (tokenAmount != null && tokenAmount > 0 && priceUsd != null && priceUsd > 0 ? tokenAmount * priceUsd : null);
+
+    try {
+      await logWalletActivity({
+        wallet: publicKey.toBase58(),
+        signMessage,
+        input: {
+          activityKind: side === "sell" ? "close" : stake != null ? "prediction" : "token",
+          side,
+          mint,
+          solAmount: vol ?? 0,
+          tokenAmount,
+          priceUsd,
+          stakeUsd: stake,
+          amountUsd,
+          volumeSol: vol,
+          volumeUsd: amountUsd,
+          tokenName,
+          tokenSymbol,
+          txSignature,
+          timestamp: Date.now(),
+        },
       });
+    } catch {
+      /* ignore activity logging failures */
     }
 
     void (async () => {
@@ -744,7 +717,7 @@ export function UnifiedBuyPanel() {
         throw new Error(`DFlow order ${asyncStatus.status}.`);
       }
 
-      // Track per-wallet volume and trades for Siren (local, in SOL terms)
+      // Track per-wallet volume and trade history in the backend ledger.
       try {
         let volumeSol: number | null = null;
         if (tokenPriceUsd != null && tokenPriceUsd > 0 && solPriceUsd > 0) {
@@ -752,7 +725,7 @@ export function UnifiedBuyPanel() {
           volumeSol = amountNum * approxSolPerToken;
         }
 
-        recordLocalTrade({
+        await recordActivityAndTrade({
           mint: selectedToken.mint,
           side: "sell",
           volumeSol,
@@ -1029,7 +1002,7 @@ export function UnifiedBuyPanel() {
           : undefined;
 
       const tokenAmountApprox = selectedMarketPriceUsd && selectedMarketPriceUsd > 0 ? amountNum / selectedMarketPriceUsd : null;
-      recordLocalTrade({
+      await recordActivityAndTrade({
         mint: selectedPolymarketTokenId,
         side: "buy",
         volumeSol: null,
@@ -1230,7 +1203,7 @@ export function UnifiedBuyPanel() {
       }
 
       const tokenAmountApprox = amountNum / marketPriceUsd;
-      recordLocalTrade({
+      await recordActivityAndTrade({
         mint: selectedMarketMint,
         side: "buy",
         volumeSol: solPriceUsd > 0 ? amountNum / solPriceUsd : null,

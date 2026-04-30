@@ -16,6 +16,7 @@
     "@solana-program/system": "^0.10.0",
     "@solana-program/token": "^0.9.0",
     "@solana/kit": "5.5.1",
+    "@solana-mobile/wallet-standard-mobile": "^0.5.2",
     "@solana/spl-token": "^0.4.9",
     "@solana/wallet-adapter-backpack": "^0.1.14",
     "@solana/wallet-adapter-base": "^0.9.24",

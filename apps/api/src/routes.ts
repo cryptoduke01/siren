@@ -14,6 +14,13 @@ import { buildAdminTractionDashboard, logMarketViewTelemetry, logTradeAttemptTel
 import { getEmailCampaignDefinition, runEmailCampaign } from "./services/emailCampaigns.js";
 import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
 import {
+  getActivityVolumeStats,
+  getDailyActivityVolumeStats,
+  getWalletActivity,
+  insertWalletActivity,
+  syncGoldRushActivityLedger,
+} from "./services/activityLedger.js";
+import {
   sendWelcomeWithAccessCode,
   sendLaunchThreadEmail,
   sendTradingLiveAnnouncementEmail,
@@ -840,74 +847,6 @@ async function fetchBaseBalanceEth(address: string): Promise<number> {
   }
 
   return parseEthFromHexWei(payload.result);
-}
-
-const MAX_VOLUME_WALLETS = 200;
-const MAX_VOLUME_ENTRIES_PER_WALLET = 200;
-const volumeStore = new Map<string, Array<{ ts: number; volumeSol: number }>>();
-function getVolumeStats(): {
-  platform7d: number;
-  platform30d: number;
-  platformAllTime: number;
-  byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }>;
-} {
-  const dayMs = 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const cutoff7 = now - 7 * dayMs;
-  const cutoff30 = now - 30 * dayMs;
-  let platform7d = 0;
-  let platform30d = 0;
-  let platformAllTime = 0;
-  const byWallet: Array<{ wallet: string; volume7d: number; volume30d: number; volumeAllTime: number }> = [];
-
-  for (const [wallet, entries] of volumeStore) {
-    let vAll = 0;
-    let v7 = 0;
-    let v30 = 0;
-    for (const e of entries) {
-      const v = typeof e.volumeSol === "number" && Number.isFinite(e.volumeSol) ? e.volumeSol : 0;
-      if (v <= 0) continue;
-      vAll += v;
-      if (e.ts >= cutoff30) v30 += v;
-      if (e.ts >= cutoff7) v7 += v;
-    }
-    if (vAll > 0) {
-      platformAllTime += vAll;
-      platform30d += v30;
-      platform7d += v7;
-      byWallet.push({ wallet, volume7d: v7, volume30d: v30, volumeAllTime: vAll });
-    }
-  }
-  byWallet.sort((a, b) => b.volume7d - a.volume7d);
-  return { platform7d, platform30d, platformAllTime, byWallet };
-}
-
-function getDailyPlatformVolumeStats(days: number): { day: string; volumeSol: number }[] {
-  const safeDays = Math.min(Math.max(days || 14, 1), 30);
-  const dayMs = 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const startMs = now - (safeDays - 1) * dayMs;
-
-  const buckets = Array.from({ length: safeDays }, (_, i) => {
-    const ts = startMs + i * dayMs;
-    return {
-      day: new Date(ts).toISOString().slice(0, 10),
-      volumeSol: 0,
-    };
-  });
-
-  for (const [, entries] of volumeStore) {
-    for (const e of entries) {
-      if (!e || typeof e.volumeSol !== "number" || !Number.isFinite(e.volumeSol) || e.volumeSol <= 0) continue;
-      if (typeof e.ts !== "number" || !Number.isFinite(e.ts)) continue;
-      if (e.ts < startMs) continue;
-      const idx = Math.floor((e.ts - startMs) / dayMs);
-      if (idx < 0 || idx >= buckets.length) continue;
-      buckets[idx].volumeSol += e.volumeSol;
-    }
-  }
-
-  return buckets;
 }
 
 export function registerRoutes(app: FastifyInstance) {
@@ -2513,39 +2452,174 @@ export function registerRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Log volume (called by client after swaps). No auth for simplicity; can add later. */
-  app.post<{ Body: { wallet: string; volumeSol: number } }>("/api/volume/log", async (req, reply) => {
-    const { wallet, volumeSol } = req.body || {};
+  app.post<{
+    Body: {
+      wallet: string;
+      eventKey?: string | null;
+      activityKind: "prediction" | "swap" | "token" | "send" | "receive" | "close" | "volume";
+      source?: string | null;
+      side?: "buy" | "sell" | null;
+      mint?: string | null;
+      solAmount?: number | null;
+      tokenAmount?: number | null;
+      priceUsd?: number | null;
+      stakeUsd?: number | null;
+      amountUsd?: number | null;
+      volumeSol?: number | null;
+      volumeUsd?: number | null;
+      tokenName?: string | null;
+      tokenSymbol?: string | null;
+      fromSymbol?: string | null;
+      toSymbol?: string | null;
+      counterparty?: string | null;
+      note?: string | null;
+      txSignature?: string | null;
+      timestamp?: number | null;
+      metadata?: Record<string, unknown> | null;
+    };
+  }>("/api/activity/log", async (req, reply) => {
+    const { wallet, activityKind } = req.body || {};
+    if (!wallet || typeof wallet !== "string" || wallet.trim().length < 32) {
+      return reply.status(400).send({ success: false, error: "Valid wallet required" });
+    }
+    if (
+      activityKind !== "prediction" &&
+      activityKind !== "swap" &&
+      activityKind !== "token" &&
+      activityKind !== "send" &&
+      activityKind !== "receive" &&
+      activityKind !== "close" &&
+      activityKind !== "volume"
+    ) {
+      return reply.status(400).send({ success: false, error: "Invalid activityKind" });
+    }
+    if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
+
+    try {
+      const result = await insertWalletActivity(getSupabaseAdminClient(), {
+        wallet,
+        activityKind,
+        eventKey: req.body?.eventKey ?? null,
+        source: req.body?.source ?? null,
+        side: req.body?.side ?? null,
+        mint: req.body?.mint ?? null,
+        solAmount: req.body?.solAmount ?? null,
+        tokenAmount: req.body?.tokenAmount ?? null,
+        priceUsd: req.body?.priceUsd ?? null,
+        stakeUsd: req.body?.stakeUsd ?? null,
+        amountUsd: req.body?.amountUsd ?? null,
+        volumeSol: req.body?.volumeSol ?? null,
+        volumeUsd: req.body?.volumeUsd ?? null,
+        tokenName: req.body?.tokenName ?? null,
+        tokenSymbol: req.body?.tokenSymbol ?? null,
+        fromSymbol: req.body?.fromSymbol ?? null,
+        toSymbol: req.body?.toSymbol ?? null,
+        counterparty: req.body?.counterparty ?? null,
+        note: req.body?.note ?? null,
+        txSignature: req.body?.txSignature ?? null,
+        timestamp: req.body?.timestamp ?? null,
+        metadata: req.body?.metadata ?? null,
+      });
+
+      if (!result.persisted) {
+        return reply.status(202).send({
+          success: true,
+          persisted: false,
+          warning: result.warning || "Activity log skipped",
+          data: result.row,
+        });
+      }
+
+      return reply.send({ success: true, persisted: true, data: result.row });
+    } catch (error) {
+      app.log.warn(error, "wallet activity insert skipped");
+      return reply.status(202).send({
+        success: true,
+        persisted: false,
+        warning: error instanceof Error ? error.message : "Activity log skipped",
+      });
+    }
+  });
+
+  app.get<{ Querystring: { wallet?: string; limit?: string } }>("/api/activity", async (req, reply) => {
+    const wallet = req.query.wallet?.trim();
+    if (!wallet) {
+      return reply.status(400).send({ success: false, error: "wallet required" });
+    }
+    if (!(await requireWalletSignature(req, reply, wallet, "read"))) return;
+    const parsedLimit = Number.parseInt(req.query.limit || "40", 10);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 40;
+    try {
+      const rows = await getWalletActivity(getSupabaseAdminClient(), wallet, limit);
+      return reply.send({ success: true, data: { rows } });
+    } catch (error) {
+      app.log.warn(error, "Failed to load wallet activity");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "Wallet activity unavailable",
+      });
+    }
+  });
+
+  /** Legacy volume logger. Prefer `/api/activity/log` with `volume*` fields. */
+  app.post<{ Body: { wallet: string; volumeSol: number; volumeUsd?: number | null; timestamp?: number | null } }>("/api/volume/log", async (req, reply) => {
+    const { wallet, volumeSol, volumeUsd = null, timestamp = null } = req.body || {};
     if (!wallet || typeof wallet !== "string" || typeof volumeSol !== "number" || !Number.isFinite(volumeSol) || volumeSol <= 0) {
       return reply.status(400).send({ success: false, error: "wallet and volumeSol (positive number) required" });
     }
     if (!(await requireWalletSignature(req, reply, wallet, "write"))) return;
-    const w = wallet.trim();
-    if (w.length < 32) return reply.status(400).send({ success: false, error: "Invalid wallet" });
-    const entries = volumeStore.get(w) ?? [];
-    entries.push({ ts: Date.now(), volumeSol });
-    if (entries.length > MAX_VOLUME_ENTRIES_PER_WALLET) entries.splice(0, entries.length - MAX_VOLUME_ENTRIES_PER_WALLET);
-    volumeStore.set(w, entries);
-    if (volumeStore.size > MAX_VOLUME_WALLETS) {
-      const oldest = volumeStore.keys().next().value;
-      if (oldest) volumeStore.delete(oldest);
+    try {
+      const result = await insertWalletActivity(getSupabaseAdminClient(), {
+        wallet,
+        activityKind: "volume",
+        source: "legacy-volume",
+        volumeSol,
+        volumeUsd,
+        amountUsd: volumeUsd,
+        note: "Legacy volume event",
+        timestamp,
+      });
+      if (!result.persisted) {
+        return reply.status(202).send({
+          success: true,
+          persisted: false,
+          warning: result.warning || "Volume log skipped",
+        });
+      }
+      return reply.send({ success: true, persisted: true });
+    } catch (error) {
+      app.log.warn(error, "legacy volume insert skipped");
+      return reply.status(202).send({
+        success: true,
+        persisted: false,
+        warning: error instanceof Error ? error.message : "Volume log skipped",
+      });
     }
-    return reply.send({ success: true });
   });
 
   /** Admin: volume stats (platform + per wallet, 7d / 30d / all-time). */
   app.get("/api/admin/volume", async (_req, reply) => {
     if (!(await requireAdmin(_req, reply))) return;
-    const stats = getVolumeStats();
-    return reply.send({ success: true, data: stats });
+    try {
+      const stats = await getActivityVolumeStats(getSupabaseAdminClient());
+      return reply.send({ success: true, data: stats });
+    } catch (error) {
+      app.log.error(error, "admin volume dashboard failed");
+      return reply.status(500).send({ success: false, error: "Failed to fetch volume stats" });
+    }
   });
 
   /** Admin: daily platform volume series (for dashboard charts). */
   app.get<{ Querystring: { days?: string } }>("/api/admin/volume/daily", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const days = Number.parseInt(req.query.days || "14", 10);
-    const series = getDailyPlatformVolumeStats(Number.isFinite(days) ? days : 14);
-    return reply.send({ success: true, data: { series } });
+    try {
+      const series = await getDailyActivityVolumeStats(getSupabaseAdminClient(), Number.isFinite(days) ? days : 14);
+      return reply.send({ success: true, data: { series } });
+    } catch (error) {
+      app.log.error(error, "admin daily volume failed");
+      return reply.status(500).send({ success: false, error: "Failed to fetch daily volume stats" });
+    }
   });
 
   /** Admin: aggregate user stats for dashboard. */
@@ -2716,6 +2790,11 @@ export function registerRoutes(app: FastifyInstance) {
     if (!(await requireWalletSignature(req, reply, wallet, "read"))) return;
     try {
       const data = await getGoldRushWalletIntelligence(wallet);
+      try {
+        await syncGoldRushActivityLedger(getSupabaseAdminClient(), wallet, data.activity);
+      } catch (error) {
+        app.log.warn(error, "GoldRush activity sync skipped");
+      }
       return reply.send({ success: true, data });
     } catch (error) {
       app.log.warn(error, "Failed to load GoldRush wallet intelligence");

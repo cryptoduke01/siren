@@ -3,7 +3,7 @@
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { TorusWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { clusterApiUrl, type ConnectionConfig } from "@solana/web3.js";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import * as solanaKit from "@solana/kit";
@@ -22,6 +22,12 @@ const rpcWsUrl =
     .replace("https://", "wss://")
     .replace("http://", "ws://");
 const privyLogoUrl = "https://onsiren.xyz/brand/privy-wordmark.png";
+
+declare global {
+  interface Window {
+    __sirenMwaRegistered?: boolean;
+  }
+}
 
 function stripSolanaClientHeader(headers?: HeadersInit): HeadersInit | undefined {
   if (!headers) return headers;
@@ -76,6 +82,14 @@ function createBrowserSafeSolanaRpc(url: string) {
   return createSolanaRpcFromTransport(transport as BrowserSafeRpcTransport);
 }
 
+function shouldRegisterMobileWalletAdapter() {
+  if (typeof window === "undefined") return false;
+  const userAgent = window.navigator.userAgent || "";
+  const isAndroid = /Android/i.test(userAgent);
+  const isChromeFamily = /(Chrome|Chromium)/i.test(userAgent) && !/EdgA|OPR|Firefox/i.test(userAgent);
+  return isAndroid && isChromeFamily;
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => rpcUrl, []);
   const connectionConfig = useMemo<ConnectionConfig>(
@@ -102,6 +116,37 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }),
     []
   );
+
+  useEffect(() => {
+    if (!shouldRegisterMobileWalletAdapter()) return;
+    if (window.__sirenMwaRegistered) return;
+
+    let cancelled = false;
+
+    void import("@solana-mobile/wallet-standard-mobile")
+      .then((mwa) => {
+        if (cancelled || window.__sirenMwaRegistered) return;
+        mwa.registerMwa({
+          appIdentity: {
+            name: "Siren",
+            uri: window.location.origin,
+            icon: "/icon.svg",
+          },
+          authorizationCache: mwa.createDefaultAuthorizationCache(),
+          chains: window.location.hostname === "localhost" ? ["solana:devnet", "solana:mainnet"] : ["solana:mainnet"],
+          chainSelector: mwa.createDefaultChainSelector(),
+          onWalletNotFound: mwa.createDefaultWalletNotFoundHandler(),
+        });
+        window.__sirenMwaRegistered = true;
+      })
+      .catch(() => {
+        // Ignore MWA registration failures so desktop and non-Android flows stay healthy.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const content = (
     <ConnectionProvider endpoint={endpoint} config={connectionConfig}>

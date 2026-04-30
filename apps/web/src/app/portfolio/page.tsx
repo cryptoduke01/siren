@@ -41,12 +41,10 @@ import {
   markCentsForSide,
 } from "@/lib/positionEntryStorage";
 import {
-  buildLocalPositionStatsMap,
-  pushLocalTrade,
-  readLocalTrades,
-  type LocalPositionStat,
-  type LocalTradeLedgerRow,
-} from "@/lib/localTradeLedger";
+  fetchWalletActivity,
+  logWalletActivity,
+  type WalletActivityRow,
+} from "@/lib/activityLedger";
 import { toDataURL } from "qrcode";
 import type { GoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
 
@@ -178,27 +176,21 @@ type PositionsQueryData = {
   degradedReason?: string;
 };
 
-function resolvePositionAvgEntryCents(
-  p: Position,
-  localStat?: LocalPositionStat | null,
-): number | null {
+function resolvePositionAvgEntryCents(p: Position): number | null {
   const savedEntry = p.mint ? getPositionEntry(p.mint) : null;
   if (savedEntry) return savedEntry.avgCents;
-  if (localStat?.avgEntryCents != null && Number.isFinite(localStat.avgEntryCents)) {
-    return localStat.avgEntryCents;
-  }
   if (typeof p.entryPrice === "number" && Number.isFinite(p.entryPrice) && p.entryPrice >= 0) {
     return p.entryPrice;
   }
   return null;
 }
 
-function computePositionPnl(p: Position, localStat?: LocalPositionStat | null): { usd: number; pct: number } {
+function computePositionPnl(p: Position): { usd: number; pct: number } {
   if (p.status === "settled" && typeof p.pnlUsd === "number" && Number.isFinite(p.pnlUsd)) {
     return { usd: p.pnlUsd, pct: p.pnlPct ?? 0 };
   }
   const shares = p.quantity ?? p.balance ?? 0;
-  const avgEntryCents = resolvePositionAvgEntryCents(p, localStat);
+  const avgEntryCents = resolvePositionAvgEntryCents(p);
   if (avgEntryCents != null && shares > 0) {
     const { pnlUsd, pnlPct } = pnlFromAvgEntry({
       side: p.side,
@@ -474,43 +466,37 @@ function WithdrawModal({
         message: `Sent ${formatPresetAmount(amountNum, selectedAsset.decimals)} ${selectedAsset.symbol} from your wallet.`,
         txSignature: sig,
       });
-      pushLocalTrade(publicKey.toBase58(), {
-        ts: Date.now(),
-        mint: selectedAsset.mint ?? selectedAsset.key,
-        side: "sell",
-        solAmount: selectedAsset.kind === "native" ? amountNum : 0,
-        tokenAmount: amountNum,
-        priceUsd: unitUsd ?? 0,
-        amountUsd: usdEst ?? undefined,
-        tokenName: selectedAsset.name,
-        tokenSymbol: selectedAsset.symbol,
-        txSignature: sig,
-        counterparty: toPubkey.toBase58(),
-        note: selectedAsset.kind === "native" ? "Native transfer" : "Token transfer",
-        activityKind: "send",
-        fromSymbol: selectedAsset.symbol,
-        toSymbol: selectedAsset.symbol,
-      });
       const approxVolumeSol =
         selectedAsset.kind === "native"
           ? amountNum
           : usdEst != null && solPrice > 0
             ? usdEst / solPrice
             : null;
-      if (approxVolumeSol != null && Number.isFinite(approxVolumeSol) && approxVolumeSol > 0) {
-        void (async () => {
-          try {
-            const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
-            await fetch(`${API_URL}/api/volume/log`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", ...authHeaders },
-              body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: approxVolumeSol }),
-            });
-          } catch {
-            /* ignore volume telemetry failures */
-          }
-        })();
-      }
+      void logWalletActivity({
+        wallet: publicKey.toBase58(),
+        signMessage,
+        input: {
+          activityKind: "send",
+          side: "sell",
+          mint: selectedAsset.mint ?? selectedAsset.key,
+          solAmount: selectedAsset.kind === "native" ? amountNum : 0,
+          tokenAmount: amountNum,
+          priceUsd: unitUsd ?? null,
+          amountUsd: usdEst ?? null,
+          volumeSol: approxVolumeSol,
+          volumeUsd: usdEst ?? null,
+          tokenName: selectedAsset.name,
+          tokenSymbol: selectedAsset.symbol,
+          txSignature: sig,
+          counterparty: toPubkey.toBase58(),
+          note: selectedAsset.kind === "native" ? "Native transfer" : "Token transfer",
+          fromSymbol: selectedAsset.symbol,
+          toSymbol: selectedAsset.symbol,
+          timestamp: Date.now(),
+        },
+      }).catch(() => {
+        /* ignore activity logging failures */
+      });
       queryClient.invalidateQueries({ queryKey: ["portfolio-balances"] });
       queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
       queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
@@ -1097,86 +1083,109 @@ const SWAP_TOKENS = [
 const MINT_SYMBOL: Record<string, string> = Object.fromEntries(SWAP_TOKENS.map((t) => [t.mint, t.symbol]));
 
 function symbolForMint(mint: string): string {
+  if (!mint) return "asset";
   return MINT_SYMBOL[mint] ?? `${mint.slice(0, 4)}…`;
 }
 
-function buildLocalActivityItem(row: LocalTradeLedgerRow): PortfolioActivityItem {
-  const symbol = row.tokenSymbol?.trim() || symbolForMint(row.mint);
-  const label = row.tokenName?.trim() || symbol;
-  const amountUsd = row.amountUsd ?? row.stakeUsd ?? (row.priceUsd > 0 && row.tokenAmount > 0 ? row.priceUsd * row.tokenAmount : null);
+function buildWalletActivityItem(row: WalletActivityRow): PortfolioActivityItem {
+  const symbol =
+    row.tokenSymbol?.trim() ||
+    row.toSymbol?.trim() ||
+    row.fromSymbol?.trim() ||
+    symbolForMint(row.mint ?? "");
+  const label = row.tokenName?.trim() || row.note?.trim() || symbol;
+  const amountUsd =
+    row.amountUsd ??
+    row.stakeUsd ??
+    row.volumeUsd ??
+    (row.priceUsd != null && row.tokenAmount != null && row.priceUsd > 0 && row.tokenAmount > 0
+      ? row.priceUsd * row.tokenAmount
+      : null);
+  const parsedTs = Date.parse(row.occurredAt);
+  const ts = Number.isFinite(parsedTs) ? parsedTs : Date.now();
+
+  if (row.activityKind === "receive") {
+    return {
+      id: row.id,
+      ts,
+      kind: "receive",
+      title: row.tokenSymbol ? `Received ${symbol}` : "Received funds",
+      detail: row.note || "Inbound wallet flow",
+      amountLabel:
+        row.tokenAmount != null && row.tokenAmount > 0
+          ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`
+          : amountUsd != null
+            ? formatCompactUsd(amountUsd)
+            : null,
+      tone: "up",
+    };
+  }
 
   if (row.activityKind === "send") {
     return {
-      id: row.txSignature || `${row.ts}-${row.mint}-send`,
-      ts: row.ts,
+      id: row.id,
+      ts,
       kind: "send",
-      title: `Sent ${symbol}`,
+      title: row.tokenSymbol ? `Sent ${symbol}` : "Sent funds",
       detail: row.counterparty ? `To ${formatAddressShort(row.counterparty, 6)}` : row.note || "Outgoing transfer",
-      amountLabel: `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`,
+      amountLabel:
+        row.tokenAmount != null && row.tokenAmount > 0
+          ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`
+          : amountUsd != null
+            ? formatCompactUsd(amountUsd)
+            : null,
       tone: "down",
     };
   }
 
   if (row.activityKind === "close" || row.side === "sell") {
     return {
-      id: row.txSignature || `${row.ts}-${row.mint}-close`,
-      ts: row.ts,
+      id: row.id,
+      ts,
       kind: "close",
       title: "Closed position",
       detail: label,
-      amountLabel: amountUsd != null ? formatCompactUsd(amountUsd) : `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} shares`,
+      amountLabel:
+        amountUsd != null
+          ? formatCompactUsd(amountUsd)
+          : row.tokenAmount != null && row.tokenAmount > 0
+            ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} shares`
+            : null,
       tone: amountUsd != null && amountUsd > 0 ? "up" : "neutral",
     };
   }
 
   if (row.activityKind === "swap") {
     return {
-      id: row.txSignature || `${row.ts}-${row.mint}-swap`,
-      ts: row.ts,
+      id: row.id,
+      ts,
       kind: "swap",
       title: `Swapped ${row.fromSymbol || "asset"} to ${row.toSymbol || symbol}`,
-      detail: row.note || `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol} received`,
+      detail:
+        row.note ||
+        (row.tokenAmount != null && row.tokenAmount > 0
+          ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol} received`
+          : "Wallet swap"),
       amountLabel: amountUsd != null ? formatCompactUsd(amountUsd) : null,
       tone: "neutral",
     };
   }
 
   return {
-    id: row.txSignature || `${row.ts}-${row.mint}-prediction`,
-    ts: row.ts,
+    id: row.id,
+    ts,
     kind: "prediction",
-    title: row.activityKind === "prediction" ? "Opened prediction position" : `Bought ${symbol}`,
+    title: row.activityKind === "prediction" ? "Opened prediction position" : row.activityKind === "token" ? `Bought ${symbol}` : "Activity",
     detail: label,
     amountLabel:
-      row.stakeUsd != null && row.stakeUsd > 0
+      row.stakeUsd != null && row.stakeUsd > 0 && row.tokenAmount != null && row.tokenAmount > 0
         ? `${formatCompactUsd(row.stakeUsd)} for ~${fmtToken(row.tokenAmount, 2)} shares`
-        : `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`,
+        : row.tokenAmount != null && row.tokenAmount > 0
+          ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`
+          : amountUsd != null
+            ? formatCompactUsd(amountUsd)
+            : null,
     tone: "up",
-  };
-}
-
-function buildWalletFlowActivityItem(
-  item: GoldRushWalletIntelligence["activity"][number],
-): PortfolioActivityItem {
-  const parsedTs = item.timestamp ? Date.parse(item.timestamp) : Number.NaN;
-  const tone = item.direction === "in" ? "up" : item.direction === "out" ? "down" : "neutral";
-  const title =
-    item.direction === "in"
-      ? "Received funds"
-      : item.direction === "out"
-        ? "Sent funds"
-        : item.direction === "self"
-          ? "Moved funds"
-          : "Wallet movement";
-
-  return {
-    id: item.txHash,
-    ts: Number.isFinite(parsedTs) ? parsedTs : Date.now(),
-    kind: item.direction === "in" ? "receive" : "send",
-    title,
-    detail: item.explorerUrl ? `Tracked on-chain via Covalent · ${formatAddressShort(item.txHash, 6)}` : "Tracked on-chain via Covalent",
-    amountLabel: item.prettyValueUsd || formatCompactUsd(item.valueUsd),
-    tone,
   };
 }
 
@@ -1273,39 +1282,35 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
       const result = await execRes.json();
       if (result.status !== "Success") throw new Error(result.error || "Swap failed on-chain");
 
-      void (async () => {
-        try {
-          const authHeaders = await getWalletAuthHeaders({ wallet: publicKey.toBase58(), signMessage, scope: "write" });
-          await fetch(`${API_URL}/api/volume/log`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders },
-            body: JSON.stringify({ wallet: publicKey.toBase58(), volumeSol: parseFloat(amount) }),
-          });
-        } catch {
-          /* ignore telemetry auth failures */
-        }
-      })();
-
       const outUi =
         quoteData && quoteData.outAmount
           ? parseInt(quoteData.outAmount, 10) / 10 ** toToken.decimals
           : 0;
       const amtNum = parseFloat(amount) || 0;
-      pushLocalTrade(publicKey.toBase58(), {
-        ts: Date.now(),
-        mint: toToken.mint,
-        side: "buy",
-        solAmount: fromToken.symbol === "SOL" ? amtNum : 0,
-        tokenAmount: outUi,
-        priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : 0,
-        amountUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? amtNum : undefined,
-        tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
-        tokenSymbol: toToken.symbol,
-        fromSymbol: fromToken.symbol,
-        toSymbol: toToken.symbol,
-        note: `${fmtToken(amtNum, 4)} ${fromToken.symbol} routed into ${toToken.symbol}`,
-        activityKind: "swap",
-        txSignature: typeof result.signature === "string" ? result.signature : `swap-${Date.now()}`,
+      const swapSignature = typeof result.signature === "string" ? result.signature : `swap-${Date.now()}`;
+      void logWalletActivity({
+        wallet: publicKey.toBase58(),
+        signMessage,
+        input: {
+          activityKind: "swap",
+          side: "buy",
+          mint: toToken.mint,
+          solAmount: fromToken.symbol === "SOL" ? amtNum : 0,
+          tokenAmount: outUi,
+          priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : null,
+          amountUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? amtNum : null,
+          volumeSol: fromToken.symbol === "SOL" ? amtNum : null,
+          volumeUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? amtNum : null,
+          tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
+          tokenSymbol: toToken.symbol,
+          fromSymbol: fromToken.symbol,
+          toSymbol: toToken.symbol,
+          note: `${fmtToken(amtNum, 4)} ${fromToken.symbol} routed into ${toToken.symbol}`,
+          txSignature: swapSignature,
+          timestamp: Date.now(),
+        },
+      }).catch(() => {
+        /* ignore activity logging failures */
       });
       void (async () => {
         try {
@@ -1321,7 +1326,7 @@ function SwapPanel({ onActivityLogged }: { onActivityLogged?: () => void }) {
               priceUsd: fromToken.symbol === "USDC" || fromToken.symbol === "USDT" ? 1 : null,
               tokenName: `${fromToken.symbol} → ${toToken.symbol}`,
               tokenSymbol: toToken.symbol,
-              txSignature: typeof result.signature === "string" ? result.signature : `swap-${Date.now()}`,
+              txSignature: swapSignature,
               timestamp: Date.now(),
             }),
           });
@@ -1453,11 +1458,9 @@ function TokenRow({ symbol, balance, usdValue }: {
 
 function PositionRow({
   position: p,
-  localStat,
   onEntrySaved,
 }: {
   position: Position;
-  localStat?: LocalPositionStat | null;
   onEntrySaved: () => void;
 }) {
   const [shareOpen, setShareOpen] = useState(false);
@@ -1508,12 +1511,12 @@ function PositionRow({
   const savedEntry = p.mint ? getPositionEntry(p.mint) : null;
   const autoAvgCents =
     savedEntry?.avgCents == null
-      ? localStat?.avgEntryCents ?? (typeof p.entryPrice === "number" && Number.isFinite(p.entryPrice) ? p.entryPrice : null)
+      ? (typeof p.entryPrice === "number" && Number.isFinite(p.entryPrice) ? p.entryPrice : null)
       : null;
   const draftParsed = avgCentsDraft.trim() === "" ? Number.NaN : parseFloat(avgCentsDraft);
   const draftAvg =
     Number.isFinite(draftParsed) && draftParsed >= 0 && draftParsed <= 100 ? draftParsed : null;
-  const baseAvgCents = resolvePositionAvgEntryCents(p, localStat);
+  const baseAvgCents = resolvePositionAvgEntryCents(p);
   const avgCentsForPnl = draftAvg ?? baseAvgCents;
   const fromLocalAvg =
     avgCentsForPnl != null && shares > 0
@@ -1524,7 +1527,7 @@ function PositionRow({
           avgCents: avgCentsForPnl,
         })
       : null;
-  const apiPnl = computePositionPnl(p, localStat);
+  const apiPnl = computePositionPnl(p);
   const pnl = fromLocalAvg != null ? fromLocalAvg.pnlUsd : apiPnl.usd;
   const pnlPct = fromLocalAvg != null ? fromLocalAvg.pnlPct : apiPnl.pct;
   const pnlIsPreview =
@@ -1857,28 +1860,21 @@ export default function PortfolioPage() {
   const [usernameInput, setUsernameInput] = useState("");
   const [usernameSaving, setUsernameSaving] = useState(false);
   const [entryEpoch, setEntryEpoch] = useState(0);
-  const [activityEpoch, setActivityEpoch] = useState(0);
 
   const walletKey = publicKey?.toBase58() ?? null;
 
-  const localTradeRows = useMemo(() => {
-    if (!walletKey) return [];
-    return [...readLocalTrades(walletKey)].sort((a, b) => b.ts - a.ts).slice(0, 40);
-  }, [walletKey, activityEpoch]);
-  const localPositionStatsByMint = useMemo(
-    () => (walletKey ? buildLocalPositionStatsMap(walletKey) : new Map<string, LocalPositionStat>()),
-    [walletKey, activityEpoch],
-  );
-
   useEffect(() => {
-    const bump = () => setActivityEpoch((n) => n + 1);
-    window.addEventListener("focus", bump);
-    window.addEventListener("siren-activity-logged", bump);
-    return () => {
-      window.removeEventListener("focus", bump);
-      window.removeEventListener("siren-activity-logged", bump);
+    if (!walletKey) return;
+    const refresh = () => {
+      queryClient.invalidateQueries({ queryKey: ["wallet-activity", walletKey] });
     };
-  }, []);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("siren-activity-logged", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("siren-activity-logged", refresh);
+    };
+  }, [queryClient, walletKey]);
 
   // ── Username / Profile ──────────────────────────────────────
   const { data: profile } = useQuery({
@@ -1969,12 +1965,28 @@ export default function PortfolioPage() {
   const totalUsd = solUsd + usdc + usdt;
   const { data: goldRushIntelligence, isLoading: goldRushLoading } = useGoldRushWalletIntelligence(walletKey, signMessage);
   const { data: torqueReadiness } = useTorqueRelayReadiness();
+  const { data: activityRows = [] } = useQuery({
+    queryKey: ["wallet-activity", walletKey],
+    queryFn: async () => {
+      if (!walletKey) return [] as WalletActivityRow[];
+      return fetchWalletActivity({ wallet: walletKey, signMessage, limit: 40 });
+    },
+    enabled: !!walletKey,
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
   const portfolioActivity = useMemo(() => {
-    const localItems = localTradeRows.map(buildLocalActivityItem);
-    const walletFlowItems = (goldRushIntelligence?.activity ?? [])
-      .filter((item) => item.direction === "in" || item.direction === "out")
-      .map(buildWalletFlowActivityItem);
-    const combined = [...localItems, ...walletFlowItems].sort((left, right) => right.ts - left.ts);
+    const appTrackedTxs = new Set(
+      activityRows
+        .filter((row) => row.source === "app" && typeof row.txSignature === "string" && row.txSignature.trim())
+        .map((row) => row.txSignature!.trim()),
+    );
+    const combined = [...activityRows]
+      .filter((row) => row.activityKind !== "volume")
+      .filter((row) => !(row.source === "goldrush" && row.txSignature && appTrackedTxs.has(row.txSignature.trim())))
+      .map(buildWalletActivityItem)
+      .sort((left, right) => right.ts - left.ts);
     const deduped: PortfolioActivityItem[] = [];
     const seen = new Set<string>();
     for (const item of combined) {
@@ -1985,7 +1997,7 @@ export default function PortfolioPage() {
       if (deduped.length >= 40) break;
     }
     return deduped;
-  }, [goldRushIntelligence?.activity, localTradeRows]);
+  }, [activityRows]);
 
   // ── Positions ─────────────────────────────────────────────────
 
@@ -2139,10 +2151,10 @@ export default function PortfolioPage() {
   const totalPnl = useMemo(
     () =>
       positions.reduce(
-        (sum, p) => sum + computePositionPnl(p, p.mint ? (localPositionStatsByMint.get(p.mint) ?? null) : null).usd,
+        (sum, p) => sum + computePositionPnl(p).usd,
         0,
       ),
-    [positions, localPositionStatsByMint, entryEpoch],
+    [positions, entryEpoch],
   );
 
   // ── Identity ──────────────────────────────────────────────────
@@ -2635,7 +2647,11 @@ export default function PortfolioPage() {
           </button>
           {swapOpen && (
             <div className="border-t px-4 py-4" style={{ borderColor: "var(--border-subtle)" }}>
-              <SwapPanel onActivityLogged={() => setActivityEpoch((n) => n + 1)} />
+              <SwapPanel onActivityLogged={() => {
+                if (walletKey) {
+                  queryClient.invalidateQueries({ queryKey: ["wallet-activity", walletKey] });
+                }
+              }} />
             </div>
           )}
         </div>
@@ -2759,7 +2775,6 @@ export default function PortfolioPage() {
                 <PositionRow
                   key={`${p.ticker}-${i}`}
                   position={p}
-                  localStat={p.mint ? (localPositionStatsByMint.get(p.mint) ?? null) : null}
                   onEntrySaved={() => setEntryEpoch((n) => n + 1)}
                 />
               ))
