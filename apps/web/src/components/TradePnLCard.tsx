@@ -15,6 +15,8 @@ export interface TradePnLCardProps {
   profitUsd: number;
   percent: number;
   kalshiMarket: string;
+  marketLabel?: string;
+  positionLabel?: string;
   wallet?: string | null;
   displayName?: string | null;
   showUSD?: boolean;
@@ -34,6 +36,8 @@ export function TradePnLCard({
   profitUsd,
   percent,
   kalshiMarket,
+  marketLabel: marketLabelProp,
+  positionLabel: positionLabelProp,
   wallet,
   displayName,
   executedAt,
@@ -47,18 +51,22 @@ export function TradePnLCard({
   const accentHex = isProfit ? "#00FF85" : "#FF4560";
   const accentRgb = isProfit ? "0,255,133" : "255,69,96";
   const contractLabel = useMemo(() => {
+    const explicit = positionLabelProp?.trim();
+    if (explicit) return explicit;
     const symbol = token.symbol?.trim();
     const name = token.name?.trim();
     if (symbol && symbol.length > 0) return symbol;
     if (name && name.length > 0) return name;
     return "Position";
-  }, [token.name, token.symbol]);
+  }, [positionLabelProp, token.name, token.symbol]);
   const marketLabel = useMemo(() => {
+    const explicit = marketLabelProp?.trim();
+    if (explicit) return explicit;
     const primary = kalshiMarket?.trim();
     if (primary) return primary;
     const fallback = token.name?.trim();
     return fallback && fallback.length > 0 ? fallback : "Prediction market position";
-  }, [kalshiMarket, token.name]);
+  }, [kalshiMarket, marketLabelProp, token.name]);
 
   const { boughtUsd, valueUsd } = useMemo(() => {
     if (

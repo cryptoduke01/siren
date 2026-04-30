@@ -19,6 +19,50 @@ type CachedWalletPositions = {
 
 const walletPositionCache = new Map<string, CachedWalletPositions>();
 
+type DflowBatchAccountInfo = {
+  yesMint?: string;
+  noMint?: string;
+  isInitialized?: boolean;
+  title?: string;
+  subtitle?: string;
+  yesSubTitle?: string;
+  noSubTitle?: string;
+};
+
+type DflowBatchMarket = {
+  ticker: string;
+  title: string;
+  subtitle?: string;
+  yesSubTitle?: string;
+  noSubTitle?: string;
+  eventTicker?: string;
+  seriesTicker?: string;
+  yesBid?: string;
+  yesAsk?: string;
+  noBid?: string;
+  noAsk?: string;
+  openTime?: number;
+  closeTime?: number;
+  status?: string;
+  accounts?: Record<string, DflowBatchAccountInfo>;
+};
+
+type DflowOutcomeMintMetadata = {
+  mint: string;
+  side: "yes" | "no";
+  ticker: string;
+  title: string;
+  eventTicker?: string;
+  seriesTicker?: string;
+  yesBid?: string;
+  yesAsk?: string;
+  closeTime?: number;
+  marketStatus?: string;
+  outcomeLabel?: string | null;
+  currentPriceUsd?: number;
+  kalshi_url?: string;
+};
+
 function metadataHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (DFLOW_API_KEY) h["x-api-key"] = DFLOW_API_KEY;
@@ -49,6 +93,125 @@ interface ParsedTokenAmount {
   mint: string;
   balance: number;
   decimals: number;
+}
+
+function normalizeTimestampMs(value?: number | null): number | undefined {
+  if (value == null || !Number.isFinite(value)) return undefined;
+  return value < 1_000_000_000_000 ? Math.round(value * 1000) : Math.round(value);
+}
+
+function normalizeLabelText(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function isGenericOutcomeLabel(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  return (
+    !lower ||
+    lower === "yes" ||
+    lower === "no" ||
+    lower === "outcome" ||
+    lower === "market" ||
+    lower === "default" ||
+    lower === "main" ||
+    lower === "option" ||
+    lower === "up" ||
+    lower === "down" ||
+    /^[0-9]+$/.test(lower)
+  );
+}
+
+function buildOutcomeLabel(
+  side: "yes" | "no",
+  market: DflowBatchMarket,
+  accountKey?: string,
+): string {
+  const preferred = [
+    side === "yes" ? market.yesSubTitle : market.noSubTitle,
+    accountKey,
+    market.subtitle,
+  ]
+    .map((value) => normalizeLabelText(value))
+    .find((value) => value && !isGenericOutcomeLabel(value));
+
+  if (preferred) return preferred;
+  return side.toUpperCase();
+}
+
+function computeYesProbabilityPct(market: Pick<DflowBatchMarket, "yesBid" | "yesAsk">): number {
+  const yesBid = market.yesBid ? parseFloat(market.yesBid) : undefined;
+  const yesAsk = market.yesAsk ? parseFloat(market.yesAsk) : undefined;
+  const rawProb = yesBid ?? yesAsk ?? 50;
+  let probPct = Number.isFinite(rawProb) ? rawProb : 50;
+  if (probPct > 0 && probPct <= 1) probPct *= 100;
+  return Math.min(100, Math.max(0, probPct));
+}
+
+async function fetchDflowBatchMarkets(mints: string[]): Promise<DflowBatchMarket[]> {
+  const uniqueMints = [...new Set(mints.map((mint) => mint.trim()).filter(Boolean))];
+  if (uniqueMints.length === 0) return [];
+
+  const batchRes = await fetch(`${METADATA_URL}/api/v1/markets/batch`, {
+    method: "POST",
+    headers: metadataHeaders(),
+    body: JSON.stringify({ mints: uniqueMints }),
+  });
+  if (!batchRes.ok) {
+    const text = await batchRes.text();
+    throw new Error(`markets/batch ${batchRes.status}: ${text.slice(0, 240)}`);
+  }
+
+  const batchJson = (await batchRes.json()) as { markets?: DflowBatchMarket[] };
+  return batchJson.markets ?? [];
+}
+
+export async function getDflowOutcomeMintMetadata(mints: string[]): Promise<Map<string, DflowOutcomeMintMetadata>> {
+  const markets = await fetchDflowBatchMarkets(mints);
+  const metadataByMint = new Map<string, DflowOutcomeMintMetadata>();
+
+  for (const market of markets) {
+    const accounts = market.accounts ? Object.entries(market.accounts) : [];
+    const probabilityPct = computeYesProbabilityPct(market);
+    for (const [accountKey, account] of accounts) {
+      const shared = {
+        ticker: market.ticker,
+        title: market.title,
+        eventTicker: market.eventTicker,
+        seriesTicker: market.seriesTicker,
+        yesBid: market.yesBid,
+        yesAsk: market.yesAsk,
+        closeTime: normalizeTimestampMs(market.closeTime),
+        marketStatus: market.status,
+        kalshi_url: kalshiUrlFromMarket(market),
+      } satisfies Omit<DflowOutcomeMintMetadata, "mint" | "side" | "outcomeLabel" | "currentPriceUsd">;
+
+      const yesOutcomeLabel = buildOutcomeLabel("yes", market, accountKey);
+      if (account.yesMint) {
+        metadataByMint.set(account.yesMint, {
+          mint: account.yesMint,
+          side: "yes",
+          ...shared,
+          outcomeLabel: yesOutcomeLabel,
+          currentPriceUsd: probabilityPct / 100,
+        });
+      }
+      if (account.noMint) {
+        metadataByMint.set(account.noMint, {
+          mint: account.noMint,
+          side: "no",
+          ...shared,
+          outcomeLabel:
+            normalizeLabelText(market.noSubTitle) ||
+            (yesOutcomeLabel !== "YES" ? `Not ${yesOutcomeLabel}` : "NO"),
+          currentPriceUsd: (100 - probabilityPct) / 100,
+        });
+      }
+    }
+  }
+
+  return metadataByMint;
 }
 
 function collectWalletTokens(connection: Connection, owner: PublicKey): Promise<ParsedTokenAmount[]> {
@@ -96,6 +259,7 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
 
   const rpcUrl =
     process.env.SOLANA_RPC_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() ||
     process.env.NEXT_PUBLIC_RPC_URL?.trim() ||
     "https://api.mainnet-beta.solana.com";
   const connection = new Connection(rpcUrl, "confirmed");
@@ -154,89 +318,49 @@ export async function getDflowPositionsForWallet(walletAddress: string): Promise
     return { positions: [], updatedAt };
   }
 
-  let markets: Array<{
-    ticker: string;
-    title: string;
-    eventTicker?: string;
-    seriesTicker?: string;
-    yesBid?: string;
-    yesAsk?: string;
-    noBid?: string;
-    noAsk?: string;
-    accounts?: Record<string, { yesMint?: string; noMint?: string }>;
-  }>;
-
   try {
-    const batchRes = await fetch(`${METADATA_URL}/api/v1/markets/batch`, {
-      method: "POST",
-      headers: metadataHeaders(),
-      body: JSON.stringify({ mints: outcomeTokens.map((t) => t.mint) }),
-    });
-    if (!batchRes.ok) {
-      const t = await batchRes.text();
-      return { positions: [], error: `markets/batch ${batchRes.status}: ${t.slice(0, 240)}` };
+    const metadataByMint = await getDflowOutcomeMintMetadata(outcomeTokens.map((t) => t.mint));
+    const positions: DflowPositionRow[] = [];
+
+    for (const token of outcomeTokens) {
+      const metadata = metadataByMint.get(token.mint);
+      if (!metadata) continue;
+
+      const qty = token.balance;
+      const currentPriceUsd = metadata.currentPriceUsd;
+      const marketValueUsd =
+        typeof currentPriceUsd === "number" && Number.isFinite(currentPriceUsd) && Number.isFinite(qty)
+          ? qty * currentPriceUsd
+          : undefined;
+
+      positions.push({
+        mint: token.mint,
+        balance: token.balance,
+        decimals: token.decimals,
+        side: metadata.side,
+        ticker: metadata.ticker,
+        title: metadata.title,
+        eventTicker: metadata.eventTicker,
+        seriesTicker: metadata.seriesTicker,
+        kalshi_url: metadata.kalshi_url,
+        probability: computeYesProbabilityPct({ yesBid: metadata.yesBid, yesAsk: metadata.yesAsk }),
+        yesBid: metadata.yesBid,
+        yesAsk: metadata.yesAsk,
+        quantity: qty,
+        currentPriceUsd,
+        currentPrice: currentPriceUsd != null ? Number((currentPriceUsd * 100).toFixed(4)) : undefined,
+        marketValueUsd,
+        closeTime: metadata.closeTime,
+        marketStatus: metadata.marketStatus,
+        outcomeLabel: metadata.outcomeLabel,
+        verified: true,
+      });
     }
-    const batchJson = (await batchRes.json()) as { markets?: typeof markets };
-    markets = batchJson.markets ?? [];
+
+    const updatedAt = new Date().toISOString();
+    walletPositionCache.set(walletAddress, { positions, updatedAt });
+    return { positions, updatedAt };
   } catch (e) {
     return { positions: [], error: `markets/batch: ${(e as Error).message}` };
   }
-
-  const marketsByMint = new Map<
-    string,
-    {
-      market: (typeof markets)[0];
-      side: "yes" | "no";
-    }
-  >();
-
-  for (const market of markets) {
-    const accounts = market.accounts ? Object.values(market.accounts) : [];
-    for (const account of accounts) {
-      if (account.yesMint) marketsByMint.set(account.yesMint, { market, side: "yes" });
-      if (account.noMint) marketsByMint.set(account.noMint, { market, side: "no" });
-    }
-  }
-
-  const positions: DflowPositionRow[] = [];
-  for (const token of outcomeTokens) {
-    const mapped = marketsByMint.get(token.mint);
-    if (!mapped) continue;
-    const { market, side } = mapped;
-    const yesBid = market.yesBid ? parseFloat(market.yesBid) : undefined;
-    const yesAsk = market.yesAsk ? parseFloat(market.yesAsk) : undefined;
-    const rawProb = yesBid ?? yesAsk ?? 50;
-    let probPct = Number.isFinite(rawProb) ? rawProb : 50;
-    if (probPct > 0 && probPct <= 1) probPct *= 100;
-    probPct = Math.min(100, Math.max(0, probPct));
-    /** Per-share mark in USD for this outcome (Kalshi-style cents as probability). */
-    const currentPriceUsd =
-      side === "yes" ? probPct / 100 : (100 - probPct) / 100;
-    const qty = token.balance;
-    const marketValueUsd =
-      Number.isFinite(currentPriceUsd) && Number.isFinite(qty) ? qty * currentPriceUsd : undefined;
-
-    positions.push({
-      mint: token.mint,
-      balance: token.balance,
-      decimals: token.decimals,
-      side,
-      ticker: market.ticker,
-      title: market.title,
-      eventTicker: market.eventTicker,
-      seriesTicker: market.seriesTicker,
-      kalshi_url: kalshiUrlFromMarket(market),
-      probability: probPct as number,
-      yesBid: market.yesBid,
-      yesAsk: market.yesAsk,
-      quantity: qty,
-      currentPriceUsd,
-      marketValueUsd,
-      verified: true,
-    });
-  }
-
-  const updatedAt = new Date().toISOString();
-  walletPositionCache.set(walletAddress, { positions, updatedAt });
-  return { positions, updatedAt };
 }

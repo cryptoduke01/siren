@@ -39,6 +39,8 @@ export function GlobalTradePnLShareModal() {
           profitUsd={payload.profitUsd}
           percent={payload.percent}
           kalshiMarket={payload.kalshiMarket}
+          marketLabel={payload.marketLabel}
+          positionLabel={payload.positionLabel}
           wallet={payload.wallet}
           displayName={payload.displayName}
           executedAt={payload.executedAt}

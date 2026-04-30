@@ -6,6 +6,8 @@ export interface TradePnLSharePayload {
   profitUsd: number;
   percent: number;
   kalshiMarket: string;
+  marketLabel?: string;
+  positionLabel?: string;
   wallet?: string | null;
   displayName?: string | null;
   executedAt?: number | null;

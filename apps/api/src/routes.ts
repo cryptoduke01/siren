@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getKalshiDirectMarketByTicker, getMarketByTicker, getMarketSnapshotByTicker, getMarketTradeActivity, getMarketsWithVelocity } from "./services/markets.js";
 import { getDflowOrder, getDflowOrderStatus } from "./services/dflow.js";
-import { getDflowPositionsForWallet } from "./services/dflowPositions.js";
+import { getDflowOutcomeMintMetadata, getDflowPositionsForWallet } from "./services/dflowPositions.js";
 import { getSwapOrder } from "./services/swapRouter.js";
 import { shouldBlockByCountry } from "./lib/geo-fence.js";
 import { createDepositAddresses } from "./lib/polymarket.js";
@@ -9,7 +9,7 @@ import { getSupabaseAdminClient } from "./services/supabase.js";
 import { buildLeaderboard, enrichUsersWithProfiles } from "./services/leaderboard.js";
 import { getGoldRushWalletIntelligence } from "./services/goldrush.js";
 import { getJupiterPredictionTradingStatus, searchJupiterPredictionEvents } from "./services/jupiterPrediction.js";
-import { getWalletPositionStats } from "./services/positionStats.js";
+import { getWalletPositionHistory } from "./services/positionStats.js";
 import { buildAdminTractionDashboard, logMarketViewTelemetry, logTradeAttemptTelemetry } from "./services/adminTraction.js";
 import { getEmailCampaignDefinition, runEmailCampaign } from "./services/emailCampaigns.js";
 import { emitTorqueTradeAttemptEvent, getTorqueRelayReadiness, previewTorqueTradeAttemptEvent } from "./services/torque.js";
@@ -636,41 +636,163 @@ async function enrichDflowPositionsWithTradeStats(
   wallet: string,
   data: Awaited<ReturnType<typeof getDflowPositionsForWallet>>,
 ): Promise<Awaited<ReturnType<typeof getDflowPositionsForWallet>>> {
-  if (data.error || !wallet.trim() || data.positions.length === 0) return data;
+  if (data.error || !wallet.trim()) return data;
 
   try {
-    const statsByMint = await getWalletPositionStats(getSupabaseAdminClient(), wallet);
-    if (statsByMint.size === 0) return data;
+    const historyRows = await getWalletPositionHistory(getSupabaseAdminClient(), wallet);
+    if (historyRows.length === 0 && data.positions.length === 0) return data;
 
-    return {
-      ...data,
-      positions: data.positions.map((position) => {
-        const stat = statsByMint.get(position.mint);
-        if (!stat) return position;
+    const livePositions = data.positions.map((position) => ({ ...position }));
+    const liveByMint = new Map(livePositions.map((position) => [position.mint, position]));
+    const allMints = [...new Set([...livePositions.map((position) => position.mint), ...historyRows.map((row) => row.mint)])];
+    let metadataByMint: Awaited<ReturnType<typeof getDflowOutcomeMintMetadata>> = new Map();
+    if (allMints.length > 0) {
+      try {
+        metadataByMint = await getDflowOutcomeMintMetadata(allMints);
+      } catch {
+        metadataByMint = new Map();
+      }
+    }
 
-        const avgEntryUsd = stat.avgEntryUsd;
-        const avgEntryCents = stat.avgEntryCents != null ? Number(stat.avgEntryCents.toFixed(2)) : undefined;
-        const qty = position.quantity ?? position.balance ?? 0;
-        const markUsd =
-          typeof position.currentPriceUsd === "number" && Number.isFinite(position.currentPriceUsd)
-            ? position.currentPriceUsd
+    const historyTitle = (tokenName: string | null, fallbackTitle?: string) => {
+      const clean = tokenName?.trim();
+      if (!clean) return fallbackTitle || "Prediction market";
+      const parts = clean.split(" · ");
+      if (parts.length > 1) return parts.slice(0, -1).join(" · ");
+      return clean;
+    };
+
+    const historyOutcomeLabel = (
+      tokenName: string | null,
+      tokenSymbol: string | null,
+      side: "yes" | "no",
+      fallback?: string | null,
+    ) => {
+      const cleanName = tokenName?.trim() || "";
+      const nameParts = cleanName ? cleanName.split(" · ") : [];
+      if (nameParts.length > 1) return nameParts[nameParts.length - 1] || fallback || side.toUpperCase();
+      const cleanSymbol = tokenSymbol?.trim() || "";
+      if (cleanSymbol.includes(" · ")) return cleanSymbol.split(" · ")[0] || fallback || side.toUpperCase();
+      if (cleanSymbol.startsWith("YES ")) return "YES";
+      if (cleanSymbol.startsWith("NO ")) return "NO";
+      return fallback || side.toUpperCase();
+    };
+
+    const normalizeTimestampMs = (value?: number | null) => {
+      if (value == null || !Number.isFinite(value)) return undefined;
+      return value < 1_000_000_000_000 ? Math.round(value * 1000) : Math.round(value);
+    };
+
+    const isEnded = (closeTime?: number | null, marketStatus?: string | null) => {
+      const status = marketStatus?.toLowerCase().trim() || "";
+      if (status === "closed" || status === "settled" || status === "resolved" || status === "expired") {
+        return true;
+      }
+      const closeMs = normalizeTimestampMs(closeTime);
+      return closeMs != null ? closeMs <= Date.now() : false;
+    };
+
+    const historyByMint = new Map(historyRows.map((row) => [row.mint, row]));
+    const positions = livePositions.map((position) => {
+      const history = historyByMint.get(position.mint);
+      const metadata = metadataByMint.get(position.mint);
+      const avgEntryUsd = history?.avgEntryUsd ?? null;
+      const avgEntryCents = history?.avgEntryCents != null ? Number(history.avgEntryCents.toFixed(2)) : undefined;
+      const qty = position.quantity ?? position.balance ?? 0;
+      const markUsd =
+        typeof position.currentPriceUsd === "number" && Number.isFinite(position.currentPriceUsd)
+          ? position.currentPriceUsd
+          : typeof metadata?.currentPriceUsd === "number" && Number.isFinite(metadata.currentPriceUsd)
+            ? metadata.currentPriceUsd
             : typeof position.currentPrice === "number" && Number.isFinite(position.currentPrice)
               ? position.currentPrice / 100
               : null;
 
-        const enriched = { ...position };
-        if (avgEntryCents != null) {
-          enriched.entryPrice = avgEntryCents;
-        }
+      const enriched = { ...position };
+      enriched.closeTime = normalizeTimestampMs(position.closeTime ?? metadata?.closeTime);
+      enriched.marketStatus = position.marketStatus ?? metadata?.marketStatus;
+      enriched.outcomeLabel =
+        position.outcomeLabel ??
+        metadata?.outcomeLabel ??
+        (history ? historyOutcomeLabel(history.tokenName, history.tokenSymbol, position.side) : null);
+      enriched.openedAt = history?.firstBoughtAt ?? position.openedAt ?? null;
+      enriched.closedAt = history?.lastSoldAt ?? position.closedAt ?? null;
+      enriched.status = isEnded(enriched.closeTime, enriched.marketStatus) ? "settled" : "open";
+      enriched.settledReason = enriched.status === "settled" ? "market_closed" : null;
 
-        if (avgEntryUsd != null && markUsd != null && Number.isFinite(qty) && qty > 0) {
-          const pnlUsd = Number(((markUsd - avgEntryUsd) * qty).toFixed(6));
-          const costUsd = qty * avgEntryUsd;
-          enriched.pnlUsd = pnlUsd;
-          enriched.pnlPct = costUsd > 0 ? Number(((pnlUsd / costUsd) * 100).toFixed(4)) : 0;
-        }
+      if (avgEntryCents != null) {
+        enriched.entryPrice = avgEntryCents;
+      }
 
-        return enriched;
+      if (avgEntryUsd != null && markUsd != null && Number.isFinite(qty) && qty > 0) {
+        const pnlUsd = Number(((markUsd - avgEntryUsd) * qty).toFixed(6));
+        const costUsd = qty * avgEntryUsd;
+        enriched.pnlUsd = pnlUsd;
+        enriched.pnlPct = costUsd > 0 ? Number(((pnlUsd / costUsd) * 100).toFixed(4)) : 0;
+      }
+
+      return enriched;
+    });
+
+    for (const history of historyRows) {
+      if (liveByMint.has(history.mint)) continue;
+      if (history.openQty > 1e-12 || history.soldQty <= 0) continue;
+      const metadata = metadataByMint.get(history.mint);
+      const normalizedTokenSymbol = history.tokenSymbol?.trim() || "";
+      const side = metadata?.side ?? (normalizedTokenSymbol.toUpperCase().startsWith("NO ") ? "no" : "yes");
+      const settledBecauseMarketClosed = isEnded(metadata?.closeTime, metadata?.marketStatus);
+      const quantity = history.soldQty;
+      const proceedsUsd = Number((history.matchedCostUsd + history.realizedPnlUsd).toFixed(6));
+      const title = metadata?.title ?? historyTitle(history.tokenName, history.tokenSymbol ?? undefined);
+      const ticker = metadata?.ticker ?? history.tokenSymbol?.trim() ?? history.mint;
+      const outcomeLabel =
+        metadata?.outcomeLabel ?? historyOutcomeLabel(history.tokenName, history.tokenSymbol, side, null);
+
+      positions.push({
+        mint: history.mint,
+        balance: 0,
+        decimals: 6,
+        side,
+        ticker,
+        title,
+        eventTicker: metadata?.eventTicker,
+        seriesTicker: metadata?.seriesTicker,
+        kalshi_url: metadata?.kalshi_url,
+        probability: undefined,
+        yesBid: metadata?.yesBid,
+        yesAsk: metadata?.yesAsk,
+        quantity,
+        currentPriceUsd:
+          quantity > 0 && proceedsUsd > 0
+            ? Number((proceedsUsd / quantity).toFixed(6))
+            : metadata?.currentPriceUsd,
+        currentPrice:
+          quantity > 0 && proceedsUsd > 0
+            ? Number((((proceedsUsd / quantity) || 0) * 100).toFixed(4))
+            : metadata?.currentPriceUsd != null
+              ? Number((metadata.currentPriceUsd * 100).toFixed(4))
+              : undefined,
+        entryPrice: history.avgEntryCents != null ? Number(history.avgEntryCents.toFixed(2)) : undefined,
+        pnlUsd: history.realizedPnlUsd,
+        pnlPct: history.realizedPnlPct ?? undefined,
+        marketValueUsd: proceedsUsd > 0 ? proceedsUsd : undefined,
+        closeTime: normalizeTimestampMs(metadata?.closeTime),
+        marketStatus: metadata?.marketStatus,
+        outcomeLabel,
+        openedAt: history.firstBoughtAt,
+        closedAt: history.lastSoldAt ?? history.lastExecutedAt,
+        status: "settled",
+        settledReason: settledBecauseMarketClosed ? "market_closed" : "closed_position",
+        verified: true,
+      });
+    }
+
+    return {
+      ...data,
+      positions: positions.sort((left, right) => {
+        const leftTs = Date.parse(left.closedAt || left.openedAt || data.updatedAt || "") || 0;
+        const rightTs = Date.parse(right.closedAt || right.openedAt || data.updatedAt || "") || 0;
+        return rightTs - leftTs;
       }),
     };
   } catch {

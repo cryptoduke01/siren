@@ -27,6 +27,7 @@ import { appendWalletAuthQuery, getWalletAuthHeaders } from "@/lib/requestAuth";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LAMPORTS_PER_SOL = 1e9;
+const MIN_SOL_FEE_BUFFER_SOL = 0.005;
 const POLYMARKET_HOST = "https://clob.polymarket.com";
 const POLYGON_CHAIN_ID = 137;
 const POLYMARKET_TRADING_ENABLED = false;
@@ -312,6 +313,17 @@ export function UnifiedBuyPanel() {
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
+  const { data: solanaSolBalance = 0, isLoading: solanaSolBalanceLoading } = useQuery({
+    queryKey: ["solana-sol-balance", publicKey?.toBase58()],
+    queryFn: async () => {
+      if (!publicKey) return 0;
+      const lamports = await connection.getBalance(publicKey, "confirmed");
+      return lamports / LAMPORTS_PER_SOL;
+    },
+    enabled: !!publicKey,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
 
   const { data: tokenBalance = 0 } = useQuery({
     queryKey: ["sell-token-balance", publicKey?.toBase58(), selectedToken?.mint, sellMode],
@@ -395,6 +407,18 @@ export function UnifiedBuyPanel() {
   const tokenSellMinReceiveUsd =
     tokenSellApproxUsd != null ? tokenSellApproxUsd * (1 - slippageBps / 10_000) : null;
   const tokenRouteLabel = "DFlow";
+  const ensureSolFeeBuffer = (intentLabel: string): boolean => {
+    if (solanaSolBalanceLoading) return true;
+    if (solanaSolBalance + 1e-9 >= MIN_SOL_FEE_BUFFER_SOL) return true;
+    const message = `Keep at least ${MIN_SOL_FEE_BUFFER_SOL.toFixed(3)} SOL for network fees before you ${intentLabel}. You currently have ${formatTokenAmount(solanaSolBalance, 4)} SOL.`;
+    setError(message);
+    showResultModal({
+      type: "error",
+      title: "SOL buffer needed",
+      message,
+    });
+    return false;
+  };
   const verificationRequired = isWalletVerificationError(error);
   const proofVerified = !!dflowProofStatus?.verified;
   const walletExecutionAlerts = (goldRushIntelligence?.alerts ?? []).filter((alert) => alert.level !== "info").slice(0, 2);
@@ -620,10 +644,20 @@ export function UnifiedBuyPanel() {
       amount = parseUnitsToBigInt(amountStr, sellDecimals).toString();
       inputMint = selectedToken.mint;
       outputMint = SOLANA_USDC_MINT;
+      if (!ensureSolFeeBuffer("close this position")) {
+        setLoading(false);
+        return;
+      }
 
       const tokenPriceUsd = typeof selectedToken.price === "number" && Number.isFinite(selectedToken.price) ? selectedToken.price : null;
-      const tokenNameToLog = tokenDisplayName || selectedToken.name;
-      const tokenSymbolToLog = tokenDisplaySymbol || selectedToken.symbol;
+      const tokenNameToLog =
+        selectedToken.marketOutcomeLabel && selectedToken.marketTitle
+          ? `${selectedToken.marketTitle} · ${selectedToken.marketOutcomeLabel}`
+          : tokenDisplayName || selectedToken.name;
+      const tokenSymbolToLog =
+        selectedToken.marketOutcomeLabel && selectedToken.marketTicker
+          ? `${selectedToken.marketOutcomeLabel} · ${selectedToken.marketTicker}`
+          : tokenDisplaySymbol || selectedToken.symbol;
       const selectedTokenEntryCents = (() => {
         const localEntry = getPositionEntry(selectedToken.mint);
         if (localEntry) return localEntry.avgCents;
@@ -1129,6 +1163,9 @@ export function UnifiedBuyPanel() {
       setError(`Not enough Solana USDC. You have ${formatTokenAmount(solanaUsdcBalance, 2)} USDC ready to trade.`);
       return;
     }
+    if (!ensureSolFeeBuffer("buy this position")) {
+      return;
+    }
 
     const marketPriceUsd = selectedMarketPriceUsd;
     if (marketPriceUsd == null || marketPriceUsd <= 0) {
@@ -1154,8 +1191,8 @@ export function UnifiedBuyPanel() {
     const attemptId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `attempt-${Date.now()}`;
     try {
       const amount = parseUnitsToBigInt(solAmount.trim(), 6).toString();
-      const outcomeLabel = marketSide.toUpperCase();
-      const outcomeSymbol = `${outcomeLabel} ${selectedMarket.ticker}`;
+      const outcomeLabel = selectedMarket.selected_outcome_label?.trim() || marketSide.toUpperCase();
+      const outcomeSymbol = `${outcomeLabel} · ${selectedMarket.ticker}`;
       const outcomeName = `${selectedMarket.title} · ${outcomeLabel}`;
 
       logTradeAttemptTelemetry({
@@ -1229,6 +1266,8 @@ export function UnifiedBuyPanel() {
               profitUsd: 0,
               percent: 0,
               kalshiMarket: selectedMarket.title,
+              marketLabel: selectedMarket.title,
+              positionLabel: outcomeLabel,
               wallet: publicKey.toBase58(),
               displayName: cardDisplayName,
               executedAt: Date.now(),
@@ -1281,7 +1320,10 @@ export function UnifiedBuyPanel() {
         market: selectedMarket?.ticker,
         side: marketSide,
         inputAsset: "USDC",
-        outputAsset: selectedMarket ? `${marketSide.toUpperCase()} ${selectedMarket.ticker}` : null,
+        outputAsset:
+          selectedMarket
+            ? `${selectedMarket.selected_outcome_label?.trim() || marketSide.toUpperCase()} · ${selectedMarket.ticker}`
+            : null,
         amount: solAmount,
         status: "failed",
         errorMessage: msg,

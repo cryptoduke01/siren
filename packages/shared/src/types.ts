@@ -175,6 +175,20 @@ export interface DflowPositionRow {
   pnlPct?: number;
   /** Mark-to-market USD: quantity * currentPriceUsd. */
   marketValueUsd?: number;
+  /** Market close / resolution deadline in epoch ms when known. */
+  closeTime?: number;
+  /** Upstream market lifecycle status when provided by venue metadata. */
+  marketStatus?: string;
+  /** Human-readable outcome label for grouped / multi-outcome markets. */
+  outcomeLabel?: string | null;
+  /** When Siren first saw the buy-side history for this position. */
+  openedAt?: string | null;
+  /** When Siren last saw the close-side history for this position. */
+  closedAt?: string | null;
+  /** `open` for active exposure, `settled` for completed/ended rows surfaced in portfolio history. */
+  status?: "open" | "settled";
+  /** Optional marker for why the position moved into settled/history view. */
+  settledReason?: "closed_position" | "market_closed" | "history_only" | null;
   verified: true;
 }
 

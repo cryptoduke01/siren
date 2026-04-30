@@ -56,7 +56,9 @@ export interface SelectedToken {
   marketTicker?: string;
   marketTitle?: string;
   marketSide?: "yes" | "no";
+  marketOutcomeLabel?: string;
   marketProbability?: number;
+  marketCloseTime?: number;
   kalshiUrl?: string;
 }
 

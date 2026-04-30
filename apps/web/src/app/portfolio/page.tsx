@@ -5,6 +5,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSirenWallet } from "@/contexts/SirenWalletContext";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
+import {
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import Link from "next/link";
 import {
   Shield, Loader2, ArrowLeft, Copy, Check,
@@ -45,6 +50,19 @@ import {
 const LAMPORTS_PER_SOL = 1e9;
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOLANA_USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+const SOL_TRANSFER_RESERVE_SOL = 0.005;
+
+type TransferAssetOption = {
+  key: string;
+  symbol: string;
+  name: string;
+  kind: "native" | "spl";
+  mint?: string;
+  decimals: number;
+  balance: number;
+  usdValue?: number | null;
+  hint?: string | null;
+};
 
 interface Position {
   ticker: string;
@@ -65,6 +83,12 @@ interface Position {
   yesAsk?: string;
   currentPriceUsd?: number;
   marketValueUsd?: number;
+  closeTime?: number;
+  marketStatus?: string;
+  outcomeLabel?: string | null;
+  openedAt?: string | null;
+  closedAt?: string | null;
+  settledReason?: "closed_position" | "market_closed" | "history_only" | null;
 }
 
 type PositionsQueryData = {
@@ -90,6 +114,9 @@ function resolvePositionAvgEntryCents(
 }
 
 function computePositionPnl(p: Position, localStat?: LocalPositionStat | null): { usd: number; pct: number } {
+  if (p.status === "settled" && typeof p.pnlUsd === "number" && Number.isFinite(p.pnlUsd)) {
+    return { usd: p.pnlUsd, pct: p.pnlPct ?? 0 };
+  }
   const shares = p.quantity ?? p.balance ?? 0;
   const avgEntryCents = resolvePositionAvgEntryCents(p, localStat);
   if (avgEntryCents != null && shares > 0) {
@@ -113,63 +140,220 @@ const fmtToken = (n: number, d = 4) =>
 const pnlColor = (n: number) =>
   n > 0 ? "var(--up)" : n < 0 ? "var(--down)" : "var(--text-3)";
 
+function formatPresetAmount(value: number, decimals: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return value
+    .toFixed(Math.min(Math.max(decimals, 0), 6))
+    .replace(/(\.\d*?[1-9])0+$/u, "$1")
+    .replace(/\.0+$/u, "")
+    .replace(/\.$/u, "");
+}
+
+function parseAmountToAtomic(amountStr: string, decimals: number): bigint {
+  const raw = amountStr.trim();
+  if (!raw) return BigInt(0);
+  const [wholePart, fracPartRaw = ""] = raw.split(".");
+  const whole = wholePart ? BigInt(wholePart) : BigInt(0);
+  const fracDigits = fracPartRaw.replace(/[^0-9]/g, "");
+  const fracTrunc = fracDigits.slice(0, decimals);
+  const fracPadded = fracTrunc.padEnd(decimals, "0");
+  const frac = fracPadded ? BigInt(fracPadded) : BigInt(0);
+  const scale = BigInt(10) ** BigInt(decimals);
+  return whole * scale + frac;
+}
+
+function normalizePositionCloseTime(closeTime?: number | null): number | null {
+  if (closeTime == null || !Number.isFinite(closeTime)) return null;
+  return closeTime < 1_000_000_000_000 ? Math.round(closeTime * 1000) : Math.round(closeTime);
+}
+
+function formatPositionDateLabel(value?: number | string | null): string | null {
+  if (value == null) return null;
+  const date = typeof value === "string" ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatPositionEndLabel(closeTime?: number | null, marketStatus?: string | null): string | null {
+  const closeMs = normalizePositionCloseTime(closeTime);
+  if (closeMs == null) return null;
+  const closed = closeMs <= Date.now() || ["closed", "settled", "resolved", "expired"].includes((marketStatus || "").toLowerCase());
+  const label = formatPositionDateLabel(closeMs);
+  if (!label) return null;
+  return `${closed ? "Ended" : "Ends"} ${label}`;
+}
+
 // ── Withdraw Modal ──────────────────────────────────────────────────
 
-function WithdrawModal({ solBalance, solPrice, onClose }: {
-  solBalance: number; solPrice: number; onClose: () => void;
+function WithdrawModal({
+  assets,
+  solBalance,
+  solPrice,
+  onClose,
+}: {
+  assets: TransferAssetOption[];
+  solBalance: number;
+  solPrice: number;
+  onClose: () => void;
 }) {
   const { publicKey, signTransaction } = useSirenWallet();
   const { connection } = useConnection();
   const queryClient = useQueryClient();
   const showResultModal = useResultModalStore((s) => s.show);
+  const spendableAssets = useMemo(() => assets.filter((asset) => asset.balance > 0), [assets]);
+  const [selectedAssetKey, setSelectedAssetKey] = useState<string>(() => spendableAssets[0]?.key ?? assets[0]?.key ?? "SOL");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [sending, setSending] = useState(false);
 
-  const amt = parseFloat(amount) || 0;
-  const usdEst = amt > 0 ? amt * solPrice : 0;
+  useEffect(() => {
+    const activeList = spendableAssets.length > 0 ? spendableAssets : assets;
+    if (!activeList.some((asset) => asset.key === selectedAssetKey)) {
+      setSelectedAssetKey(activeList[0]?.key ?? "SOL");
+    }
+  }, [assets, selectedAssetKey, spendableAssets]);
+
+  const selectedAsset = useMemo(
+    () => [...spendableAssets, ...assets].find((asset) => asset.key === selectedAssetKey) ?? spendableAssets[0] ?? assets[0] ?? null,
+    [assets, selectedAssetKey, spendableAssets],
+  );
+  const spendableBalance = selectedAsset
+    ? selectedAsset.kind === "native"
+      ? Math.max(0, selectedAsset.balance - SOL_TRANSFER_RESERVE_SOL)
+      : selectedAsset.balance
+    : 0;
+  const amountNum = parseFloat(amount) || 0;
+  const unitUsd =
+    selectedAsset?.balance && selectedAsset.usdValue != null
+      ? selectedAsset.usdValue / selectedAsset.balance
+      : selectedAsset?.symbol === "SOL"
+        ? solPrice
+        : null;
+  const usdEst = amountNum > 0 && unitUsd != null ? amountNum * unitUsd : null;
+
+  const handlePreset = (fraction: number) => {
+    if (!selectedAsset) return;
+    setAmount(formatPresetAmount(spendableBalance * fraction, selectedAsset.decimals));
+  };
 
   const handleSend = async () => {
-    if (!publicKey || !signTransaction) return;
-    if (!recipient.trim() || amt <= 0) {
-      showResultModal({ type: "error", title: "Send SOL", message: "Enter a valid recipient address and amount." });
+    if (!publicKey || !signTransaction || !selectedAsset) return;
+    if (!recipient.trim() || amountNum <= 0) {
+      showResultModal({ type: "error", title: "Send asset", message: "Enter a valid recipient address and amount." });
       return;
     }
-    if (amt > solBalance) {
-      showResultModal({
-        type: "error",
-        title: "Insufficient SOL",
-        message: `You have ${solBalance.toFixed(4)} SOL available.`,
-      });
-      return;
+    if (selectedAsset.kind === "native") {
+      if (amountNum > spendableBalance + 1e-9) {
+        showResultModal({
+          type: "error",
+          title: "Insufficient SOL",
+          message: `Keep at least ${SOL_TRANSFER_RESERVE_SOL.toFixed(3)} SOL for fees. You can send up to ${fmtToken(spendableBalance, 4)} SOL right now.`,
+        });
+        return;
+      }
+    } else {
+      if (amountNum > selectedAsset.balance + 1e-9) {
+        showResultModal({
+          type: "error",
+          title: `Insufficient ${selectedAsset.symbol}`,
+          message: `You have ${fmtToken(selectedAsset.balance, selectedAsset.decimals === 9 ? 6 : 4)} ${selectedAsset.symbol} available.`,
+        });
+        return;
+      }
+      if (solBalance < SOL_TRANSFER_RESERVE_SOL) {
+        showResultModal({
+          type: "error",
+          title: "SOL needed for fees",
+          message: `Keep at least ${SOL_TRANSFER_RESERVE_SOL.toFixed(3)} SOL in this wallet before sending ${selectedAsset.symbol}.`,
+        });
+        return;
+      }
     }
 
     let toPubkey: PublicKey;
-    try { toPubkey = new PublicKey(recipient.trim()); }
-    catch {
+    try {
+      toPubkey = new PublicKey(recipient.trim());
+    } catch {
       showResultModal({ type: "error", title: "Invalid address", message: "That does not look like a valid Solana address." });
       return;
     }
 
     setSending(true);
     try {
-      const lamports = BigInt(Math.floor(amt * LAMPORTS_PER_SOL));
-      const tx = new Transaction().add(
-        SystemProgram.transfer({ fromPubkey: publicKey, toPubkey, lamports }),
-      );
-      const { blockhash } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
+      const tx = new Transaction();
+
+      if (selectedAsset.kind === "native") {
+        const lamports = BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL));
+        tx.add(SystemProgram.transfer({ fromPubkey: publicKey, toPubkey, lamports }));
+      } else {
+        if (!selectedAsset.mint) {
+          throw new Error("This asset is missing its mint address.");
+        }
+        const mintPubkey = new PublicKey(selectedAsset.mint);
+        const senderAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, { mint: mintPubkey }, "confirmed");
+        const senderAccount = senderAccounts.value.find(({ account }) => {
+          const parsed = account.data as {
+            parsed?: { info?: { tokenAmount?: { uiAmount?: number | null } } };
+          };
+          return (parsed.parsed?.info?.tokenAmount?.uiAmount ?? 0) > 0;
+        });
+        if (!senderAccount) {
+          throw new Error(`No ${selectedAsset.symbol} account with balance was found in this wallet.`);
+        }
+
+        const tokenProgramId = senderAccount.account.owner;
+        const senderTokenAccount = senderAccount.pubkey;
+        const recipientAta = getAssociatedTokenAddressSync(mintPubkey, toPubkey, false, tokenProgramId);
+        const recipientAtaInfo = await connection.getAccountInfo(recipientAta, "confirmed");
+        if (!recipientAtaInfo) {
+          tx.add(
+            createAssociatedTokenAccountInstruction(
+              publicKey,
+              recipientAta,
+              toPubkey,
+              mintPubkey,
+              tokenProgramId,
+            ),
+          );
+        }
+
+        const atomicAmount = parseAmountToAtomic(amount, selectedAsset.decimals);
+        if (atomicAmount <= BigInt(0)) {
+          throw new Error("Enter a valid amount to send.");
+        }
+        tx.add(
+          createTransferInstruction(
+            senderTokenAccount,
+            recipientAta,
+            publicKey,
+            atomicAmount,
+            [],
+            tokenProgramId,
+          ),
+        );
+      }
+
+      const latestBlockhash = await connection.getLatestBlockhash();
+      tx.recentBlockhash = latestBlockhash.blockhash;
       tx.feePayer = publicKey;
       const signed = await signTransaction(tx);
       const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-      await connection.confirmTransaction(sig, "confirmed");
+      await connection.confirmTransaction({ signature: sig, ...latestBlockhash }, "confirmed");
       showResultModal({
         type: "success",
-        title: "SOL sent",
-        message: `Sent ${amt} SOL from your wallet.`,
+        title: `${selectedAsset.symbol} sent`,
+        message: `Sent ${formatPresetAmount(amountNum, selectedAsset.decimals)} ${selectedAsset.symbol} from your wallet.`,
         txSignature: sig,
       });
       queryClient.invalidateQueries({ queryKey: ["portfolio-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["navbar-total-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["dflow-positions", publicKey.toBase58()] });
+      queryClient.invalidateQueries({ queryKey: ["wallet-tokens", publicKey.toBase58()] });
       onClose();
     } catch (err) {
       showResultModal({
@@ -177,47 +361,231 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
         title: "Send failed",
         message: err instanceof Error ? err.message : "Could not complete the transfer.",
       });
-    } finally { setSending(false); }
+    } finally {
+      setSending(false);
+    }
   };
 
-  const inputStyle = { background: "var(--bg-base)", borderColor: "var(--border-subtle)", color: "var(--text-1)" };
+  const amountPanelStyle = {
+    background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--bg-base)), var(--bg-base))",
+    borderColor: "color-mix(in srgb, var(--accent) 18%, var(--border-subtle))",
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
-      <div className="w-full max-w-sm rounded-xl border p-5"
-        style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
-        <h3 className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-          Send SOL
-        </h3>
-        <label className="mt-4 block font-sub text-xs" style={{ color: "var(--text-3)" }}>
-          Recipient address
-        </label>
-        <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
-          placeholder="Solana address…"
-          className="mt-1 w-full rounded-lg border px-3 py-2 font-label text-sm outline-none"
-          style={inputStyle} />
-        <label className="mt-3 block font-sub text-xs" style={{ color: "var(--text-3)" }}>
-          Amount (SOL)
-        </label>
-        <input type="number" inputMode="decimal" value={amount}
-          onChange={(e) => setAmount(e.target.value)} placeholder="0.00" min={0} step="any"
-          className="mt-1 w-full rounded-lg border px-3 py-2 font-money tabular-nums text-sm outline-none"
-          style={inputStyle} />
-        <div className="mt-1 flex items-center justify-between font-sub text-[11px]"
-          style={{ color: "var(--text-3)" }}>
-          <span>Available: {fmtToken(solBalance)} SOL</span>
-          {usdEst > 0 && <span>≈ ${fmtUsd(usdEst)}</span>}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(10px)" }}
+    >
+      <div
+        className="w-full max-w-3xl rounded-[28px] border p-5 md:p-6"
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+      >
+        <div className="flex flex-col gap-2 border-b pb-4 md:flex-row md:items-end md:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
+          <div>
+            <p className="font-sub text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+              Send
+            </p>
+            <h3 className="mt-1 font-heading text-2xl font-semibold" style={{ color: "var(--text-1)" }}>
+              Move assets from this wallet
+            </h3>
+            <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Pick any funded wallet asset, paste a Solana recipient, then size it quickly with 25%, 50%, 75%, or Max.
+            </p>
+          </div>
+          <div
+            className="rounded-2xl border px-4 py-3"
+            style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
+          >
+            <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+              Network
+            </p>
+            <p className="mt-1 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+              Solana
+            </p>
+          </div>
         </div>
-        <div className="mt-4 flex gap-2">
-          <button type="button" onClick={handleSend} disabled={sending}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 font-heading text-sm font-semibold disabled:opacity-50"
-            style={{ background: "var(--accent)", color: "var(--bg-base)" }}>
-            {sending && <Loader2 className="h-4 w-4 animate-spin" />} Send
+
+        {spendableAssets.length === 0 ? (
+          <div className="mt-6 rounded-2xl border px-5 py-8 text-center" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+            <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+              No transferable balance yet
+            </p>
+            <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Fund the wallet first, then come back here to send SOL, stables, or outcome tokens.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-4">
+              <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                      Asset
+                    </p>
+                    <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                      Choose what you want to send.
+                    </p>
+                  </div>
+                  <span className="rounded-full border px-2.5 py-1 font-heading text-[10px] uppercase tracking-[0.14em]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}>
+                    {spendableAssets.length} available
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {spendableAssets.map((asset) => {
+                    const active = asset.key === selectedAssetKey;
+                    return (
+                      <button
+                        key={asset.key}
+                        type="button"
+                        onClick={() => {
+                          hapticLight();
+                          setSelectedAssetKey(asset.key);
+                          setAmount("");
+                        }}
+                        className="rounded-2xl border p-3 text-left transition-all"
+                        style={{
+                          borderColor: active ? "color-mix(in srgb, var(--accent) 44%, transparent)" : "var(--border-subtle)",
+                          background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                              {asset.symbol}
+                            </p>
+                            <p className="mt-1 truncate font-body text-xs" style={{ color: "var(--text-2)" }}>
+                              {asset.name}
+                            </p>
+                            {asset.hint && (
+                              <p className="mt-1 truncate font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                                {asset.hint}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <p className="font-money text-sm font-semibold tabular-nums" style={{ color: active ? "var(--accent)" : "var(--text-1)" }}>
+                              {fmtToken(asset.balance, asset.decimals === 9 ? 4 : 2)}
+                            </p>
+                            {asset.usdValue != null && (
+                              <p className="mt-1 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                                ${fmtUsd(asset.usdValue)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <label className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                  Recipient
+                </label>
+                <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                  Paste a Solana wallet address.
+                </p>
+                <textarea
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                  placeholder="Paste wallet address"
+                  rows={3}
+                  className="mt-3 w-full rounded-2xl border px-4 py-3 font-label text-sm outline-none resize-none"
+                  style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-1)" }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border p-4" style={amountPanelStyle}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                      Amount
+                    </p>
+                    <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                      Available: {selectedAsset ? fmtToken(spendableBalance, selectedAsset.decimals === 9 ? 4 : 2) : "0"} {selectedAsset?.symbol ?? ""}
+                    </p>
+                  </div>
+                  {usdEst != null && (
+                    <span className="rounded-full border px-2.5 py-1 font-money text-xs tabular-nums" style={{ borderColor: "color-mix(in srgb, var(--accent) 24%, transparent)", color: "var(--accent)" }}>
+                      ≈ ${fmtUsd(usdEst)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-4 flex items-end justify-between gap-3">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    min={0}
+                    step="any"
+                    className="min-w-0 flex-1 bg-transparent font-money text-4xl font-bold tabular-nums outline-none placeholder:text-[var(--text-3)]"
+                    style={{ color: "var(--text-1)" }}
+                  />
+                  <span className="shrink-0 font-heading text-lg font-semibold" style={{ color: "var(--text-2)" }}>
+                    {selectedAsset?.symbol ?? "Asset"}
+                  </span>
+                </div>
+
+                <div className="mt-5 grid grid-cols-4 gap-2">
+                  {[0.25, 0.5, 0.75, 1].map((fraction) => (
+                    <button
+                      key={fraction}
+                      type="button"
+                      onClick={() => {
+                        hapticLight();
+                        handlePreset(fraction);
+                      }}
+                      className="rounded-xl border px-3 py-2 font-heading text-xs font-semibold transition-all"
+                      style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "var(--bg-surface)" }}
+                    >
+                      {fraction === 1 ? "Max" : `${Math.round(fraction * 100)}%`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                  Transfer note
+                </p>
+                <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  {selectedAsset?.kind === "native"
+                    ? `SOL transfers keep ${SOL_TRANSFER_RESERVE_SOL.toFixed(3)} SOL back for network fees.`
+                    : `SPL transfers still need a little SOL for fees and may create the recipient's token account on first receive.`}
+                </p>
+                {selectedAsset?.hint && (
+                  <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                    {selectedAsset.hint}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row" style={{ borderColor: "var(--border-subtle)" }}>
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={sending || spendableAssets.length === 0 || !selectedAsset}
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 font-heading text-sm font-semibold disabled:opacity-50"
+            style={{ background: "var(--accent)", color: "var(--bg-base)" }}
+          >
+            {sending && <Loader2 className="h-4 w-4 animate-spin" />} Send {selectedAsset?.symbol ?? "asset"}
           </button>
-          <button type="button" onClick={onClose}
-            className="rounded-lg border px-4 py-2.5 font-body text-sm"
-            style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border px-5 py-3.5 font-body text-sm"
+            style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+          >
             Cancel
           </button>
         </div>
@@ -228,6 +596,7 @@ function WithdrawModal({ solBalance, solPrice, onClose }: {
 
 function DepositModal({
   walletKey,
+  assets,
   onClose,
   onFund,
   addressCopied,
@@ -235,82 +604,191 @@ function DepositModal({
   loading,
 }: {
   walletKey: string;
+  assets: TransferAssetOption[];
   onClose: () => void;
   onFund: () => Promise<void> | void;
   addressCopied: boolean;
   onCopyAddress: () => void;
   loading: boolean;
 }) {
+  const defaultReceiveKey = assets.find((asset) => asset.symbol === "USDC")?.key ?? assets[0]?.key ?? "USDC";
+  const [selectedAssetKey, setSelectedAssetKey] = useState(defaultReceiveKey);
+
+  useEffect(() => {
+    if (!assets.some((asset) => asset.key === selectedAssetKey)) {
+      setSelectedAssetKey(defaultReceiveKey);
+    }
+  }, [assets, defaultReceiveKey, selectedAssetKey]);
+
+  const selectedAsset = useMemo(
+    () => assets.find((asset) => asset.key === selectedAssetKey) ?? assets[0] ?? null,
+    [assets, selectedAssetKey],
+  );
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}
+      style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(10px)" }}
     >
       <div
-        className="w-full max-w-sm rounded-xl border p-5"
+        className="w-full max-w-3xl rounded-[28px] border p-5 md:p-6"
         style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
       >
-        <h3 className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-          Deposit
-        </h3>
-        <p className="mt-1 font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-          Add USDC with card or Apple Pay, or send crypto from another wallet.
-        </p>
-
-        <div className="mt-4 space-y-3">
-          <button
-            type="button"
-            onClick={onFund}
-            disabled={loading}
-            className="flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors disabled:opacity-50"
-            style={{ borderColor: "color-mix(in srgb, var(--accent) 38%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" }}
-          >
-            <div>
-              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                Buy with card
-              </p>
-              <p className="mt-0.5 font-body text-xs" style={{ color: "var(--text-3)" }}>
-                Apple Pay may appear when supported by Privy.
-              </p>
-            </div>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} /> : <CreditCard className="h-4 w-4" style={{ color: "var(--accent)" }} />}
-          </button>
-
+        <div className="flex flex-col gap-2 border-b pb-4 md:flex-row md:items-end md:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
+          <div>
+            <p className="font-sub text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+              Receive
+            </p>
+            <h3 className="mt-1 font-heading text-2xl font-semibold" style={{ color: "var(--text-1)" }}>
+              Top up this trading wallet
+            </h3>
+            <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
+              Buy USDC with card, or copy the wallet address and receive the exact Solana asset you want.
+            </p>
+          </div>
           <div
-            className="rounded-lg border p-4"
-            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}
+            className="rounded-2xl border px-4 py-3"
+            style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}
           >
-            <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-              Transfer from another wallet
+            <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+              Wallet rail
             </p>
-            <p className="mt-1 font-body text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
-              Send SOL or Solana USDC to this address.
+            <p className="mt-1 font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+              Solana mainnet
             </p>
-            <div className="mt-3 flex items-center gap-2">
-              <code className="min-w-0 flex-1 select-all break-all font-label text-[10px]" style={{ color: "var(--text-1)" }}>
-                {walletKey}
-              </code>
-              <button
-                type="button"
-                onClick={onCopyAddress}
-                className="shrink-0 rounded-md p-1 hover:bg-[var(--bg-elevated)]"
-                style={{ color: "var(--text-2)" }}
-                aria-label="Copy wallet address"
-              >
-                {addressCopied ? <Check className="h-3 w-3" style={{ color: "var(--up)" }} /> : <Copy className="h-3 w-3" />}
-              </button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={onFund}
+              disabled={loading}
+              className="w-full rounded-[24px] border p-5 text-left transition-colors disabled:opacity-50"
+              style={{
+                borderColor: "color-mix(in srgb, var(--accent) 38%, transparent)",
+                background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 11%, var(--bg-surface)), var(--bg-base))",
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+                    Buy USDC with card
+                  </p>
+                  <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    Apple Pay may appear when supported by Privy. This is still the fastest way to fund the trading wallet.
+                  </p>
+                </div>
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--accent)" }} /> : <CreditCard className="h-5 w-5" style={{ color: "var(--accent)" }} />}
+              </div>
+            </button>
+
+            <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Asset to receive
+              </p>
+              <p className="mt-1 font-sub text-xs" style={{ color: "var(--text-3)" }}>
+                Same wallet address, different Solana assets.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {assets.map((asset) => {
+                  const active = asset.key === selectedAssetKey;
+                  return (
+                    <button
+                      key={asset.key}
+                      type="button"
+                      onClick={() => {
+                        hapticLight();
+                        setSelectedAssetKey(asset.key);
+                      }}
+                      className="rounded-2xl border p-3 text-left transition-all"
+                      style={{
+                        borderColor: active ? "color-mix(in srgb, var(--accent) 44%, transparent)" : "var(--border-subtle)",
+                        background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
+                      }}
+                    >
+                      <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                        {asset.symbol}
+                      </p>
+                      <p className="mt-1 truncate font-body text-xs" style={{ color: "var(--text-2)" }}>
+                        {asset.name}
+                      </p>
+                      {asset.hint && (
+                        <p className="mt-1 truncate font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                          {asset.hint}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div
+              className="rounded-[24px] border p-5"
+              style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--bg-base)), var(--bg-base))", borderColor: "color-mix(in srgb, var(--accent) 20%, var(--border-subtle))" }}
+            >
+              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Receive {selectedAsset?.symbol ?? "asset"}
+              </p>
+              <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                {selectedAsset?.kind === "native"
+                  ? "Send native SOL on Solana to this wallet address."
+                  : `Send ${selectedAsset?.symbol} on Solana to this same wallet address.`}
+              </p>
+              {selectedAsset?.hint && (
+                <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  {selectedAsset.hint}
+                </p>
+              )}
+
+              <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+                      Wallet address
+                    </p>
+                    <code className="mt-2 block select-all break-all font-label text-xs leading-relaxed" style={{ color: "var(--text-1)" }}>
+                      {walletKey}
+                    </code>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onCopyAddress}
+                    className="shrink-0 rounded-xl border p-2.5 transition-colors hover:bg-[var(--bg-elevated)]"
+                    style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+                    aria-label="Copy wallet address"
+                  >
+                    {addressCopied ? <Check className="h-4 w-4" style={{ color: "var(--up)" }} /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border p-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+              <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                Funding hint
+              </p>
+              <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                Use this address for SOL, USDC, USDT, or open outcome tokens on Solana. The address stays the same across the selected assets above.
+              </p>
             </div>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full rounded-lg border py-2.5 font-body text-sm"
-          style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
-        >
-          Close
-        </button>
+        <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row" style={{ borderColor: "var(--border-subtle)" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border px-5 py-3.5 font-body text-sm"
+            style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)" }}
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -641,6 +1119,23 @@ function PositionRow({
   const shares = p.quantity ?? p.balance ?? 0;
   const prob = p.probability ?? 0;
   const probPct = prob > 1 ? prob : prob * 100;
+  const displayOutcomeLabel = p.outcomeLabel?.trim() || p.side?.toUpperCase() || "Position";
+  const readsLikeSideLabel = displayOutcomeLabel.toLowerCase() === (p.side?.toLowerCase() || "");
+  const outcomeChipLabel = readsLikeSideLabel ? displayOutcomeLabel : `Outcome · ${displayOutcomeLabel}`;
+  const sideChipLabel = !readsLikeSideLabel ? `${p.side?.toUpperCase()} side` : null;
+  const endLabel = formatPositionEndLabel(p.closeTime, p.marketStatus);
+  const openedLabel = formatPositionDateLabel(p.openedAt);
+  const closedLabel = formatPositionDateLabel(p.closedAt);
+  const settledBadgeLabel =
+    p.settledReason === "closed_position" ? "Closed early" : p.settledReason === "market_closed" ? "Market ended" : "Settled";
+  const resultLabel =
+    !settled
+      ? "Live PnL"
+      : p.settledReason === "closed_position"
+        ? "Closed result"
+        : p.settledReason === "market_closed"
+          ? "Ended result"
+          : "Settled result";
   const current = p.currentPriceUsd ?? p.currentPrice ?? (prob > 1 ? prob / 100 : prob);
   const kalshiUrl = p.kalshi_url || `https://kalshi.com/markets/${p.ticker?.toLowerCase()}`;
   const markCents = markCentsForSide(p.side, p.probability);
@@ -688,7 +1183,7 @@ function PositionRow({
       {
         mint: p.mint,
         name: p.title || p.ticker,
-        symbol: p.ticker,
+        symbol: displayOutcomeLabel,
         price: typeof current === "number" ? current : prob > 1 ? prob / 100 : prob,
         assetType: "prediction",
         decimals: p.decimals,
@@ -696,7 +1191,9 @@ function PositionRow({
         marketTicker: p.ticker,
         marketTitle: p.title,
         marketSide,
+        marketOutcomeLabel: p.outcomeLabel ?? undefined,
         marketProbability: probPct,
+        marketCloseTime: p.closeTime,
       },
       { openForSell: true },
     );
@@ -719,6 +1216,11 @@ function PositionRow({
       : shares > 0
         ? (shares * markCents) / 100
         : null;
+  const settledSummary = settled
+    ? p.settledReason === "closed_position"
+      ? `${readsLikeSideLabel ? "You closed this position" : `Outcome held: ${displayOutcomeLabel}. You closed it`} before settlement${closedLabel ? ` on ${closedLabel}` : ""}.`
+      : `${readsLikeSideLabel ? endLabel ?? "Market ended" : `Outcome held: ${displayOutcomeLabel}. ${endLabel ?? "Market ended"}`}${valueUsdDisplay != null ? ` We last tracked it near $${fmtUsd(valueUsdDisplay)} total.` : "."}`
+    : null;
 
   return (
     <div
@@ -732,18 +1234,26 @@ function PositionRow({
           </h3>
           <p className="mt-2 flex flex-wrap items-center gap-2 font-sub text-sm" style={{ color: "var(--text-3)" }}>
             <span
-              className="rounded-md px-2 py-0.5 font-heading text-[11px] font-semibold uppercase"
+              className="rounded-md px-2 py-0.5 font-heading text-[11px] font-semibold"
               style={{
                 background: p.side === "yes" ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
                 color: p.side === "yes" ? "var(--up)" : "var(--down)",
               }}
             >
-              {p.side}
+              {outcomeChipLabel}
             </span>
             <span>{shares.toFixed(shares >= 1 ? 0 : 2)} shares</span>
+            {sideChipLabel && (
+              <span className="rounded-md px-2 py-0.5 text-[11px]" style={{ background: "rgba(255,255,255,0.06)" }}>
+                {sideChipLabel}
+              </span>
+            )}
+            {endLabel && <span>{endLabel}</span>}
+            {openedLabel && !settled && <span>Opened {openedLabel}</span>}
+            {closedLabel && settled && <span>Closed {closedLabel}</span>}
             {settled && (
               <span className="rounded-md px-2 py-0.5 text-[11px]" style={{ background: "rgba(255,255,255,0.06)" }}>
-                Settled
+                {settledBadgeLabel}
               </span>
             )}
           </p>
@@ -755,7 +1265,7 @@ function PositionRow({
         >
           <p className="font-sub text-[11px] uppercase tracking-wider mb-1 flex flex-wrap items-center gap-2" style={{ color: "var(--text-3)" }}>
             <span>
-              Unrealized PnL
+              {resultLabel}
               {pnlIsPreview && (
                 <span className="normal-case ml-2 opacity-80">(updates as you type — tap Save to keep)</span>
               )}
@@ -779,14 +1289,7 @@ function PositionRow({
         </div>
 
         <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-          About <span className="font-money tabular-nums">{markCents.toFixed(0)}¢</span> per share right now
-          {valueUsdDisplay != null && (
-            <>
-              {" "}
-              (~<span className="font-money tabular-nums">${fmtUsd(valueUsdDisplay)}</span> total)
-            </>
-          )}
-          .
+          {settledSummary ?? `About ${markCents.toFixed(0)}¢ per share right now${valueUsdDisplay != null ? ` (~$${fmtUsd(valueUsdDisplay)} total)` : ""}.`}
         </p>
 
         {p.yesBid != null && p.yesAsk != null && (
@@ -942,10 +1445,12 @@ function PositionRow({
               Share position
             </h3>
             <TradePnLCard
-              token={{ name: p.title || p.ticker, symbol: p.ticker }}
+              token={{ name: p.title || p.ticker, symbol: displayOutcomeLabel }}
               profitUsd={pnl}
               percent={pnlPct}
-              kalshiMarket={`${p.side.toUpperCase()} · ${p.title || p.ticker}`}
+              kalshiMarket={p.title || p.ticker}
+              marketLabel={p.title || p.ticker}
+              positionLabel={displayOutcomeLabel}
               wallet={walletKey}
               displayName={shareHandle}
               stakeUsd={stakeForCard}
@@ -1183,6 +1688,71 @@ export default function PortfolioPage() {
   const openPositions = positions.filter((p) => p.status !== "settled");
   const settledPositions = positions.filter((p) => p.status === "settled");
   const activeTab = positionTab === "open" ? openPositions : settledPositions;
+  const receiveAssets = useMemo<TransferAssetOption[]>(() => {
+    const coreAssets: TransferAssetOption[] = [
+      {
+        key: "SOL",
+        symbol: "SOL",
+        name: "Solana",
+        kind: "native",
+        decimals: 9,
+        balance: sol,
+        usdValue: solUsd,
+        hint: "Native gas and routing asset",
+      },
+      {
+        key: SOLANA_USDC_MINT,
+        symbol: "USDC",
+        name: "USD Coin",
+        mint: SOLANA_USDC_MINT,
+        kind: "spl",
+        decimals: 6,
+        balance: usdc,
+        usdValue: usdc,
+        hint: "Solana SPL stablecoin",
+      },
+      {
+        key: SOLANA_USDT_MINT,
+        symbol: "USDT",
+        name: "Tether",
+        mint: SOLANA_USDT_MINT,
+        kind: "spl",
+        decimals: 6,
+        balance: usdt,
+        usdValue: usdt,
+        hint: "Solana SPL stablecoin",
+      },
+    ];
+
+    const extras = openPositions
+      .filter((position) => !!position.mint && (position.balance ?? position.quantity ?? 0) > 0)
+      .map((position) => ({
+        key: position.mint!,
+        symbol: position.outcomeLabel?.trim() || position.side?.toUpperCase() || position.ticker,
+        name: position.title || position.ticker,
+        mint: position.mint!,
+        kind: "spl" as const,
+        decimals: position.decimals ?? 6,
+        balance: position.balance ?? position.quantity ?? 0,
+        usdValue:
+          typeof position.marketValueUsd === "number" && Number.isFinite(position.marketValueUsd)
+            ? position.marketValueUsd
+            : undefined,
+        hint: position.ticker,
+      }));
+
+    const deduped = new Map<string, TransferAssetOption>();
+    for (const asset of [...coreAssets, ...extras]) {
+      if (!deduped.has(asset.key)) {
+        deduped.set(asset.key, asset);
+      }
+    }
+    return [...deduped.values()];
+  }, [openPositions, sol, solUsd, usdc, usdt]);
+  const sendAssets = useMemo(
+    () => receiveAssets.filter((asset) => asset.balance > 0),
+    [receiveAssets],
+  );
   const totalPnl = useMemo(
     () =>
       positions.reduce(
@@ -1663,7 +2233,7 @@ export default function PortfolioPage() {
             )}
           </div>
           <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>
-            Open positions refresh while this page is open so prices stay current.
+            Open positions refresh while this page is open, and rows move into Settled when you close early or when a market ends.
           </p>
           {positionsAreStale && (
             <div className="mt-3 rounded-lg border px-3 py-2.5" style={{ background: "var(--bg-base)", borderColor: "color-mix(in srgb, #fbbf24 26%, var(--border-subtle))" }}>
@@ -1727,6 +2297,7 @@ export default function PortfolioPage() {
       {depositOpen && walletKey && (
         <DepositModal
           walletKey={walletKey}
+          assets={receiveAssets}
           onClose={() => setDepositOpen(false)}
           onFund={handleDeposit}
           addressCopied={addressCopied}
@@ -1735,7 +2306,7 @@ export default function PortfolioPage() {
         />
       )}
       {withdrawOpen && (
-        <WithdrawModal solBalance={sol} solPrice={solPrice} onClose={() => setWithdrawOpen(false)} />
+        <WithdrawModal assets={sendAssets} solBalance={sol} solPrice={solPrice} onClose={() => setWithdrawOpen(false)} />
       )}
       <Footer />
     </div>
