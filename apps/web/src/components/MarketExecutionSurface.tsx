@@ -13,7 +13,6 @@ import { useToastStore } from "@/store/useToastStore";
 import { StarButton } from "./StarButton";
 import { MarketAlertButton } from "./AlertButton";
 import { hapticLight } from "@/lib/haptics";
-import { formatProfileName, readProfileName } from "@/lib/profilePrefs";
 import { API_URL } from "@/lib/apiUrl";
 import { buildAbsoluteMarketUrl } from "@/lib/marketLinks";
 import { getSiteUrl } from "@/lib/siteUrl";
@@ -92,13 +91,18 @@ function CompactMarketStat({
 
 function MarketShareExportCard({
   market,
-  displayName,
-  exportBrandLabel,
 }: {
   market: SelectedMarket;
-  displayName: string;
-  exportBrandLabel: string;
 }) {
+  const selectedOutcomeLabel = getSelectedOutcomeLabel(market);
+  const sourceLabel = getSelectedMarketSourceLabel(market);
+  const summaryLine = [
+    selectedOutcomeLabel ? `Outcome: ${selectedOutcomeLabel}` : null,
+    formatTimestampLabel(market.close_time),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <div
       data-market-card-export="true"
@@ -109,26 +113,31 @@ function MarketShareExportCard({
           "radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 42%), radial-gradient(circle at bottom right, color-mix(in srgb, var(--polymarket) 10%, transparent), transparent 40%), linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)",
         fontFamily: "Inter, sans-serif",
       }}
-    >
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-            Selected market
-          </p>
-          <span
-            className="inline-flex items-center rounded-full border px-3 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
-            style={{
-              borderColor: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 34%, transparent)" : "color-mix(in srgb, var(--polymarket) 34%, transparent)",
-              background: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 12%, transparent)" : "color-mix(in srgb, var(--polymarket) 12%, transparent)",
-              color: market.source === "kalshi" ? "var(--kalshi)" : "var(--polymarket)",
-            }}
-          >
-            {getSelectedMarketSourceLabel(market)}
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center rounded-full border px-3 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+              style={{
+                borderColor: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 34%, transparent)" : "color-mix(in srgb, var(--polymarket) 34%, transparent)",
+                background: market.source === "kalshi" ? "color-mix(in srgb, var(--kalshi) 12%, transparent)" : "color-mix(in srgb, var(--polymarket) 12%, transparent)",
+                color: market.source === "kalshi" ? "var(--kalshi)" : "var(--polymarket)",
+              }}
+            >
+              {sourceLabel}
+            </span>
+            {selectedOutcomeLabel && (
+              <span
+                className="inline-flex items-center rounded-full border px-3 py-1 font-body text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={{ borderColor: "var(--border-subtle)", color: "var(--text-2)", background: "rgba(255,255,255,0.02)" }}
+              >
+                {selectedOutcomeLabel}
+              </span>
+            )}
+          </div>
+          <span className="font-mono text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
+            {market.ticker}
           </span>
-        </div>
-        <span className="font-mono text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-          {exportBrandLabel}
-        </span>
       </div>
 
       <h2
@@ -139,12 +148,21 @@ function MarketShareExportCard({
       </h2>
 
       <p className="mt-5 max-w-[40ch] font-body text-lg leading-relaxed" style={{ color: "var(--text-2)" }}>
-        Execution and risk intelligence for this outcome — trade with DFlow or Polymarket routing from Siren.
+        {summaryLine || "Live market details"}
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-3">
-        <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--accent)" />
-        <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
+        {selectedOutcomeLabel ? (
+          <>
+            <CompactMarketStat label="Selected outcome" value={selectedOutcomeLabel} />
+            <CompactMarketStat label="Selected price" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--accent)" />
+          </>
+        ) : (
+          <>
+            <CompactMarketStat label="YES" value={formatCentsFromProbability(market.probability, "yes")} tone="var(--accent)" />
+            <CompactMarketStat label="NO" value={formatCentsFromProbability(market.probability, "no")} tone="var(--down)" />
+          </>
+        )}
         <CompactMarketStat label="Move 1h" value={`${market.velocity_1h >= 0 ? "+" : ""}${market.velocity_1h.toFixed(1)}%`} tone={market.velocity_1h >= 0 ? "var(--up)" : "var(--down)"} />
         <CompactMarketStat label="Closes" value={formatTimestampLabel(market.close_time)} />
       </div>
@@ -152,18 +170,15 @@ function MarketShareExportCard({
       <div className="mt-10 flex items-end justify-between gap-4 border-t pt-5" style={{ borderColor: "var(--border-subtle)" }}>
         <div>
           <p className="font-body text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
-            Shared by
+            Market venue
           </p>
           <p className="mt-1 font-heading text-xl font-semibold" style={{ color: "var(--text-1)", fontFamily: '"Clash Display", sans-serif' }}>
-            {displayName}
+            {sourceLabel}
           </p>
         </div>
-        <div className="text-right">
-          <img src="/brand/mark.svg" alt="Siren" className="ml-auto h-7 w-auto" />
-          <p className="mt-2 font-mono text-sm" style={{ color: "var(--accent)" }}>
-            onsiren.xyz
-          </p>
-        </div>
+        <p className="font-body text-sm" style={{ color: "var(--text-2)" }}>
+          {summaryLine || "Market details"}
+        </p>
       </div>
     </div>
   );
@@ -890,6 +905,8 @@ function PredictionMarketFocusPanel({
                   source: market.source,
                   subtitle: market.subtitle,
                   closeTime: market.close_time,
+                  selectedOutcomeLabel: market.selected_outcome_label,
+                  outcomeCount: market.outcomes?.length ?? market.outcome_count,
                 }}
               />
               <MarketAlertButton ticker={market.ticker} probability={market.probability} />
@@ -1171,7 +1188,6 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
   const { selectedMarket, selectedSignal, setBuyPanelOpen } = useSirenStore();
   const { publicKey, evmAddress } = useSirenWallet();
   const [exportingCard, setExportingCard] = useState(false);
-  const [cardDisplayName, setCardDisplayName] = useState("@siren");
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
   const fontEmbedCssRef = useRef<string | null>(null);
@@ -1179,11 +1195,6 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
   const reduceMotion = useReducedMotion();
 
   const addToast = useToastStore((s) => s.addToast);
-
-  useEffect(() => {
-    const identity = publicKey?.toBase58() ?? evmAddress ?? null;
-    setCardDisplayName(formatProfileName(readProfileName(identity)));
-  }, [publicKey?.toBase58(), evmAddress]);
 
   useEffect(() => {
     if (!selectedMarket?.ticker && !selectedSignal?.id) return;
@@ -1245,12 +1256,15 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
       const blob = await fetch(dataUrl).then((response) => response.blob());
       const file = new File([blob], filename, { type: "image/png" });
       const marketUrl = getShareableMarketUrl(selectedMarket);
+      const shareTitle = selectedMarket.selected_outcome_label
+        ? `${selectedMarket.title} · ${selectedMarket.selected_outcome_label}`
+        : selectedMarket.title;
       if (mode === "share" && navigator.share) {
         if (navigator.canShare?.({ files: [file] })) {
           await navigator.share({
             files: [file],
-            title: selectedMarket.title,
-            text: `${selectedMarket.title} • onsiren.xyz`,
+            title: shareTitle,
+            text: shareTitle,
             url: marketUrl,
           });
           addToast("Market link shared.", "success");
@@ -1258,8 +1272,8 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
         }
 
         await navigator.share({
-          title: selectedMarket.title,
-          text: `${selectedMarket.title} • onsiren.xyz`,
+          title: shareTitle,
+          text: shareTitle,
           url: marketUrl,
         });
         addToast("Market link shared.", "success");
@@ -1313,7 +1327,7 @@ export function MarketExecutionSurface({ compactMode = false }: { compactMode?: 
       {selectedMarket && (
         <div aria-hidden="true" className="pointer-events-none fixed left-[-9999px] top-0 opacity-0">
           <div ref={shareCardRef}>
-            <MarketShareExportCard market={selectedMarket} displayName={cardDisplayName} exportBrandLabel="onsiren.xyz" />
+            <MarketShareExportCard market={selectedMarket} />
           </div>
         </div>
       )}

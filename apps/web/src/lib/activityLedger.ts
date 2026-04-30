@@ -2,6 +2,7 @@
 
 import { API_URL } from "@/lib/apiUrl";
 import { getWalletAuthHeaders } from "@/lib/requestAuth";
+import { pushLocalTrade } from "@/lib/localTradeLedger";
 
 export type WalletActivityKind = "prediction" | "swap" | "token" | "send" | "receive" | "close" | "volume";
 
@@ -57,7 +58,53 @@ export type WalletActivityLogInput = {
   metadata?: Record<string, unknown> | null;
 };
 
+export type RecentTradeHistoryRow = {
+  wallet: string;
+  mint: string;
+  side: "buy" | "sell";
+  token_amount: number | null;
+  price_usd: number | null;
+  token_name: string | null;
+  token_symbol: string | null;
+  tx_signature: string | null;
+  executed_at: string;
+};
+
 type WalletSigner = ((message: Uint8Array) => Promise<Uint8Array>) | undefined;
+
+function toLocalTimestamp(value?: number | null): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return Date.now();
+  return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
+function mirrorActivityLocally(wallet: string, input: Omit<WalletActivityLogInput, "wallet">) {
+  if (typeof window === "undefined" || input.activityKind === "volume") return;
+  const side =
+    input.side === "buy" || input.side === "sell"
+      ? input.side
+      : input.activityKind === "send" || input.activityKind === "close"
+        ? "sell"
+        : "buy";
+
+  pushLocalTrade(wallet, {
+    ts: toLocalTimestamp(input.timestamp ?? null),
+    mint: input.mint?.trim() || input.tokenSymbol?.trim() || input.toSymbol?.trim() || input.fromSymbol?.trim() || "wallet",
+    side,
+    solAmount: input.solAmount ?? 0,
+    tokenAmount: input.tokenAmount ?? 0,
+    priceUsd: input.priceUsd ?? 0,
+    stakeUsd: input.stakeUsd ?? undefined,
+    tokenName: input.tokenName ?? undefined,
+    tokenSymbol: input.tokenSymbol ?? undefined,
+    txSignature: input.txSignature ?? undefined,
+    amountUsd: input.amountUsd ?? undefined,
+    fromSymbol: input.fromSymbol ?? undefined,
+    toSymbol: input.toSymbol ?? undefined,
+    counterparty: input.counterparty ?? undefined,
+    note: input.note ?? undefined,
+    activityKind: input.activityKind,
+  });
+}
 
 export async function fetchWalletActivity({
   wallet,
@@ -106,8 +153,30 @@ export async function logWalletActivity({
   if (!res.ok) {
     throw new Error(typeof payload?.error === "string" ? payload.error : "Failed to log wallet activity.");
   }
+  mirrorActivityLocally(wallet, input);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("siren-activity-logged"));
   }
   return payload?.data ?? null;
+}
+
+export async function fetchRecentTradeHistory({
+  wallet,
+  signMessage,
+  limit = 20,
+}: {
+  wallet: string;
+  signMessage: WalletSigner;
+  limit?: number;
+}): Promise<RecentTradeHistoryRow[]> {
+  const authHeaders = await getWalletAuthHeaders({ wallet, signMessage, scope: "read" });
+  const res = await fetch(`${API_URL}/api/trades/recent?wallet=${encodeURIComponent(wallet)}&limit=${encodeURIComponent(String(limit))}`, {
+    credentials: "omit",
+    headers: authHeaders,
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof payload?.error === "string" ? payload.error : "Failed to load recent trades.");
+  }
+  return Array.isArray(payload?.data?.rows) ? (payload.data.rows as RecentTradeHistoryRow[]) : [];
 }

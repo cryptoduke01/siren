@@ -22,8 +22,28 @@ type WatchlistCardMarket = {
   source?: string;
   subtitle?: string;
   close_time?: number;
+  selectedOutcomeLabel?: string;
+  outcomeCount?: number;
   liveMarket?: MarketWithVelocity;
 };
+
+function formatWatchlistClose(value?: number): string | null {
+  if (!value || !Number.isFinite(value)) return null;
+  const timestampMs = value < 1_000_000_000_000 ? value * 1000 : value;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(timestampMs);
+}
+
+function venueLabel(source?: string): string {
+  return source === "polymarket" ? "Polymarket" : "Kalshi";
+}
+
+function isBinaryOutcomeLabel(value?: string | null): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "yes" || normalized === "no";
+}
 
 export default function WatchlistPage() {
   const router = useRouter();
@@ -44,6 +64,8 @@ export default function WatchlistPage() {
           source: liveMarket.source,
           subtitle: liveMarket.subtitle,
           close_time: liveMarket.close_time,
+          selectedOutcomeLabel: liveMarket.selected_outcome_label,
+          outcomeCount: liveMarket.outcomes?.length ?? liveMarket.outcome_count,
           liveMarket,
         };
       }
@@ -55,6 +77,8 @@ export default function WatchlistPage() {
         source: snapshot?.source,
         subtitle: snapshot?.subtitle,
         close_time: snapshot?.closeTime,
+        selectedOutcomeLabel: snapshot?.selectedOutcomeLabel,
+        outcomeCount: snapshot?.outcomeCount,
       };
     });
   }, [markets, starredMarketTickers, starredMarketsByTicker]);
@@ -139,6 +163,17 @@ export default function WatchlistPage() {
                   style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
                   onClick={() => void openMarket(m)}
                 >
+                  {(() => {
+                    const selectedOutcome = m.selectedOutcomeLabel?.trim();
+                    const hasSpecificOutcome = !!selectedOutcome && !isBinaryOutcomeLabel(selectedOutcome);
+                    const detailLine = hasSpecificOutcome
+                      ? `Tracking outcome: ${selectedOutcome}`
+                      : m.outcomeCount && m.outcomeCount > 2
+                        ? `${m.outcomeCount} possible outcomes`
+                        : m.subtitle || (m.outcomeCount === 2 ? "Binary market" : "Saved market");
+
+                    return (
+                      <>
                   <div className="absolute top-2 right-2">
                     <StarButton
                       type="market"
@@ -150,14 +185,35 @@ export default function WatchlistPage() {
                         source: m.source,
                         subtitle: m.subtitle,
                         closeTime: m.close_time,
+                        selectedOutcomeLabel: m.selectedOutcomeLabel,
+                        outcomeCount: m.outcomeCount,
                       }}
                     />
+                  </div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2 pr-8">
+                    <span
+                      className="rounded-full border px-2.5 py-1 font-sub text-[10px] uppercase tracking-[0.14em]"
+                      style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)", color: "var(--text-3)" }}
+                    >
+                      {venueLabel(m.source)}
+                    </span>
+                    {formatWatchlistClose(m.close_time) && (
+                      <span
+                        className="rounded-full border px-2.5 py-1 font-sub text-[10px] uppercase tracking-[0.14em]"
+                        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)", color: "var(--text-3)" }}
+                      >
+                        Closes {formatWatchlistClose(m.close_time)}
+                      </span>
+                    )}
                   </div>
                   <p className="font-heading font-semibold text-sm line-clamp-2 pr-8" style={{ color: "var(--text-1)" }}>
                     {m.title}
                   </p>
-                  <p className="mt-1 font-mono text-xs" style={{ color: "var(--accent)" }}>
-                    {m.probability.toFixed(0)}% YES
+                  <p className="mt-2 font-body text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    {detailLine}
+                  </p>
+                  <p className="mt-3 font-mono text-xs" style={{ color: "var(--accent)" }}>
+                    Current price {m.probability.toFixed(0)}%
                   </p>
                   {m.liveMarket ? (
                     <p className="mt-3 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
@@ -168,6 +224,9 @@ export default function WatchlistPage() {
                       Saved from your watchlist snapshot. Tap to refresh live market data.
                     </p>
                   )}
+                      </>
+                    );
+                  })()}
                 </motion.div>
               ))}
             </div>

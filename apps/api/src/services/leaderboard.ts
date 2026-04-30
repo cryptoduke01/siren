@@ -451,7 +451,15 @@ export async function enrichUsersWithProfiles(
   client: SupabaseClient,
   entries: LeaderboardRow[],
 ): Promise<LeaderboardRow[]> {
-  const wallets = [...new Set(entries.map((e) => walletKey(e.id)))];
+  const wallets = [
+    ...new Set(
+      entries.flatMap((entry) => {
+        const exact = entry.id.trim();
+        const lowered = walletKey(entry.id);
+        return exact && exact !== lowered ? [exact, lowered] : [lowered || exact];
+      }).filter(Boolean),
+    ),
+  ];
   if (wallets.length === 0) return entries;
 
   const { data, error } = await client.from("users").select("wallet,username,display_name,avatar_url").in("wallet", wallets);
@@ -464,10 +472,15 @@ export async function enrichUsersWithProfiles(
       display_name: row.display_name,
       avatar_url: row.avatar_url,
     });
+    map.set(row.wallet.trim(), {
+      username: row.username,
+      display_name: row.display_name,
+      avatar_url: row.avatar_url,
+    });
   }
 
   return entries.map((e) => {
-    const prof = map.get(walletKey(e.id));
+    const prof = map.get(e.id.trim()) ?? map.get(walletKey(e.id));
     if (!prof) return e;
     const next = { ...e, avatarUrl: prof.avatar_url ?? null };
     if (prof.display_name?.trim()) {
@@ -476,7 +489,8 @@ export async function enrichUsersWithProfiles(
         next.subtitle = prof.username.startsWith("@") ? prof.username : `@${prof.username}`;
       }
     } else if (prof.username?.trim()) {
-      next.label = prof.username.startsWith("@") ? prof.username : `@${prof.username}`;
+      next.label = prof.username.replace(/^@/, "").trim();
+      next.subtitle = `@${prof.username.replace(/^@/, "").trim()}`;
     }
     return next;
   });

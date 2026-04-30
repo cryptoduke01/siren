@@ -2744,9 +2744,49 @@ export function registerRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get<{ Querystring: { wallet?: string; limit?: string } }>("/api/trades/recent", async (req, reply) => {
+    const walletCandidates = getWalletCandidates(req.query.wallet || "");
+    if (!walletCandidates.exact) {
+      return reply.status(400).send({ success: false, error: "wallet required" });
+    }
+    if (!(await requireWalletSignature(req, reply, walletCandidates.exact, "read"))) return;
+    const parsedLimit = Number.parseInt(req.query.limit || "20", 10);
+    const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 50);
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      let query = supabase
+        .from("siren_trades")
+        .select("wallet,mint,side,token_amount,price_usd,token_name,token_symbol,tx_signature,executed_at")
+        .order("executed_at", { ascending: false })
+        .limit(limit);
+      query =
+        walletCandidates.all.length === 1
+          ? query.eq("wallet", walletCandidates.all[0])
+          : query.or(buildWalletOrFilter(walletCandidates.all));
+      const { data, error } = await query;
+
+      if (error) {
+        const lower = (error.message || "").toLowerCase();
+        if (error.code === "42p01" || lower.includes("siren_trades") || lower.includes("schema cache") || lower.includes("does not exist")) {
+          return reply.send({ success: true, data: { rows: [] } });
+        }
+        return reply.status(503).send({ success: false, error: error.message || "Trade history unavailable" });
+      }
+
+      return reply.send({ success: true, data: { rows: data ?? [] } });
+    } catch (error) {
+      app.log.warn(error, "Failed to load recent trades");
+      return reply.status(503).send({
+        success: false,
+        error: error instanceof Error ? error.message : "Trade history unavailable",
+      });
+    }
+  });
+
   /**
    * Public leaderboard: **prediction-market traders only** (Kalshi / Polymarket-style logged trades).
-   * Query: window=7d|30d|all|alltime, metric=volume|winRate.
+   * Query: window=7d|30d|all|alltime, metric=volume|winRate|execution.
    * All-time uses the most recent 25k rows (FIFO win rate) so the route stays bounded.
    */
   app.get<{ Querystring: { window?: string; metric?: string } }>(
@@ -2756,7 +2796,12 @@ export function registerRoutes(app: FastifyInstance) {
       const window =
         win === "30d" ? "30d" : win === "all" || win === "alltime" ? "all" : "7d";
       const metricRaw = (req.query.metric || "volume").toLowerCase().replace(/_/g, "");
-      const metric = metricRaw === "winrate" ? "winRate" : "volume";
+      const metric =
+        metricRaw === "winrate"
+          ? "winRate"
+          : metricRaw === "execution" || metricRaw === "score"
+            ? "execution"
+            : "volume";
       try {
         const client = getSupabaseAdminClient();
         const built = await buildLeaderboard({

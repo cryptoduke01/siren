@@ -32,7 +32,7 @@ import {
 import { API_URL } from "@/lib/apiUrl";
 import { appendWalletAuthQuery, getWalletAuthHeaders } from "@/lib/requestAuth";
 import { TradePnLCard } from "@/components/TradePnLCard";
-import { useGoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
+import { useGoldRushWalletIntelligence, type GoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
 import { useTorqueRelayReadiness } from "@/hooks/useTorqueRelayReadiness";
 import {
   getPositionEntry,
@@ -42,9 +42,12 @@ import {
 } from "@/lib/positionEntryStorage";
 import {
   fetchWalletActivity,
+  fetchRecentTradeHistory,
   logWalletActivity,
+  type RecentTradeHistoryRow,
   type WalletActivityRow,
 } from "@/lib/activityLedger";
+import { readLocalTrades, type LocalTradeLedgerRow } from "@/lib/localTradeLedger";
 import { toDataURL } from "qrcode";
 
 const LAMPORTS_PER_SOL = 1e9;
@@ -523,7 +526,7 @@ function WithdrawModal({
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(10px)" }}
     >
       <div
-        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-[30px] border bg-[var(--bg-surface)] md:max-h-[92vh] md:max-w-5xl md:rounded-[32px]"
+        className="flex h-[100dvh] w-full flex-col overflow-hidden border bg-[var(--bg-surface)] md:max-h-[92vh] md:max-w-5xl md:rounded-[32px]"
         style={{ borderColor: "var(--border-subtle)" }}
       >
         <input
@@ -535,12 +538,12 @@ function WithdrawModal({
           onChange={(event) => void handleScanRecipient(event.target.files?.[0])}
         />
 
-        <div className="flex items-start justify-between gap-4 border-b px-4 py-4 md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="relative border-b px-4 py-5 pr-20 md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
           <div className="min-w-0">
             <p className="font-sub text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
               Send
             </p>
-            <h3 className="mt-1 font-heading text-[1.85rem] font-semibold tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+            <h3 className="mt-1 font-heading text-[clamp(1.6rem,7vw,1.95rem)] font-semibold tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
               Move assets from this wallet
             </h3>
             <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
@@ -550,7 +553,7 @@ function WithdrawModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border"
+            className="absolute right-4 top-4 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border md:right-6"
             style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)", color: "var(--text-2)" }}
             aria-label="Close send modal"
           >
@@ -569,8 +572,8 @@ function WithdrawModal({
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_360px]">
-              <div className="space-y-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.14fr)_minmax(340px,0.86fr)]">
+              <div className="min-w-0 space-y-4">
                 <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -585,7 +588,7 @@ function WithdrawModal({
                       {spendableAssets.length} live
                     </span>
                   </div>
-                  <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-1">
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {spendableAssets.map((asset) => {
                       const active = asset.key === selectedAssetKey;
                       return (
@@ -597,7 +600,7 @@ function WithdrawModal({
                           setSelectedAssetKey(asset.key);
                           setAmount("");
                         }}
-                        className="min-w-[180px] snap-start rounded-[22px] border p-4 text-left transition-all"
+                        className="min-w-0 rounded-[22px] border p-4 text-left transition-all"
                         style={{
                           borderColor: active ? "color-mix(in srgb, var(--accent) 44%, transparent)" : "var(--border-subtle)",
                           background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
@@ -667,7 +670,7 @@ function WithdrawModal({
                     </span>
                   </div>
 
-                  <div className="mt-5 grid grid-cols-4 gap-2">
+                  <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {[0.25, 0.5, 0.75, 1].map((fraction) => (
                       <button
                         key={fraction}
@@ -730,7 +733,7 @@ function WithdrawModal({
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <div className="rounded-[24px] border p-4 md:p-5" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -800,7 +803,7 @@ function WithdrawModal({
           </div>
         )}
 
-        <div className="flex flex-col gap-3 border-t px-4 py-4 sm:flex-row md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="flex flex-col gap-3 border-t px-4 py-4 sm:flex-row md:px-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <button
             type="button"
             onClick={handleSend}
@@ -883,15 +886,15 @@ function DepositModal({
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(10px)" }}
     >
       <div
-        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-[30px] border bg-[var(--bg-surface)] md:max-h-[92vh] md:max-w-5xl md:rounded-[32px]"
+        className="flex h-[100dvh] w-full flex-col overflow-hidden border bg-[var(--bg-surface)] md:max-h-[92vh] md:max-w-5xl md:rounded-[32px]"
         style={{ borderColor: "var(--border-subtle)" }}
       >
-        <div className="flex items-start justify-between gap-4 border-b px-4 py-4 md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="relative border-b px-4 py-5 pr-20 md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
           <div className="min-w-0">
             <p className="font-sub text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
               Receive
             </p>
-            <h3 className="mt-1 font-heading text-[1.85rem] font-semibold tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
+            <h3 className="mt-1 font-heading text-[clamp(1.6rem,7vw,1.95rem)] font-semibold tracking-[-0.02em]" style={{ color: "var(--text-1)" }}>
               Top up this trading wallet
             </h3>
             <p className="mt-2 max-w-2xl font-body text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
@@ -901,7 +904,7 @@ function DepositModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border"
+            className="absolute right-4 top-4 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border md:right-6"
             style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)", color: "var(--text-2)" }}
             aria-label="Close receive modal"
           >
@@ -910,8 +913,8 @@ function DepositModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_360px]">
-            <div className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.92fr)]">
+            <div className="order-2 min-w-0 space-y-4 xl:order-1">
               <button
                 type="button"
                 onClick={onFund}
@@ -952,7 +955,7 @@ function DepositModal({
                     Solana mainnet
                   </span>
                 </div>
-                <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-1">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {assets.map((asset) => {
                     const active = asset.key === selectedAssetKey;
                     return (
@@ -963,7 +966,7 @@ function DepositModal({
                           hapticLight();
                           setSelectedAssetKey(asset.key);
                         }}
-                        className="min-w-[180px] snap-start rounded-[22px] border p-4 text-left transition-all"
+                        className="min-w-0 rounded-[22px] border p-4 text-left transition-all"
                         style={{
                           borderColor: active ? "color-mix(in srgb, var(--accent) 44%, transparent)" : "var(--border-subtle)",
                           background: active ? "color-mix(in srgb, var(--accent) 10%, var(--bg-surface))" : "var(--bg-surface)",
@@ -987,7 +990,7 @@ function DepositModal({
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="order-1 min-w-0 space-y-4 xl:order-2">
               <div
                 className="rounded-[26px] border p-4 md:p-5"
                 style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--bg-base)), var(--bg-base))", borderColor: "color-mix(in srgb, var(--accent) 20%, var(--border-subtle))" }}
@@ -1008,9 +1011,9 @@ function DepositModal({
 
                 <div className="mt-4 flex items-center justify-center rounded-[24px] border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
                   {qrDataUrl ? (
-                    <img src={qrDataUrl} alt={`QR code for ${walletKey}`} className="h-52 w-52 rounded-[20px]" />
+                    <img src={qrDataUrl} alt={`QR code for ${walletKey}`} className="h-[min(52vw,13rem)] w-[min(52vw,13rem)] rounded-[20px] md:h-52 md:w-52" />
                   ) : (
-                    <div className="flex h-52 w-52 items-center justify-center rounded-[20px] border" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
+                    <div className="flex h-[min(52vw,13rem)] w-[min(52vw,13rem)] items-center justify-center rounded-[20px] border md:h-52 md:w-52" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-base)" }}>
                       <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-3)" }} />
                     </div>
                   )}
@@ -1056,7 +1059,7 @@ function DepositModal({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t px-4 py-4 sm:flex-row md:px-6" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="flex flex-col gap-3 border-t px-4 py-4 sm:flex-row md:px-6" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
           <button
             type="button"
             onClick={onClose}
@@ -1186,6 +1189,189 @@ function buildWalletActivityItem(row: WalletActivityRow): PortfolioActivityItem 
             : null,
     tone: "up",
   };
+}
+
+function buildLocalWalletActivityItem(row: LocalTradeLedgerRow, index: number): PortfolioActivityItem {
+  const symbol =
+    row.tokenSymbol?.trim() ||
+    row.toSymbol?.trim() ||
+    row.fromSymbol?.trim() ||
+    symbolForMint(row.mint ?? "");
+  const label = row.tokenName?.trim() || row.note?.trim() || symbol;
+  const amountUsd =
+    row.amountUsd ??
+    row.stakeUsd ??
+    (row.priceUsd > 0 && row.tokenAmount > 0 ? row.priceUsd * row.tokenAmount : null);
+  const activityKind = row.activityKind ?? (row.side === "sell" ? "close" : "prediction");
+
+  if (activityKind === "receive") {
+    return {
+      id: `local:${row.txSignature || `${row.ts}-${index}`}`,
+      ts: row.ts,
+      kind: "receive",
+      title: symbol ? `Received ${symbol}` : "Received funds",
+      detail: row.note || "Inbound wallet flow",
+      amountLabel:
+        row.tokenAmount > 0
+          ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`
+          : amountUsd != null
+            ? formatCompactUsd(amountUsd)
+            : null,
+      tone: "up",
+    };
+  }
+
+  if (activityKind === "send") {
+    return {
+      id: `local:${row.txSignature || `${row.ts}-${index}`}`,
+      ts: row.ts,
+      kind: "send",
+      title: symbol ? `Sent ${symbol}` : "Sent funds",
+      detail: row.counterparty ? `To ${formatAddressShort(row.counterparty, 6)}` : row.note || "Outgoing transfer",
+      amountLabel:
+        row.tokenAmount > 0
+          ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`
+          : amountUsd != null
+            ? formatCompactUsd(amountUsd)
+            : null,
+      tone: "down",
+    };
+  }
+
+  if (activityKind === "swap") {
+    return {
+      id: `local:${row.txSignature || `${row.ts}-${index}`}`,
+      ts: row.ts,
+      kind: "swap",
+      title: `Swapped ${row.fromSymbol || "asset"} to ${row.toSymbol || symbol}`,
+      detail: row.note || (row.tokenAmount > 0 ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol} received` : "Wallet swap"),
+      amountLabel: amountUsd != null ? formatCompactUsd(amountUsd) : null,
+      tone: "neutral",
+    };
+  }
+
+  if (activityKind === "close" || row.side === "sell") {
+    return {
+      id: `local:${row.txSignature || `${row.ts}-${index}`}`,
+      ts: row.ts,
+      kind: "close",
+      title: "Closed position",
+      detail: label,
+      amountLabel:
+        amountUsd != null
+          ? formatCompactUsd(amountUsd)
+          : row.tokenAmount > 0
+            ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} shares`
+            : null,
+      tone: amountUsd != null && amountUsd > 0 ? "up" : "neutral",
+    };
+  }
+
+  return {
+    id: `local:${row.txSignature || `${row.ts}-${index}`}`,
+    ts: row.ts,
+    kind: "prediction",
+    title: activityKind === "prediction" ? "Opened prediction position" : `Bought ${symbol}`,
+    detail: label,
+    amountLabel:
+      row.stakeUsd != null && row.stakeUsd > 0 && row.tokenAmount > 0
+        ? `${formatCompactUsd(row.stakeUsd)} for ~${fmtToken(row.tokenAmount, 2)} shares`
+        : row.tokenAmount > 0
+          ? `${fmtToken(row.tokenAmount, row.tokenAmount >= 1 ? 2 : 4)} ${symbol}`
+          : amountUsd != null
+            ? formatCompactUsd(amountUsd)
+            : null,
+    tone: "up",
+  };
+}
+
+function buildGoldRushFallbackActivityItem(
+  row: GoldRushWalletIntelligence["activity"][number],
+  index: number,
+): PortfolioActivityItem | null {
+  const ts = row.timestamp ? Date.parse(row.timestamp) : Date.now();
+  const safeTs = Number.isFinite(ts) ? ts : Date.now();
+  const amountLabel =
+    row.prettyValueUsd || (row.valueUsd > 0 ? formatCompactUsd(row.valueUsd) : null);
+
+  if (row.direction === "in") {
+    return {
+      id: `goldrush:${row.txHash || index}`,
+      ts: safeTs,
+      kind: "receive",
+      title: "Received funds",
+      detail: "Observed on-chain inbound transfer",
+      amountLabel,
+      tone: "up",
+    };
+  }
+
+  if (row.direction === "out") {
+    return {
+      id: `goldrush:${row.txHash || index}`,
+      ts: safeTs,
+      kind: "send",
+      title: "Sent funds",
+      detail: "Observed on-chain outbound transfer",
+      amountLabel,
+      tone: "down",
+    };
+  }
+
+  return {
+    id: `goldrush:${row.txHash || index}`,
+    ts: safeTs,
+    kind: "swap",
+    title: "Wallet activity",
+    detail: "Observed on-chain transfer",
+    amountLabel,
+    tone: "neutral",
+  };
+}
+
+function buildRecentTradeFallbackActivityItem(
+  row: RecentTradeHistoryRow,
+  index: number,
+): PortfolioActivityItem {
+  const ts = Date.parse(row.executed_at);
+  const safeTs = Number.isFinite(ts) ? ts : Date.now();
+  const symbol = row.token_symbol?.trim() || symbolForMint(row.mint);
+  const notional =
+    row.token_amount != null && row.price_usd != null && row.token_amount > 0 && row.price_usd > 0
+      ? row.token_amount * row.price_usd
+      : null;
+  const label = row.token_name?.trim() || symbol;
+
+  if (row.side === "sell") {
+    return {
+      id: `trade:${row.tx_signature || `${row.mint}-${index}`}`,
+      ts: safeTs,
+      kind: "close",
+      title: "Closed position",
+      detail: label,
+      amountLabel: notional != null ? formatCompactUsd(notional) : null,
+      tone: "neutral",
+    };
+  }
+
+  return {
+    id: `trade:${row.tx_signature || `${row.mint}-${index}`}`,
+    ts: safeTs,
+    kind: "prediction",
+    title: "Opened prediction position",
+    detail: label,
+    amountLabel: notional != null ? formatCompactUsd(notional) : null,
+    tone: "up",
+  };
+}
+
+function humanizeRelayLabel(value?: string | null): string {
+  if (!value) return "";
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function formatActivityTime(ts: number): string {
@@ -1866,6 +2052,7 @@ export default function PortfolioPage() {
     if (!walletKey) return;
     const refresh = () => {
       queryClient.invalidateQueries({ queryKey: ["wallet-activity", walletKey] });
+      queryClient.invalidateQueries({ queryKey: ["wallet-trade-history", walletKey] });
     };
     window.addEventListener("focus", refresh);
     window.addEventListener("siren-activity-logged", refresh);
@@ -1975,16 +2162,45 @@ export default function PortfolioPage() {
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
+  const { data: recentTradeRows = [] } = useQuery({
+    queryKey: ["wallet-trade-history", walletKey],
+    queryFn: async () => {
+      if (!walletKey) return [] as RecentTradeHistoryRow[];
+      return fetchRecentTradeHistory({ wallet: walletKey, signMessage, limit: 20 });
+    },
+    enabled: !!walletKey,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const localActivityRows = walletKey ? readLocalTrades(walletKey) : [];
   const portfolioActivity = useMemo(() => {
     const appTrackedTxs = new Set(
       activityRows
         .filter((row) => row.source === "app" && typeof row.txSignature === "string" && row.txSignature.trim())
         .map((row) => row.txSignature!.trim()),
     );
-    const combined = [...activityRows]
+    const tradeHistoryTxs = new Set(
+      recentTradeRows
+        .filter((row) => typeof row.tx_signature === "string" && row.tx_signature.trim())
+        .map((row) => row.tx_signature!.trim()),
+    );
+    const backendItems = activityRows
       .filter((row) => row.activityKind !== "volume")
       .filter((row) => !(row.source === "goldrush" && row.txSignature && appTrackedTxs.has(row.txSignature.trim())))
-      .map(buildWalletActivityItem)
+      .map(buildWalletActivityItem);
+    const tradeHistoryItems = recentTradeRows
+      .filter((row) => !(row.tx_signature && appTrackedTxs.has(row.tx_signature.trim())))
+      .map(buildRecentTradeFallbackActivityItem);
+    const localItems = localActivityRows
+      .filter((row) => !(row.txSignature && (appTrackedTxs.has(row.txSignature.trim()) || tradeHistoryTxs.has(row.txSignature.trim()))))
+      .map(buildLocalWalletActivityItem);
+    const goldRushFallbackItems = (goldRushIntelligence?.activity ?? [])
+      .filter((row) => row.txHash && !appTrackedTxs.has(row.txHash.trim()))
+      .map(buildGoldRushFallbackActivityItem)
+      .filter((item): item is PortfolioActivityItem => Boolean(item));
+
+    const combined = [...backendItems, ...tradeHistoryItems, ...localItems, ...goldRushFallbackItems]
       .sort((left, right) => right.ts - left.ts);
     const deduped: PortfolioActivityItem[] = [];
     const seen = new Set<string>();
@@ -1996,7 +2212,7 @@ export default function PortfolioPage() {
       if (deduped.length >= 40) break;
     }
     return deduped;
-  }, [activityRows]);
+  }, [activityRows, goldRushIntelligence?.activity, localActivityRows, recentTradeRows]);
 
   // ── Positions ─────────────────────────────────────────────────
 
@@ -2176,6 +2392,39 @@ export default function PortfolioPage() {
   });
 
   const verified = !!proofStatus?.verified;
+  const walletReadAlerts = goldRushIntelligence?.alerts.slice(0, 2) ?? [];
+  const walletReadSummary =
+    goldRushIntelligence?.narrative.readiness ||
+    "Siren is waiting for fresh wallet context before it can score reserves and recent flow.";
+  const walletReadDetails = [
+    `Stablecoin runway: ${formatCompactUsd(goldRushIntelligence?.summary.stablecoinUsd ?? 0)}`,
+    `Recent wallet flow: ${formatCompactUsd((goldRushIntelligence?.summary.inboundUsd ?? 0) + (goldRushIntelligence?.summary.outboundUsd ?? 0))}`,
+    goldRushIntelligence?.summary.lastActiveAt
+      ? `Last active ${formatActivityTime(Date.parse(goldRushIntelligence.summary.lastActiveAt))}`
+      : "No recent wallet activity observed yet.",
+  ];
+  const torqueStatusCopy = torqueReadiness?.configured
+    ? "Siren is already tracking how your trades finish. That means clean exits, partial fills, and timing-sensitive closes can feed reminders, rankings, and future rewards."
+    : "Trade tracking is still warming up. You can trade normally, but user-facing reward campaigns are not attached yet.";
+  const torqueRuleLabels = (torqueReadiness?.suggestedCampaigns ?? [])
+    .slice(0, 3)
+    .map((campaign) => `${humanizeRelayLabel(campaign.name)}: ${campaign.objective}`);
+  const torqueNowLines = torqueReadiness?.configured
+    ? [
+        "Clean closes can count toward execution quality instead of pure trade size.",
+        "Time-sensitive markets can trigger better reminders before liquidity dries up.",
+        "Siren can separate a smooth exit from a failed or partial route.",
+      ]
+    : [
+        "Your trades are still usable inside Siren; the reward layer is just not live yet.",
+        "When campaigns go live, you will see simple action-based goals here instead of backend event names.",
+      ];
+  const torqueNextLines =
+    torqueRuleLabels.length > 0
+      ? torqueRuleLabels
+      : [
+          "When campaigns go live, Siren will show clear reward goals here in plain English.",
+        ];
 
   // ── Actions ───────────────────────────────────────────────────
 
@@ -2470,7 +2719,7 @@ export default function PortfolioPage() {
                     Wallet readiness
                   </p>
                   <p className="mt-1.5 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Covalent GoldRush is powering the wallet-health read Siren uses before routing size or warning about thin reserves.
+                    A quick read on whether this wallet looks ready to trade, close, or send funds without getting pinched by thin balances or fee issues.
                   </p>
                 </div>
                 <ProviderBadge src={COVALENT_LOGO_URL} alt="Covalent GoldRush" eyebrow="Powered by" status="Covalent GoldRush" />
@@ -2482,7 +2731,7 @@ export default function PortfolioPage() {
                 </div>
               ) : goldRushIntelligence ? (
                 <>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                     <div className="rounded-[24px] border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Visible</p>
                       <p className="mt-2 font-money text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
@@ -2508,14 +2757,14 @@ export default function PortfolioPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {(goldRushIntelligence.alerts.slice(0, 2) || []).map((alert) => (
+                  <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {walletReadAlerts.map((alert) => (
                         <div key={alert.label} className="rounded-[24px] border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                           <div className="flex items-center justify-between gap-3">
                             <p className="font-body text-sm font-medium" style={{ color: "var(--text-1)" }}>{alert.label}</p>
                             <span className="font-heading text-[10px] uppercase tracking-[0.14em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "#fbbf24" : "var(--accent)" }}>
-                              {alert.level}
+                              {alert.level === "high" ? "High" : alert.level === "warn" ? "Watch" : "Okay"}
                             </span>
                           </div>
                           <p className="mt-2 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-3)" }}>{alert.summary}</p>
@@ -2524,22 +2773,24 @@ export default function PortfolioPage() {
                     </div>
                     <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                        What it powers in Siren
+                        What this means right now
                       </p>
-                      <ul className="mt-4 space-y-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                        <li>Reserve checks before execution starts.</li>
-                        <li>Inbound and outbound flow context for wallet readiness.</li>
-                        <li>Recent wallet activity that now appears in your activity feed.</li>
-                      </ul>
+                      <p className="mt-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                        {walletReadSummary}
+                      </p>
                     </div>
                   </div>
-                  <div className="mt-5 rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                      Siren read
-                    </p>
-                    <p className="mt-3 max-w-4xl font-sub text-[13px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                      {goldRushIntelligence.narrative.readiness}
-                    </p>
+                  <div className="mt-5 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                    {walletReadDetails.map((detail) => (
+                      <div key={detail} className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                        <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                          Wallet context
+                        </p>
+                        <p className="mt-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                          {detail}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </>
               ) : (
@@ -2553,44 +2804,36 @@ export default function PortfolioPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="max-w-2xl">
                   <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
-                    Reward layer
+                    After-trade follow-up
                   </p>
                   <p className="mt-1.5 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
-                    Torque is the relay Siren uses to turn execution events into campaigns, nudges, and trader-reward logic.
+                    This is the layer Siren uses to remember how your trades ended, improve reminders, and prepare any future reward campaigns.
                   </p>
                 </div>
                 <ProviderBadge
                   src={TORQUE_LOGO_URL}
                   alt="Torque"
                   eyebrow="Powered by"
-                  status={torqueReadiness?.configured ? "Torque relay live" : "Torque pending"}
+                  status={torqueReadiness?.configured ? "Trade tracking live" : "Tracking warming up"}
                 />
               </div>
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                   <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                    What Torque is doing
+                    Live now
                   </p>
                   <p className="mt-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-                    {torqueReadiness?.summary || "Siren is preparing execution events for Torque-based campaigns and relay actions."}
+                    {torqueStatusCopy}
                   </p>
-                  {!!torqueReadiness?.eventNames?.length && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {torqueReadiness.eventNames.slice(0, 4).map((eventName) => (
-                        <span
-                          key={eventName}
-                          className="rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-                          style={{ borderColor: "var(--border-subtle)", color: "var(--text-3)" }}
-                        >
-                          {eventName}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <ul className="mt-4 space-y-3 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    {torqueNowLines.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
                 </div>
                 <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                   <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                    What it powers in Siren
+                    Why it matters
                   </p>
                   <ul className="mt-4 space-y-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                     <li>Clean-close rewards after successful exits.</li>
@@ -2599,33 +2842,16 @@ export default function PortfolioPage() {
                   </ul>
                 </div>
               </div>
-              {(torqueReadiness?.frictionLog?.length || torqueReadiness?.suggestedCampaigns?.length) && (
-                <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                  <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                      Relay watchpoints
-                    </p>
-                    <ul className="mt-4 space-y-3 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                      {(torqueReadiness?.frictionLog?.slice(0, 3) || ["No relay friction logged right now."]).map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
-                    <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
-                      Suggested campaigns
-                    </p>
-                    <ul className="mt-4 space-y-3 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                      {(torqueReadiness?.suggestedCampaigns?.slice(0, 3) || []).map((campaign) => (
-                        <li key={campaign.name}>
-                          <span className="font-heading text-[11px]" style={{ color: "var(--text-1)" }}>{campaign.name}</span>
-                          <span>{` · ${campaign.objective}`}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
+              <div className="mt-5 rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
+                  Coming next
+                </p>
+                <ul className="mt-4 space-y-3 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  {torqueNextLines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         )}
@@ -2674,7 +2900,7 @@ export default function PortfolioPage() {
             </div>
             {portfolioActivity.length === 0 ? (
               <p className="mt-6 font-body text-sm text-center py-6" style={{ color: "var(--text-3)" }}>
-                Nothing here yet. Make a trade to get started.
+                Nothing has landed in this feed yet. Fund the wallet, make a trade, or refresh once if you already traded and Siren is still syncing the feed back in.
               </p>
             ) : (
               <ul className="mt-5 space-y-3">

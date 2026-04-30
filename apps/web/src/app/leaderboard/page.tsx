@@ -7,6 +7,7 @@ import { Trophy, Target, DollarSign, ArrowLeft, Loader2 } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { API_URL } from "@/lib/apiUrl";
 import { hapticLight } from "@/lib/haptics";
+import { useSirenWallet } from "@/contexts/SirenWalletContext";
 
 interface LeaderboardEntry {
   rank: number;
@@ -45,14 +46,7 @@ function PodiumCard({
   const glow =
     place === 1 ? "0 24px 60px rgba(212,162,13,0.14)" : place === 2 ? "0 18px 42px rgba(156,163,175,0.10)" : "0 18px 42px rgba(180,83,9,0.10)";
 
-  if (!entry) {
-    return (
-      <div
-        className="rounded-[28px] border border-dashed p-5"
-        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
-      />
-    );
-  }
+  if (!entry) return null;
 
   const main =
     metric === "execution"
@@ -68,16 +62,16 @@ function PodiumCard({
     metric === "execution"
       ? entry.successRate != null
         ? `${entry.successRate.toFixed(0)}% clean routing`
-        : "No execution score yet"
+        : "Execution score warming up"
       : metric === "winRate"
-      ? fmtVol(entry.volumeUsd)
+      ? `${entry.wins}W / ${entry.losses}L`
       : entry.winRate != null
         ? `${entry.winRate.toFixed(0)}% win rate`
-        : "Win rate —";
+        : `${entry.tradeCount} trades`;
 
   return (
     <div
-      className="rounded-[30px] border p-5 text-left transition-transform"
+      className="min-w-0 rounded-[22px] border p-3 text-left transition-transform md:p-4"
       style={{
         borderColor: border,
         background:
@@ -87,18 +81,18 @@ function PodiumCard({
         boxShadow: glow,
       }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
           {entry.avatarUrl ? (
             <img
               src={entry.avatarUrl}
               alt=""
-              className="h-14 w-14 rounded-full object-cover shrink-0"
+              className="h-10 w-10 rounded-full object-cover shrink-0 md:h-12 md:w-12"
               style={{ boxShadow: `0 0 0 2px ${border}` }}
             />
           ) : (
             <div
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full font-heading text-lg font-bold"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-heading text-sm font-bold md:h-12 md:w-12 md:text-base"
               style={{ background: "var(--bg-elevated)", boxShadow: `0 0 0 2px ${border}`, color: "var(--text-2)" }}
             >
               {entry.label.slice(0, 2).toUpperCase()}
@@ -108,31 +102,31 @@ function PodiumCard({
             <p className="font-sub text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--text-3)" }}>
               Rank #{entry.rank}
             </p>
-            <p className="mt-1 truncate font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
+            <p className="mt-1 truncate font-heading text-sm font-semibold md:text-base" style={{ color: "var(--text-1)" }}>
               {entry.label}
             </p>
             {entry.subtitle && (
-              <p className="mt-1 truncate font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+              <p className="mt-1 hidden truncate font-sub text-[11px] md:block" style={{ color: "var(--text-3)" }}>
                 {entry.subtitle}
               </p>
             )}
           </div>
         </div>
         <div
-          className="inline-flex h-9 min-w-9 items-center justify-center rounded-full border px-3 font-heading text-sm font-semibold"
+          className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border px-2 font-heading text-[11px] font-semibold md:h-8 md:min-w-8 md:px-2.5 md:text-xs"
           style={{ borderColor: border, color: border }}
         >
           {place}
         </div>
       </div>
 
-      <p className="mt-6 font-money text-[2rem] font-bold tabular-nums leading-none" style={{ color: place === 1 ? "#d4a20d" : "var(--accent)" }}>
+      <p className="mt-4 font-money text-[1.15rem] font-bold tabular-nums leading-none md:text-[1.45rem]" style={{ color: place === 1 ? "#d4a20d" : "var(--accent)" }}>
         {main}
       </p>
-      <p className="mt-2 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+      <p className="mt-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
         {subSecondary}
       </p>
-      <p className="mt-3 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+      <p className="mt-2 font-sub text-[10px]" style={{ color: "var(--text-3)" }}>
         {entry.attemptCount ?? entry.tradeCount} attempts · {entry.tradeCount} trades
       </p>
     </div>
@@ -142,6 +136,21 @@ function PodiumCard({
 export default function LeaderboardPage() {
   const [windowKey, setWindowKey] = useState<"7d" | "30d" | "all">("7d");
   const [metric, setMetric] = useState<"execution" | "volume" | "winRate">("execution");
+  const { publicKey } = useSirenWallet();
+  const walletKey = publicKey?.toBase58() ?? null;
+
+  const { data: myProfile } = useQuery({
+    queryKey: ["leaderboard-profile", walletKey],
+    queryFn: async () => {
+      if (!walletKey) return null;
+      const res = await fetch(`${API_URL}/api/users/profile?wallet=${encodeURIComponent(walletKey)}`, { credentials: "omit" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) return null;
+      return (payload?.data ?? null) as { username?: string; display_name?: string; avatar_url?: string | null } | null;
+    },
+    enabled: !!walletKey,
+    staleTime: 60_000,
+  });
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["leaderboard", windowKey, metric],
@@ -169,14 +178,30 @@ export default function LeaderboardPage() {
     staleTime: 60_000,
   });
 
-  const entries = data?.data?.entries ?? [];
+  const entries = useMemo(() => {
+    const base = data?.data?.entries ?? [];
+    if (!walletKey || !myProfile) return base;
+    return base.map((entry) => {
+      if (entry.id.trim().toLowerCase() !== walletKey.trim().toLowerCase()) return entry;
+      return {
+        ...entry,
+        label:
+          myProfile.display_name?.trim() ||
+          (myProfile.username?.trim() ? myProfile.username.replace(/^@/, "").trim() : entry.label),
+        subtitle:
+          myProfile.display_name?.trim() && myProfile.username?.trim()
+            ? myProfile.username.startsWith("@")
+              ? myProfile.username
+              : `@${myProfile.username}`
+            : entry.subtitle,
+        avatarUrl: myProfile.avatar_url ?? entry.avatarUrl,
+      };
+    });
+  }, [data?.data?.entries, myProfile, walletKey]);
   const emptyReason = data?.data?.emptyReason;
 
   const podium = useMemo(() => {
-    const a = entries[0];
-    const b = entries[1];
-    const c = entries[2];
-    return { first: a, second: b, third: c, rest: entries.slice(3) };
+    return { top: entries.slice(0, 3), rest: entries.slice(3, 10) };
   }, [entries]);
 
   return (
@@ -231,7 +256,7 @@ export default function LeaderboardPage() {
           </div>
 
           <div
-            className="grid gap-2 rounded-[24px] border p-2 sm:grid-cols-2"
+            className="grid grid-cols-2 gap-2 rounded-[24px] border p-2"
             style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
           >
             <button
@@ -240,7 +265,7 @@ export default function LeaderboardPage() {
                 hapticLight();
                 setMetric("execution");
               }}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-2 font-heading text-[12px] font-semibold"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 py-2 font-heading text-[12px] font-semibold"
               style={{
                 background: metric === "execution" ? "var(--bg-surface)" : "transparent",
                 color: metric === "execution" ? "var(--accent)" : "var(--text-3)",
@@ -255,7 +280,7 @@ export default function LeaderboardPage() {
                 hapticLight();
                 setMetric("volume");
               }}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-2 font-heading text-[12px] font-semibold"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 py-2 font-heading text-[12px] font-semibold"
               style={{
                 background: metric === "volume" ? "var(--bg-surface)" : "transparent",
                 color: metric === "volume" ? "var(--accent)" : "var(--text-3)",
@@ -296,16 +321,24 @@ export default function LeaderboardPage() {
             <p className="font-sub text-[10px] uppercase tracking-widest mb-3" style={{ color: "var(--text-3)" }}>
               Top 3
             </p>
-            <div className="grid gap-4 mb-8 md:grid-cols-3">
-              <PodiumCard entry={podium.second} place={2} metric={metric} />
-              <PodiumCard entry={podium.first} place={1} metric={metric} />
-              <PodiumCard entry={podium.third} place={3} metric={metric} />
+            <div
+              className="mb-8 grid gap-3"
+              style={{ gridTemplateColumns: `repeat(${Math.max(1, podium.top.length)}, minmax(0, 1fr))` }}
+            >
+              {podium.top.map((entry, index) => (
+                <PodiumCard
+                  key={entry.id}
+                  entry={entry}
+                  place={(index + 1) as 1 | 2 | 3}
+                  metric={metric}
+                />
+              ))}
             </div>
 
             {podium.rest.length > 0 && (
               <>
                 <p className="font-sub text-[10px] uppercase tracking-widest mb-2" style={{ color: "var(--text-3)" }}>
-                  Rankings
+                  Ranks 4–10
                 </p>
                 <ul className="space-y-2">
                   {podium.rest.map((e) => (

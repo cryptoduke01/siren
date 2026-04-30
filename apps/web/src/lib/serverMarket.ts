@@ -4,7 +4,7 @@ import { API_URL } from "@/lib/apiUrl";
 import { buildAbsoluteMarketUrl, buildMarketPath } from "@/lib/marketLinks";
 import { getSiteUrl } from "@/lib/siteUrl";
 
-const socialPreviewVersion = "2026-04-28-market-links";
+const socialPreviewVersion = "2026-04-30-market-details";
 
 type MarketApiResponse = {
   success?: boolean;
@@ -40,11 +40,10 @@ function marketDescription(market: MarketWithVelocity): string {
   const close = formatMarketClose(market.close_time);
 
   return [
-    `${source} market on Siren.`,
+    `${source} prediction market.`,
     market.selected_outcome_label ? `Outcome: ${market.selected_outcome_label}.` : null,
     yes && no ? `YES ${yes} · NO ${no}.` : null,
     close ? `Closes ${close}.` : null,
-    "Execution and risk intelligence in one shareable market page.",
   ]
     .filter(Boolean)
     .join(" ");
@@ -81,24 +80,24 @@ export function buildMarketMetadata(market: MarketWithVelocity | null, fallbackP
   if (!market) {
     const fallbackUrl = new URL(fallbackPath, siteUrl).toString();
     return {
-      title: "Market | Siren",
-      description: "Execution and risk intelligence for prediction markets.",
+      title: "Prediction market",
+      description: "Prediction market details.",
       alternates: { canonical: fallbackPath },
       openGraph: {
         type: "website",
         url: fallbackUrl,
-        title: "Market | Siren",
-        description: "Execution and risk intelligence for prediction markets.",
+        title: "Prediction market",
+        description: "Prediction market details.",
       },
       twitter: {
         card: "summary_large_image",
-        title: "Market | Siren",
-        description: "Execution and risk intelligence for prediction markets.",
+        title: "Prediction market",
+        description: "Prediction market details.",
       },
     };
   }
 
-  const title = `${marketHeadline(market)} | Siren`;
+  const title = marketHeadline(market);
   const description = marketDescription(market);
   const canonicalPath = buildMarketPath({
     ticker: market.ticker,

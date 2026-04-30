@@ -65,6 +65,18 @@ export function readLocalTrades(wallet: string): LocalTradeLedgerRow[] {
 export function pushLocalTrade(wallet: string, row: LocalTradeLedgerRow): void {
   if (typeof window === "undefined") return;
   const prev = readLocalTrades(wallet);
+  const duplicate = prev.some((existing) => {
+    if (row.txSignature && existing.txSignature) {
+      return (
+        existing.txSignature === row.txSignature &&
+        existing.activityKind === row.activityKind &&
+        existing.side === row.side &&
+        existing.mint === row.mint
+      );
+    }
+    return existing.ts === row.ts && existing.mint === row.mint && existing.side === row.side && existing.activityKind === row.activityKind;
+  });
+  if (duplicate) return;
   prev.push(row);
   const next = prev.length > MAX_ROWS ? prev.slice(prev.length - MAX_ROWS) : prev;
   window.localStorage.setItem(keyForWallet(wallet), JSON.stringify(next));

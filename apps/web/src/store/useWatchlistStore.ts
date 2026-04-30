@@ -10,6 +10,8 @@ export type WatchlistMarketSnapshot = {
   source?: string;
   subtitle?: string;
   closeTime?: number;
+  selectedOutcomeLabel?: string;
+  outcomeCount?: number;
 };
 
 function normalizeMarketTicker(ticker: string): string {

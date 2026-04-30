@@ -152,6 +152,8 @@ export function MarketBottomSheet({
                             source: m.source,
                             subtitle: m.subtitle,
                             closeTime: m.close_time,
+                            selectedOutcomeLabel: m.selected_outcome_label,
+                            outcomeCount: m.outcomes?.length ?? m.outcome_count,
                           }}
                         />
                       </div>
