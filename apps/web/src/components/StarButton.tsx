@@ -1,16 +1,18 @@
 "use client";
 
 import { Star } from "lucide-react";
-import { useWatchlistStore } from "@/store/useWatchlistStore";
+import { useWatchlistStore, type WatchlistMarketSnapshot } from "@/store/useWatchlistStore";
 import { hapticLight } from "@/lib/haptics";
 
 export function StarButton({
   type,
   id,
+  marketSnapshot,
   className = "",
 }: {
   type: "market" | "token";
   id: string;
+  marketSnapshot?: WatchlistMarketSnapshot;
   className?: string;
 }) {
   const isMarket = type === "market";
@@ -26,7 +28,7 @@ export function StarButton({
     e.stopPropagation();
     hapticLight();
     if (isMarket) {
-      isStarred ? unstarMarket(id) : starMarket(id);
+      isStarred ? unstarMarket(id) : starMarket(id, marketSnapshot);
     } else {
       isStarred ? unstarToken(id) : starToken(id);
     }

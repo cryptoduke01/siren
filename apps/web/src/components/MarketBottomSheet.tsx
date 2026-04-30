@@ -142,7 +142,18 @@ export function MarketBottomSheet({
                   {filteredMarkets.map((m) => (
                     <div key={m.ticker} className="relative">
                       <div className="absolute top-3 right-3 z-[2]">
-                        <StarButton type="market" id={m.ticker} />
+                        <StarButton
+                          type="market"
+                          id={m.ticker}
+                          marketSnapshot={{
+                            ticker: m.ticker,
+                            title: m.title,
+                            probability: m.probability,
+                            source: m.source,
+                            subtitle: m.subtitle,
+                            closeTime: m.close_time,
+                          }}
+                        />
                       </div>
                       <ImmersiveMarketCard
                         market={m}

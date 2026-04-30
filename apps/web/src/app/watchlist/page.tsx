@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import type { MarketWithVelocity } from "@siren/shared";
 import { TopBar } from "@/components/TopBar";
 import { useWatchlistStore } from "@/store/useWatchlistStore";
 import { useMarkets } from "@/hooks/useMarkets";
@@ -10,14 +13,79 @@ import { useSirenStore } from "@/store/useSirenStore";
 import { StarButton } from "@/components/StarButton";
 import { hapticLight } from "@/lib/haptics";
 import { toSelectedMarket } from "@/lib/marketSelection";
+import { API_URL } from "@/lib/apiUrl";
+
+type WatchlistCardMarket = {
+  ticker: string;
+  title: string;
+  probability: number;
+  source?: string;
+  subtitle?: string;
+  close_time?: number;
+  liveMarket?: MarketWithVelocity;
+};
 
 export default function WatchlistPage() {
   const router = useRouter();
-  const { starredMarketTickers } = useWatchlistStore();
+  const queryClient = useQueryClient();
+  const { starredMarketTickers, starredMarketsByTicker, hasHydrated } = useWatchlistStore();
   const { data: markets = [] } = useMarkets();
   const { setSelectedMarket } = useSirenStore();
 
-  const starredMarkets = markets.filter((m) => starredMarketTickers.includes(m.ticker));
+  const starredMarkets = useMemo<WatchlistCardMarket[]>(() => {
+    const liveByTicker = new Map(markets.map((market) => [market.ticker, market]));
+    return starredMarketTickers.map((ticker) => {
+      const liveMarket = liveByTicker.get(ticker);
+      if (liveMarket) {
+        return {
+          ticker: liveMarket.ticker,
+          title: liveMarket.title,
+          probability: liveMarket.probability,
+          source: liveMarket.source,
+          subtitle: liveMarket.subtitle,
+          close_time: liveMarket.close_time,
+          liveMarket,
+        };
+      }
+      const snapshot = starredMarketsByTicker[ticker];
+      return {
+        ticker,
+        title: snapshot?.title || ticker,
+        probability: snapshot?.probability ?? 0,
+        source: snapshot?.source,
+        subtitle: snapshot?.subtitle,
+        close_time: snapshot?.closeTime,
+      };
+    });
+  }, [markets, starredMarketTickers, starredMarketsByTicker]);
+
+  const openMarket = async (market: WatchlistCardMarket) => {
+    hapticLight();
+    if (market.liveMarket) {
+      setSelectedMarket(toSelectedMarket(market.liveMarket));
+      router.push("/terminal");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/markets/${encodeURIComponent(market.ticker)}`, { credentials: "omit" });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.data) {
+        const fetchedMarket = payload.data as MarketWithVelocity;
+        queryClient.setQueryData<MarketWithVelocity[]>(["markets"], (previous = []) => {
+          if (previous.some((item) => item.ticker === fetchedMarket.ticker)) return previous;
+          return [fetchedMarket, ...previous];
+        });
+        setSelectedMarket(toSelectedMarket(fetchedMarket));
+        router.push("/terminal");
+        return;
+      }
+    } catch {
+      // Fall through to the market route so the user does not hit a dead click.
+    }
+
+    router.push(`/market/${encodeURIComponent(market.ticker)}`);
+  };
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-void)" }}>
@@ -30,9 +98,18 @@ export default function WatchlistPage() {
           Starred prediction markets. Click to open execution context on the terminal.
         </p>
 
-        {starredMarkets.length === 0 ? (
+        {!hasHydrated ? (
           <div
-            className="rounded-[8px] border p-8 text-center"
+            className="rounded-[18px] border p-8 text-center"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+          >
+            <p className="font-body" style={{ color: "var(--text-2)" }}>
+              Loading your watchlist…
+            </p>
+          </div>
+        ) : starredMarkets.length === 0 ? (
+          <div
+            className="rounded-[18px] border p-8 text-center"
             style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
           >
             <p className="font-body" style={{ color: "var(--text-2)" }}>
@@ -52,29 +129,45 @@ export default function WatchlistPage() {
             <h2 className="font-heading font-semibold text-xs uppercase mb-3" style={{ color: "var(--text-3)", letterSpacing: "0.1em" }}>
               Markets
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {starredMarkets.map((m) => (
                 <motion.div
                   key={m.ticker}
                   initial={{ opacity: 0, translateY: 6 }}
                   animate={{ opacity: 1, translateY: 0 }}
-                  className="rounded-[6px] border p-3 cursor-pointer transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)] relative"
+                  className="relative cursor-pointer rounded-[20px] border p-4 transition-all duration-[120ms] ease hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated)]"
                   style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
-                  onClick={() => {
-                    hapticLight();
-                    setSelectedMarket(toSelectedMarket(m));
-                    router.push("/terminal");
-                  }}
+                  onClick={() => void openMarket(m)}
                 >
                   <div className="absolute top-2 right-2">
-                    <StarButton type="market" id={m.ticker} />
+                    <StarButton
+                      type="market"
+                      id={m.ticker}
+                      marketSnapshot={{
+                        ticker: m.ticker,
+                        title: m.title,
+                        probability: m.probability,
+                        source: m.source,
+                        subtitle: m.subtitle,
+                        closeTime: m.close_time,
+                      }}
+                    />
                   </div>
                   <p className="font-heading font-semibold text-sm line-clamp-2 pr-8" style={{ color: "var(--text-1)" }}>
                     {m.title}
                   </p>
-                  <p className="font-mono text-xs mt-1" style={{ color: "var(--accent)" }}>
+                  <p className="mt-1 font-mono text-xs" style={{ color: "var(--accent)" }}>
                     {m.probability.toFixed(0)}% YES
                   </p>
+                  {m.liveMarket ? (
+                    <p className="mt-3 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                      Live in current market feed
+                    </p>
+                  ) : (
+                    <p className="mt-3 font-sub text-[11px]" style={{ color: "var(--text-3)" }}>
+                      Saved from your watchlist snapshot. Tap to refresh live market data.
+                    </p>
+                  )}
                 </motion.div>
               ))}
             </div>

@@ -46,7 +46,6 @@ import {
   type WalletActivityRow,
 } from "@/lib/activityLedger";
 import { toDataURL } from "qrcode";
-import type { GoldRushWalletIntelligence } from "@/hooks/useGoldRushWalletIntelligence";
 
 const LAMPORTS_PER_SOL = 1e9;
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -2319,10 +2318,10 @@ export default function PortfolioPage() {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <TopBar />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-12 pt-6 md:pt-8 font-body">
+      <main className="mx-auto w-full max-w-[1360px] flex-1 px-4 pb-12 pt-6 font-body md:px-6 md:pt-8 xl:px-8">
 
         {/* ── Top row: Balance + Username ─────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)]">
 
           {/* Balance Card */}
           <div className="rounded-xl border p-5"
@@ -2463,14 +2462,14 @@ export default function PortfolioPage() {
         </div>
 
         {connected && (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-[26px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+          <div className="mt-6 grid gap-5 xl:grid-cols-2">
+            <div className="rounded-[30px] border p-5 lg:p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                <div className="max-w-2xl">
+                  <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
                     Wallet readiness
                   </p>
-                  <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  <p className="mt-1.5 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
                     Covalent GoldRush is powering the wallet-health read Siren uses before routing size or warning about thin reserves.
                   </p>
                 </div>
@@ -2483,62 +2482,62 @@ export default function PortfolioPage() {
                 </div>
               ) : goldRushIntelligence ? (
                 <>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-[24px] border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Visible</p>
                       <p className="mt-2 font-money text-xl font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>
                         {formatCompactUsd(goldRushIntelligence.summary.totalQuotedUsd)}
                       </p>
                     </div>
-                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <div className="rounded-[24px] border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Risk</p>
                       <p className="mt-2 font-heading text-xl font-semibold" style={{ color: goldRushIntelligence.summary.riskLabel === "high" ? "var(--down)" : "var(--accent)" }}>
                         {goldRushIntelligence.summary.riskScore}/100
                       </p>
                     </div>
-                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <div className="rounded-[24px] border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Inbound</p>
                       <p className="mt-2 font-money text-xl font-semibold tabular-nums" style={{ color: "var(--up)" }}>
                         {formatCompactUsd(goldRushIntelligence.summary.inboundUsd)}
                       </p>
                     </div>
-                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <div className="rounded-[24px] border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>Outbound</p>
                       <p className="mt-2 font-money text-xl font-semibold tabular-nums" style={{ color: "var(--down)" }}>
                         {formatCompactUsd(goldRushIntelligence.summary.outboundUsd)}
                       </p>
                     </div>
                   </div>
-                  <div className="mt-4 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
-                    <div className="space-y-3">
+                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-2">
                       {(goldRushIntelligence.alerts.slice(0, 2) || []).map((alert) => (
-                        <div key={alert.label} className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                        <div key={alert.label} className="rounded-[24px] border px-4 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                           <div className="flex items-center justify-between gap-3">
                             <p className="font-body text-sm font-medium" style={{ color: "var(--text-1)" }}>{alert.label}</p>
                             <span className="font-heading text-[10px] uppercase tracking-[0.14em]" style={{ color: alert.level === "high" ? "var(--down)" : alert.level === "warn" ? "#fbbf24" : "var(--accent)" }}>
                               {alert.level}
                             </span>
                           </div>
-                          <p className="mt-1 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-3)" }}>{alert.summary}</p>
+                          <p className="mt-2 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-3)" }}>{alert.summary}</p>
                         </div>
                       ))}
                     </div>
-                    <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                    <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                       <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                         What it powers in Siren
                       </p>
-                      <ul className="mt-3 space-y-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                      <ul className="mt-4 space-y-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                         <li>Reserve checks before execution starts.</li>
                         <li>Inbound and outbound flow context for wallet readiness.</li>
                         <li>Recent wallet activity that now appears in your activity feed.</li>
                       </ul>
                     </div>
                   </div>
-                  <div className="mt-4 rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <div className="mt-5 rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                     <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                       Siren read
                     </p>
-                    <p className="mt-2 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    <p className="mt-3 max-w-4xl font-sub text-[13px] leading-relaxed" style={{ color: "var(--text-2)" }}>
                       {goldRushIntelligence.narrative.readiness}
                     </p>
                   </div>
@@ -2550,13 +2549,13 @@ export default function PortfolioPage() {
               )}
             </div>
 
-            <div className="rounded-[26px] border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
+            <div className="rounded-[30px] border p-5 lg:p-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-heading text-sm font-semibold" style={{ color: "var(--text-1)" }}>
+                <div className="max-w-2xl">
+                  <p className="font-heading text-base font-semibold" style={{ color: "var(--text-1)" }}>
                     Reward layer
                   </p>
-                  <p className="mt-1 font-sub text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+                  <p className="mt-1.5 font-sub text-sm leading-relaxed" style={{ color: "var(--text-3)" }}>
                     Torque is the relay Siren uses to turn execution events into campaigns, nudges, and trader-reward logic.
                   </p>
                 </div>
@@ -2567,16 +2566,16 @@ export default function PortfolioPage() {
                   status={torqueReadiness?.configured ? "Torque relay live" : "Torque pending"}
                 />
               </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
-                <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                   <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                     What Torque is doing
                   </p>
-                  <p className="mt-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  <p className="mt-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                     {torqueReadiness?.summary || "Siren is preparing execution events for Torque-based campaigns and relay actions."}
                   </p>
                   {!!torqueReadiness?.eventNames?.length && (
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-wrap gap-2">
                       {torqueReadiness.eventNames.slice(0, 4).map((eventName) => (
                         <span
                           key={eventName}
@@ -2589,11 +2588,11 @@ export default function PortfolioPage() {
                     </div>
                   )}
                 </div>
-                <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                   <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                     What it powers in Siren
                   </p>
-                  <ul className="mt-3 space-y-2 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
+                  <ul className="mt-4 space-y-3 font-body text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
                     <li>Clean-close rewards after successful exits.</li>
                     <li>Resolve-before-expiry nudges when timing risk rises.</li>
                     <li>Execution-quality ranking logic beyond raw trade size.</li>
@@ -2601,22 +2600,22 @@ export default function PortfolioPage() {
                 </div>
               </div>
               {(torqueReadiness?.frictionLog?.length || torqueReadiness?.suggestedCampaigns?.length) && (
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                  <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                     <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                       Relay watchpoints
                     </p>
-                    <ul className="mt-3 space-y-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    <ul className="mt-4 space-y-3 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
                       {(torqueReadiness?.frictionLog?.slice(0, 3) || ["No relay friction logged right now."]).map((line) => (
                         <li key={line}>{line}</li>
                       ))}
                     </ul>
                   </div>
-                  <div className="rounded-2xl border px-4 py-3" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
+                  <div className="rounded-[24px] border px-5 py-4" style={{ background: "var(--bg-base)", borderColor: "var(--border-subtle)" }}>
                     <p className="font-sub text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-3)" }}>
                       Suggested campaigns
                     </p>
-                    <ul className="mt-3 space-y-2 font-sub text-[11px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    <ul className="mt-4 space-y-3 font-sub text-[12px] leading-relaxed" style={{ color: "var(--text-2)" }}>
                       {(torqueReadiness?.suggestedCampaigns?.slice(0, 3) || []).map((campaign) => (
                         <li key={campaign.name}>
                           <span className="font-heading text-[11px]" style={{ color: "var(--text-1)" }}>{campaign.name}</span>

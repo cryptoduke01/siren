@@ -880,7 +880,18 @@ function PredictionMarketFocusPanel({
               </span>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <StarButton type="market" id={market.ticker} />
+              <StarButton
+                type="market"
+                id={market.ticker}
+                marketSnapshot={{
+                  ticker: market.ticker,
+                  title: market.title,
+                  probability: market.probability,
+                  source: market.source,
+                  subtitle: market.subtitle,
+                  closeTime: market.close_time,
+                }}
+              />
               <MarketAlertButton ticker={market.ticker} probability={market.probability} />
               <button
                 type="button"
